@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useReducer, ReactNode } from 'react';
+import React, { createContext, ReactNode, useContext, useReducer } from 'react';
 
 // State shape
 export interface CreateGoalState {
@@ -85,7 +85,13 @@ function createGoalReducer(state: CreateGoalState, action: CreateGoalAction): Cr
     case 'SET_TARGET_LOCATION':
       return { ...state, targetLocation: action.payload };
     case 'SET_DEPOSIT':
-      return { ...state, deposit: { ...state.deposit, ...action.payload } };
+      if (action.payload && typeof action.payload === 'object') {
+        return { 
+          ...state, 
+          deposit: state.deposit ? { ...state.deposit, ...action.payload } : action.payload as CreateGoalState['deposit']
+        };
+      }
+      return state;
     case 'RESET':
       return initialState;
     default:
@@ -128,10 +134,10 @@ export function CreateGoalProvider({ children }: { children: ReactNode }) {
     reset: () => dispatch({ type: 'RESET' }),
   };
 
-  return (
-    <CreateGoalContext.Provider value={{ state, dispatch, actions }}>
-      {children}
-    </CreateGoalContext.Provider>
+  return React.createElement(
+    CreateGoalContext.Provider,
+    { value: { state, dispatch, actions } },
+    children
   );
 }
 

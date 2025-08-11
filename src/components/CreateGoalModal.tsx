@@ -16,6 +16,7 @@ import {
   View,
 } from 'react-native';
 import { Categories, VerificationTypes } from '../constants';
+import { CreateGoalProvider, useCreateGoal } from '../features/createGoal/state';
 import {
   AIGoalDraft,
   mergeAIGoal,
@@ -37,9 +38,7 @@ interface CreateGoalModalProps {
 // Step definitions
 const STEPS = [
   { id: 'ai', title: 'AI Assistant', description: 'Generate goal with AI' },
-  { id: 'details', title: 'Goal Details', description: 'Title, description, category' },
   { id: 'schedule', title: 'Schedule', description: 'Date & duration' },
-  { id: 'location', title: 'Location', description: 'Target location' },
   { id: 'review', title: 'Review', description: 'Final review & save' }
 ];
 
@@ -126,13 +125,9 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     switch (state.step) {
       case 0: // AI
         return !!(aiDraft.title && aiDraft.title.trim().length > 0);
-      case 1: // Details
-        return !!(formData.title && formData.title.trim().length > 0);
-      case 2: // Schedule
+      case 1: // Schedule
         return !!(formData.duration.startDate && formData.duration.value && formData.duration.value > 0);
-      case 3: // Location
-        return true; // Location is optional
-      case 4: // Review
+      case 2: // Review
         return true;
       default:
         return false;
@@ -556,8 +551,8 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       <TextInput
         className="bg-white rounded-lg px-3 py-3 border border-blue-200 text-gray-900"
         placeholder={
-          state === 'NEEDS_INFO' ? "Answer the question above..." :
-          state === 'IDLE' ? "Describe your goal (e.g., 'Go to the gym 3 times a week')" :
+          appState === 'NEEDS_INFO' ? "Answer the question above..." :
+          appState === 'IDLE' ? "Describe your goal (e.g., 'Go to the gym 3 times a week')" :
           "Continue describing your goal..."
         }
         placeholderTextColor="#9CA3AF"
@@ -581,7 +576,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
           }}
         >
           <Text style={{ color: 'white', textAlign: 'center', fontWeight: '600' }}>
-            {loading ? 'Generating...' : state === 'IDLE' ? 'Generate with AI' : 'Continue'}
+            {loading ? 'Generating...' : appState === 'IDLE' ? 'Generate with AI' : 'Continue'}
           </Text>
         </TouchableOpacity>
 
@@ -600,7 +595,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       </View>
 
       {/* Example prompts - horizontal scroll */}
-      {state === 'IDLE' && (
+              {appState === 'IDLE' && (
         <View style={{ marginTop: 12 }}>
           <Text style={{ fontSize: 12, color: '#2563eb', marginBottom: 8 }}>Quick examples:</Text>
           <View style={{ flexDirection: 'row' }}>
@@ -925,19 +920,19 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
   const getSections = () => {
     const sections = [];
 
-    if (state === 'IDLE' || state === 'GENERATING' || state === 'NEEDS_INFO') {
+    if (appState === 'IDLE' || appState === 'GENERATING' || appState === 'NEEDS_INFO') {
       sections.push({ type: 'ai', key: 'ai-section' });
     }
 
-    if (state === 'NEEDS_DATES' && showDatePicker) {
+    if (appState === 'NEEDS_DATES' && showDatePicker) {
       sections.push({ type: 'datePicker', key: 'date-picker-section' });
     }
 
-    if (state === 'NEEDS_LOCATION') {
+    if (appState === 'NEEDS_LOCATION') {
       sections.push({ type: 'location', key: 'location-section' });
     }
 
-    if (state === 'READY_TO_REVIEW') {
+    if (appState === 'READY_TO_REVIEW') {
       sections.push({ type: 'manualForm', key: 'manual-form-section' });
     }
 
