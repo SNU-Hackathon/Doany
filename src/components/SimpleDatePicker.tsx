@@ -42,6 +42,10 @@ export default function SimpleDatePicker({
   
   // Calendar navigation state
   const [currentMonth, setCurrentMonth] = useState(new Date(startDate || today));
+  
+  // Weekday-based goal state
+  const [selectedWeekdays, setSelectedWeekdays] = useState<number[]>([]);
+  const [selectedTime, setSelectedTime] = useState<string>('10:00');
   // Removed dateRange state as it's not needed for duration mode
 
   // Calendar navigation functions
@@ -94,7 +98,8 @@ export default function SimpleDatePicker({
         isToday: dateStr === today,
         isPast: dateStr < today,
         isSelected: dateStr === startDate || (endDate && dateStr === endDate),
-        isInRange: endDate && dateStr > startDate && dateStr < endDate
+        isInRange: endDate && dateStr > startDate && dateStr < endDate,
+        isWeekdayGoal: endDate && dateStr >= startDate && dateStr <= endDate && selectedWeekdays.includes(new Date(dateStr).getDay())
       });
     }
     
@@ -203,6 +208,47 @@ export default function SimpleDatePicker({
           )}
         </View>
 
+        {/* Weekday-based Goal Selection */}
+        <View className="mb-4 p-3 bg-green-50 rounded-lg">
+          <Text className="text-gray-700 font-semibold mb-2">Weekly Schedule (Optional)</Text>
+          <Text className="text-gray-600 text-sm mb-3">Select days and time for recurring goals</Text>
+          
+          {/* Weekday Selection */}
+          <View className="flex-row justify-between mb-3">
+            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, index) => (
+              <TouchableOpacity
+                key={day}
+                onPress={() => {
+                  const newWeekdays = selectedWeekdays.includes(index)
+                    ? selectedWeekdays.filter(d => d !== index)
+                    : [...selectedWeekdays, index];
+                  setSelectedWeekdays(newWeekdays);
+                }}
+                className={`w-10 h-10 rounded-full items-center justify-center ${
+                  selectedWeekdays.includes(index) ? 'bg-green-600' : 'bg-white border border-gray-300'
+                }`}
+              >
+                <Text className={`text-sm font-semibold ${
+                  selectedWeekdays.includes(index) ? 'text-white' : 'text-gray-600'
+                }`}>
+                  {day}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          
+          {/* Time Selection */}
+          <View className="flex-row items-center space-x-2">
+            <Text className="text-gray-600 text-sm">Time:</Text>
+            <TextInput
+              className="bg-white border border-gray-300 rounded-lg px-3 py-2 flex-1"
+              value={selectedTime}
+              onChangeText={setSelectedTime}
+              placeholder="10:00"
+            />
+          </View>
+        </View>
+
       {/* Simple Calendar */}
       <View className="mb-4">
         {/* Month/Year Navigation */}
@@ -262,7 +308,7 @@ export default function SimpleDatePicker({
             <View key={index} className="w-[14.28%] p-1" style={{ aspectRatio: 1 }}>
               {dayData ? (
                 <TouchableOpacity
-                  className={`flex-1 justify-center items-center rounded ${
+                  className={`flex-1 justify-center items-center rounded relative ${
                     dayData.isPast ? 'bg-gray-100' :
                     dayData.isSelected ? 'bg-blue-600' :
                     dayData.isInRange ? 'bg-blue-100' :
@@ -281,6 +327,10 @@ export default function SimpleDatePicker({
                   }`}>
                     {dayData.day}
                   </Text>
+                  {/* Weekday goal indicator */}
+                  {dayData.isWeekdayGoal && (
+                    <View className="absolute -bottom-1 w-2 h-2 bg-green-500 rounded-full" />
+                  )}
                 </TouchableOpacity>
               ) : (
                 <View className="flex-1" />
@@ -288,13 +338,25 @@ export default function SimpleDatePicker({
             </View>
           ))}
         </View>
+        
+        {/* Calendar Legend */}
+        <View className="flex-row justify-center space-x-6 mt-3">
+          <View className="flex-row items-center">
+            <View className="w-3 h-3 bg-blue-600 rounded mr-2" />
+            <Text className="text-xs text-gray-600">Selected range</Text>
+          </View>
+          <View className="flex-row items-center">
+            <View className="w-2 h-2 bg-green-500 rounded-full mr-2" />
+            <Text className="text-xs text-gray-600">Scheduled weekdays</Text>
+          </View>
+        </View>
       </View>
 
       {/* Manual Date Input as Backup */}
       <View className="mb-4 p-3 bg-gray-50 rounded-lg">
         <Text className="text-gray-700 font-semibold mb-2">Or enter dates manually:</Text>
-        <View className="flex-row space-x-2">
-          <View className="flex-1">
+        <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+          <View style={{ flex: 1 }}>
             <Text className="text-gray-600 text-sm mb-1">Start Date</Text>
             <TextInput
               className="bg-white border border-gray-300 rounded-lg px-3 py-2"
@@ -305,16 +367,19 @@ export default function SimpleDatePicker({
                   setStartDate(text);
                 }
               }}
+              style={{ height: 48, lineHeight: 48, paddingVertical: 10 }}
             />
           </View>
-          <View className="flex-1">
-            <Text className="text-gray-600 text-sm mb-1">End Date (Auto-calculated)</Text>
+          <View style={{ flex: 1 }}>
+            <Text className="text-gray-600 text-sm mb-1">End Date</Text>
+            <Text className="text-gray-500 text-xs">Auto-calculated</Text>
             <TextInput
               className="bg-white border border-gray-300 rounded-lg px-3 py-2 bg-gray-100"
               placeholder="YYYY-MM-DD"
               value={endDate}
               editable={false}
               selectTextOnFocus={false}
+              style={{ height: 48, lineHeight: 48, paddingVertical: 10 }}
             />
           </View>
         </View>

@@ -25,7 +25,6 @@ import {
 import { useAuth } from '../hooks/useAuth';
 import { AIService } from '../services/ai';
 import { GoalService } from '../services/goalService';
-import { LocationStore } from '../services/locationStore';
 import { CreateGoalForm, GoalDuration, GoalFrequency, TargetLocation } from '../types';
 import SimpleDatePicker, { DateSelection } from './SimpleDatePicker';
 
@@ -35,32 +34,34 @@ interface CreateGoalModalProps {
   onGoalCreated: () => void;
 }
 
-export default function CreateGoalModal({ visible, onClose, onGoalCreated }: CreateGoalModalProps) {
+// Step definitions
+const STEPS = [
+  { id: 'ai', title: 'AI Assistant', description: 'Generate goal with AI' },
+  { id: 'details', title: 'Goal Details', description: 'Title, description, category' },
+  { id: 'schedule', title: 'Schedule', description: 'Date & duration' },
+  { id: 'location', title: 'Location', description: 'Target location' },
+  { id: 'review', title: 'Review', description: 'Final review & save' }
+];
+
+function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalModalProps) {
   // Performance tracking
   console.time('[CreateGoalModal] Component Mount');
   
   const { user } = useAuth();
   const navigation = useNavigation<any>();
+  const { state, actions } = useCreateGoal();
   
   // Debug navigation state
   useEffect(() => {
     console.log('[NAV] available screens:', navigation.getState()?.routeNames);
   }, [navigation]);
-
-  // Check for location data when returning from LocationPicker
-  useEffect(() => {
-    // Check if we have location data from LocationPicker
-    const locationData = LocationStore.getLocation();
-    if (locationData) {
-      console.log('[CreateGoal] Received location from LocationPicker:', locationData);
-      setFormData(prev => ({ ...prev, targetLocation: locationData }));
-    }
-  }, []);
+  
+  // Location data is now handled via navigation params in the Search button
   
   // State machine states with optimistic UI
   type CreateGoalState = 'IDLE' | 'GENERATING' | 'NEEDS_INFO' | 'NEEDS_DATES' | 'NEEDS_LOCATION' | 'READY_TO_REVIEW' | 'SAVING' | 'SAVED_OPTIMISTIC' | 'BACKGROUND_PROCESSING';
   
-  const [state, setState] = useState<CreateGoalState>('IDLE');
+  const [appState, setAppState] = useState<CreateGoalState>('IDLE');
   const [loading, setLoading] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiContext, setAiContext] = useState<any>(null);
@@ -100,18 +101,65 @@ export default function CreateGoalModal({ visible, onClose, onGoalCreated }: Cre
     };
   }, []);
 
+  // Step navigation functions using context
+  const goToStep = (stepIndex: number) => {
+    if (stepIndex >= 0 && stepIndex < STEPS.length) {
+      console.log('[Stepper] Moving to step:', stepIndex, STEPS[stepIndex].title);
+      actions.setStep(stepIndex);
+    }
+  };
+
+  const nextStep = () => {
+    if (state.step < STEPS.length - 1) {
+      actions.next();
+    }
+  };
+
+  const prevStep = () => {
+    if (state.step > 0) {
+      actions.prev();
+    }
+  };
+
+  // Step validation
+  const canProceedToNext = (): boolean => {
+    switch (state.step) {
+      case 0: // AI
+        return !!(aiDraft.title && aiDraft.title.trim().length > 0);
+      case 1: // Details
+        return !!(formData.title && formData.title.trim().length > 0);
+      case 2: // Schedule
+        return !!(formData.duration.startDate && formData.duration.value && formData.duration.value > 0);
+      case 3: // Location
+        return true; // Location is optional
+      case 4: // Review
+        return true;
+      default:
+        return false;
+    }
+  };
+
+  // Step completion
+  const markStepComplete = (stepId: string, data: any) => {
+    // Store data in context state
+    switch (stepId) {
+      case 'basic':
+        actions.setBasic(data);
+        break;
+      case 'schedule':
+        actions.setSchedule(data);
+        break;
+      case 'verification':
+        actions.setVerification(data);
+        break;
+      case 'targetLocation':
+        actions.setTargetLocation(data);
+        break;
+    }
+  };
+
+  // Reset form
   const resetForm = () => {
-    console.time('[CreateGoalModal] Form Reset');
-    setState('IDLE');
-    setLoading(false);
-    setAiPrompt('');
-    setAiContext(null);
-    setFollowUpQuestion('');
-    setAiDraft({});
-    setShowDatePicker(false);
-    setBackgroundTaskProgress('');
-    optimisticGoalId.current = null;
-    
     setFormData({
       title: '',
       description: '',
@@ -129,7 +177,12 @@ export default function CreateGoalModal({ visible, onClose, onGoalCreated }: Cre
       startDate: new Date(),
       endDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
     });
-    console.timeEnd('[CreateGoalModal] Form Reset');
+    setAiPrompt('');
+    setAiContext(null);
+    setFollowUpQuestion('');
+    setAiDraft({});
+    actions.reset();
+    setAppState('IDLE');
   };
 
   // AI generation with timeout and error handling
@@ -140,7 +193,7 @@ export default function CreateGoalModal({ visible, onClose, onGoalCreated }: Cre
     console.log('[CreateGoalModal] Starting AI generation:', aiPrompt);
 
     try {
-      setState('GENERATING');
+      setAppState('GENERATING');
       setLoading(true);
       setFollowUpQuestion('');
 
@@ -182,20 +235,20 @@ export default function CreateGoalModal({ visible, onClose, onGoalCreated }: Cre
 
       if (validation.needsDatePicker) {
         setFollowUpQuestion(validation.followUpQuestion || 'Please select your start date and duration using the calendar below.');
-        setState('NEEDS_DATES');
+        setAppState('NEEDS_DATES');
         setShowDatePicker(true);
       } else if (validation.missingFields && validation.missingFields.length > 0) {
         if (validation.missingFields.includes('targetLocation')) {
           setFollowUpQuestion(validation.followUpQuestion || 'Please select a location for your goal.');
-          setState('NEEDS_LOCATION');
+          setAppState('NEEDS_LOCATION');
         } else {
           setFollowUpQuestion(validation.followUpQuestion || 'Please provide additional information.');
-          setState('NEEDS_INFO');
+          setAppState('NEEDS_INFO');
         }
       } else {
         // All fields complete, update form and move to review
         updateFormFromAI(updatedDraft);
-        setState('READY_TO_REVIEW');
+        setAppState('READY_TO_REVIEW');
       }
 
       // Clear AI prompt after processing
@@ -207,8 +260,8 @@ export default function CreateGoalModal({ visible, onClose, onGoalCreated }: Cre
         'AI Assistant Error',
         'The AI assistant encountered an issue. You can still create your goal manually.',
         [
-          { text: 'Continue Manually', onPress: () => setState('READY_TO_REVIEW') },
-          { text: 'Try Again', onPress: () => setState('IDLE') }
+          { text: 'Continue Manually', onPress: () => setAppState('READY_TO_REVIEW') },
+          { text: 'Try Again', onPress: () => setAppState('IDLE') }
         ]
       );
     } finally {
@@ -287,7 +340,7 @@ export default function CreateGoalModal({ visible, onClose, onGoalCreated }: Cre
     const validation = validateAIGoal(updatedDraft);
     if (!validation.missingFields || validation.missingFields.length === 0) {
       updateFormFromAI(updatedDraft);
-      setState('READY_TO_REVIEW');
+      setAppState('READY_TO_REVIEW');
     }
     
     console.timeEnd('[CreateGoalModal] Location Selection');
@@ -353,16 +406,16 @@ export default function CreateGoalModal({ visible, onClose, onGoalCreated }: Cre
       setShowDatePicker(false);
       if (validation.missingFields.includes('targetLocation')) {
         setFollowUpQuestion(validation.followUpQuestion || 'Please select a location for your goal.');
-        setState('NEEDS_LOCATION');
+        setAppState('NEEDS_LOCATION');
       } else {
         setFollowUpQuestion(validation.followUpQuestion || 'Please provide additional information.');
-        setState('NEEDS_INFO');
+        setAppState('NEEDS_INFO');
       }
     } else {
       // All fields complete
       setShowDatePicker(false);
       updateFormFromAI(updatedDraft);
-      setState('READY_TO_REVIEW');
+      setAppState('READY_TO_REVIEW');
     }
     
     console.timeEnd('[CreateGoalModal] Date Selection');
@@ -370,7 +423,7 @@ export default function CreateGoalModal({ visible, onClose, onGoalCreated }: Cre
 
   const handleDatePickerCancel = () => {
     setShowDatePicker(false);
-    setState('NEEDS_INFO');
+    setAppState('NEEDS_INFO');
   };
 
   const handleClose = () => {
@@ -390,7 +443,7 @@ export default function CreateGoalModal({ visible, onClose, onGoalCreated }: Cre
 
     try {
       // Phase 1: Optimistic UI - Create local draft immediately
-      setState('SAVING');
+      setAppState('SAVING');
       setLoading(true);
 
       // Generate optimistic goal ID
@@ -399,7 +452,7 @@ export default function CreateGoalModal({ visible, onClose, onGoalCreated }: Cre
       // Show immediate success and close modal
       setTimeout(() => {
         if (mountedRef.current) {
-          setState('SAVED_OPTIMISTIC');
+          setAppState('SAVED_OPTIMISTIC');
           console.timeEnd('[CreateGoalModal] Goal Creation - Phase 1 (Optimistic)');
           
           // Close modal and notify parent immediately (optimistic)
@@ -414,7 +467,7 @@ export default function CreateGoalModal({ visible, onClose, onGoalCreated }: Cre
     } catch (error) {
       console.error('[CreateGoalModal] Optimistic goal creation failed:', error);
       setLoading(false);
-      setState('READY_TO_REVIEW');
+      setAppState('READY_TO_REVIEW');
       Alert.alert('Error', 'Failed to create goal. Please try again.');
     }
   };
@@ -533,7 +586,7 @@ export default function CreateGoalModal({ visible, onClose, onGoalCreated }: Cre
         </TouchableOpacity>
 
         <TouchableOpacity
-          onPress={() => setState('READY_TO_REVIEW')}
+          onPress={() => setAppState('READY_TO_REVIEW')}
           style={{
             paddingHorizontal: 16,
             paddingVertical: 12,
@@ -619,12 +672,24 @@ export default function CreateGoalModal({ visible, onClose, onGoalCreated }: Cre
           onPress={() => {
             console.log('[NAV] Attempting to navigate to LocationPicker');
             console.log('[NAV] routes:', navigation.getState()?.routeNames);
-            // Try to navigate using parent navigator since CreateGoal is inside tabs
+            // Navigate to LocationPicker using parent navigator since CreateGoal is inside tabs
             const parentNav = navigation.getParent();
             if (parentNav) {
-              parentNav.navigate('LocationPicker', { returnTo: 'CreateGoal' });
+              console.log('[NAV] Using parent navigator');
+              parentNav.navigate('LocationPicker', { 
+                onSelect: (location: any) => {
+                  console.log('[CreateGoal] Location selected:', location);
+                  setFormData(prev => ({ ...prev, targetLocation: location }));
+                }
+              });
             } else {
-              navigation.navigate('LocationPicker', { returnTo: 'CreateGoal' });
+              console.log('[NAV] Using direct navigation');
+              navigation.navigate('LocationPicker', { 
+                onSelect: (location: any) => {
+                  console.log('[CreateGoal] Location selected:', location);
+                  setFormData(prev => ({ ...prev, targetLocation: location }));
+                }
+              });
             }
           }}
         >
@@ -889,16 +954,16 @@ export default function CreateGoalModal({ visible, onClose, onGoalCreated }: Cre
       <View className="flex-1 bg-gray-50">
         {/* Header with dynamic Save button */}
         <View className="bg-white border-b border-gray-200 px-4 py-4 pt-12">
-          <View className="flex-row items-center justify-between">
+          <View className="flex-row items-center justify-between mb-4">
             <TouchableOpacity onPress={handleClose}>
               <Ionicons name="close" size={24} color="#6B7280" />
             </TouchableOpacity>
             <Text className="text-lg font-bold text-gray-800">Create Goal</Text>
             <TouchableOpacity
               onPress={handleSubmit}
-              disabled={loading || state !== 'READY_TO_REVIEW' || !formData.title.trim()}
+              disabled={loading || appState !== 'READY_TO_REVIEW' || !formData.title.trim()}
               className={`px-4 py-2 rounded-lg ${
-                loading || state !== 'READY_TO_REVIEW' || !formData.title.trim()
+                loading || appState !== 'READY_TO_REVIEW' || !formData.title.trim()
                   ? 'bg-gray-400' 
                   : 'bg-blue-600'
               }`}
@@ -907,10 +972,35 @@ export default function CreateGoalModal({ visible, onClose, onGoalCreated }: Cre
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
                 <Text className="text-white font-semibold">
-                  {state === 'SAVING' ? 'Saving...' : 'Save Goal'}
+                  {appState === 'SAVING' ? 'Saving...' : 'Save Goal'}
                 </Text>
               )}
             </TouchableOpacity>
+          </View>
+          
+          {/* Stepper Progress */}
+          <View className="flex-row items-center justify-between">
+            {STEPS.map((step, index) => (
+              <View key={step.id} className="flex-1 items-center">
+                <View className={`w-8 h-8 rounded-full items-center justify-center ${
+                  index <= state.step ? 'bg-blue-600' : 'bg-gray-300'
+                }`}>
+                  <Text className={`text-sm font-semibold ${
+                    index <= state.step ? 'text-white' : 'text-gray-600'
+                  }`}>
+                    {index + 1}
+                  </Text>
+                </View>
+                <Text className="text-gray-600 text-xs mt-1 text-center" numberOfLines={1}>
+                  {step.title}
+                </Text>
+                {index < STEPS.length - 1 && (
+                  <View className={`w-full h-1 mt-2 ${
+                    index < state.step ? 'bg-blue-600' : 'bg-gray-300'
+                  }`} />
+                )}
+              </View>
+            ))}
           </View>
         </View>
 
@@ -935,5 +1025,17 @@ export default function CreateGoalModal({ visible, onClose, onGoalCreated }: Cre
         />
       </View>
     </Modal>
+  );
+}
+
+export default function CreateGoalModal({ visible, onClose, onGoalCreated }: CreateGoalModalProps) {
+  return (
+    <CreateGoalProvider>
+      <CreateGoalModalContent 
+        visible={visible} 
+        onClose={onClose} 
+        onGoalCreated={onGoalCreated} 
+      />
+    </CreateGoalProvider>
   );
 }

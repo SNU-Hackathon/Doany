@@ -1,23 +1,20 @@
 // Location picker screen for selecting target locations
 
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import * as Location from 'expo-location';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    FlatList,
-    Linking,
-    Platform,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Platform,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { LocationStore } from '../services/locationStore';
 import { getPlaceDetails, reverseGeocode, searchPlaces } from '../services/places';
-import { TargetLocation } from '../types';
 
 // Platform-specific map imports
 let MapView: any;
@@ -27,9 +24,9 @@ let Region: any;
 if (Platform.OS === 'web') {
   // Web: use @vis.gl/react-google-maps
   try {
-    const { Map, APIProvider } = require('@vis.gl/react-google-maps');
+    const { Map, APIProvider, AdvancedMarker } = require('@vis.gl/react-google-maps');
     MapView = Map;
-    Marker = ({ children, ...props }: any) => children;
+    Marker = AdvancedMarker;
     Region = { latitude: 0, longitude: 0, latitudeDelta: 0.01, longitudeDelta: 0.01 };
   } catch (error) {
     console.warn('[LocationPicker] @vis.gl/react-google-maps not available, using fallback');
@@ -52,12 +49,9 @@ if (Platform.OS === 'web') {
   }
 }
 
-type LocationPickerScreenProps = {
-  route?: {
-    params?: {
-      returnTo?: string;
-    };
-  };
+type RouteParams = {
+  onSelect?: (location: any) => void;
+  returnTo?: string;
 };
 
 interface PlacePrediction {
@@ -69,19 +63,20 @@ interface PlacePrediction {
   };
 }
 
-export default function LocationPickerScreen({ route }: LocationPickerScreenProps) {
+export default function LocationPickerScreen() {
   const navigation = useNavigation();
-  const { returnTo } = route?.params || {};
+  const route = useRoute() as any;
+  const { onSelect, returnTo }: RouteParams = route.params || {};
   
   // State
   const [searchQuery, setSearchQuery] = useState('');
   const [predictions, setPredictions] = useState<PlacePrediction[]>([]);
-  const [selectedLocation, setSelectedLocation] = useState<TargetLocation | null>(null);
+  const [selectedLocation, setSelectedLocation] = useState<any>(null);
   const [mapRegion, setMapRegion] = useState<any>({
-    latitude: 37.5665,
+    latitude: 37.5665, // Seoul default
     longitude: 126.9780,
-    latitudeDelta: 0.01,
-    longitudeDelta: 0.01,
+    latitudeDelta: 0.05,
+    longitudeDelta: 0.05,
   });
   const [loading, setLoading] = useState(false);
   const [searching, setSearching] = useState(false);
@@ -96,6 +91,7 @@ export default function LocationPickerScreen({ route }: LocationPickerScreenProp
       try {
         const { checkGoogleMapsApiKey } = await import('../services/places');
         if (!checkGoogleMapsApiKey()) {
+          console.warn('[LocationPicker] Google Maps API key missing');
           Alert.alert(
             'Google Maps API Key Missing',
             'Set EXPO_PUBLIC_GOOGLE_MAPS_API_KEY environment variable and restart the app.',
@@ -126,15 +122,18 @@ export default function LocationPickerScreen({ route }: LocationPickerScreenProp
     setSearching(true);
 
     try {
+      console.log('[Places] Searching for:', query);
       const results = await searchPlaces(query);
       if (abortControllerRef.current?.signal.aborted) return;
       
+      console.log('[Places] Found', results.length, 'predictions');
       setPredictions(results);
     } catch (error) {
       if (abortControllerRef.current?.signal.aborted) return;
       
-      console.error('[LocationPicker] Search error:', error);
+      console.error('[Places] Search error:', error);
       if (error instanceof Error && error.message.includes('not authorized')) {
+        console.error('[Places] Key not authorized. Enable Places API + Billing. Restrict by API (Places API).');
         Alert.alert(
           'API Key Not Authorized',
           'Enable Places API + Billing. Use API restriction = Places API only.'
@@ -159,13 +158,14 @@ export default function LocationPickerScreen({ route }: LocationPickerScreenProp
     // Set new timeout for debounced search
     searchTimeoutRef.current = setTimeout(() => {
       performSearch(text);
-    }, 300);
+    }, 350);
   }, [performSearch]);
 
   // Handle prediction selection
   const handlePredictionSelect = useCallback(async (prediction: PlacePrediction) => {
     setLoading(true);
     try {
+      console.log('[Places] Getting details for:', prediction.placeId);
       const placeDetails = await getPlaceDetails(prediction.placeId);
       setSelectedLocation(placeDetails);
       
@@ -179,6 +179,7 @@ export default function LocationPickerScreen({ route }: LocationPickerScreenProp
       
       setSearchQuery(placeDetails.name);
       setPredictions([]);
+      console.log('[Places] Place details retrieved:', placeDetails.name);
     } catch (error) {
       console.error('[LocationPicker] Failed to get place details:', error);
       Alert.alert('Error', 'Failed to get location details. Please try again.');
@@ -190,8 +191,10 @@ export default function LocationPickerScreen({ route }: LocationPickerScreenProp
   // Handle current location
   const handleUseCurrentLocation = useCallback(async () => {
     try {
+      console.log('[Location] Requesting permission');
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
+        console.warn('[Location] Permission denied');
         Alert.alert(
           'Location Permission Required',
           'Please allow location access to use your current location.'
@@ -199,23 +202,26 @@ export default function LocationPickerScreen({ route }: LocationPickerScreenProp
         return;
       }
 
+      console.log('[Location] Permission granted, getting current position');
       setLoading(true);
       const location = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
       });
 
       const { latitude, longitude } = location.coords;
+      console.log('[Location] Current position:', { latitude, longitude });
       
       // Try to get address from coordinates
       let address: string | undefined;
       try {
         const result = await reverseGeocode(latitude, longitude);
         address = result || undefined;
+        console.log('[Location] Reverse geocoded address:', address);
       } catch (error) {
-        console.log('[LocationPicker] Reverse geocoding failed, using coordinates only');
+        console.log('[Location] Reverse geocoding failed, using coordinates only');
       }
 
-      const currentLocation: TargetLocation = {
+      const currentLocation = {
         name: 'Current Location',
         lat: latitude,
         lng: longitude,
@@ -247,33 +253,16 @@ export default function LocationPickerScreen({ route }: LocationPickerScreenProp
       return;
     }
 
-    // Store the selected location in global state
-    LocationStore.setLocation(selectedLocation);
-    console.log('[LocationPicker] Location stored and returning:', selectedLocation);
+    console.log('[LocationPicker] Confirming location:', selectedLocation);
+    
+    // Call the onSelect callback if provided
+    if (onSelect) {
+      onSelect(selectedLocation);
+    }
     
     // Navigate back
     navigation.goBack();
-  }, [selectedLocation, navigation]);
-
-  // Open in external Google Maps
-  const handleOpenInGoogleMaps = useCallback(() => {
-    if (!selectedLocation) return;
-
-    const { lat, lng, name } = selectedLocation;
-    let url: string;
-
-    if (Platform.OS === 'ios') {
-      url = `maps://?q=${encodeURIComponent(name)}&ll=${lat},${lng}`;
-    } else {
-      url = `geo:${lat},${lng}?q=${lat},${lng}(${encodeURIComponent(name)})`;
-    }
-
-    Linking.openURL(url).catch(() => {
-      // Fallback to web version
-      const webUrl = `https://maps.google.com/?q=${lat},${lng}`;
-      Linking.openURL(webUrl);
-    });
-  }, [selectedLocation]);
+  }, [selectedLocation, navigation, onSelect]);
 
   // Render prediction item
   const renderPrediction = useCallback(({ item }: { item: PlacePrediction }) => (
@@ -300,9 +289,29 @@ export default function LocationPickerScreen({ route }: LocationPickerScreenProp
         );
       }
 
-      return (
-        <View style={{ flex: 1 }}>
-          {/* Web map placeholder - in real implementation, wrap with APIProvider */}
+      try {
+        const { Map, APIProvider, AdvancedMarker } = require('@vis.gl/react-google-maps');
+        return (
+          <View style={{ flex: 1 }}>
+            <APIProvider apiKey={API_KEY}>
+              <Map
+                defaultZoom={selectedLocation ? 16 : 13}
+                defaultCenter={{ lat: mapRegion.latitude, lng: mapRegion.longitude }}
+                style={{ width: '100%', height: '100%' }}
+              >
+                {selectedLocation && (
+                  <AdvancedMarker 
+                    position={{ lat: selectedLocation.lat, lng: selectedLocation.lng }}
+                    title={selectedLocation.name}
+                  />
+                )}
+              </Map>
+            </APIProvider>
+          </View>
+        );
+      } catch (error) {
+        console.warn('[LocationPicker] Web map components not available:', error);
+        return (
           <View style={{ flex: 1, backgroundColor: '#F3F4F6', justifyContent: 'center', alignItems: 'center' }}>
             <Text style={{ color: '#6B7280', textAlign: 'center' }}>
               Map View (Web)\n{selectedLocation ? `Selected: ${selectedLocation.name}` : 'No location selected'}
@@ -314,8 +323,8 @@ export default function LocationPickerScreen({ route }: LocationPickerScreenProp
               </View>
             )}
           </View>
-        </View>
-      );
+        );
+      }
     } else {
       // Native: use react-native-maps
       return (
@@ -417,23 +426,14 @@ export default function LocationPickerScreen({ route }: LocationPickerScreenProp
             </Text>
           </View>
 
-          <View style={{ flexDirection: 'row', gap: 12 }}>
-            <TouchableOpacity
-              style={{ flex: 1, backgroundColor: '#6B7280', borderRadius: 8, padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}
-              onPress={handleOpenInGoogleMaps}
-            >
-              <Ionicons name="map-outline" size={20} color="white" />
-              <Text style={{ color: 'white', fontWeight: '600', marginLeft: 8 }}>Preview in Maps</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={{ flex: 1, backgroundColor: '#2563EB', borderRadius: 8, padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}
-              onPress={handleConfirmLocation}
-            >
-              <Ionicons name="checkmark" size={20} color="white" />
-              <Text style={{ color: 'white', fontWeight: '600', marginLeft: 8 }}>Confirm Location</Text>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            style={{ backgroundColor: '#2563EB', borderRadius: 8, padding: 12, alignItems: 'center', justifyContent: 'center' }}
+            onPress={handleConfirmLocation}
+          >
+            <Text style={{ color: 'white', fontWeight: '700' }}>
+              Confirm: {selectedLocation.name}
+            </Text>
+          </TouchableOpacity>
         </View>
       )}
     </View>
