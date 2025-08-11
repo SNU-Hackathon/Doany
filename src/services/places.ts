@@ -1,14 +1,8 @@
 // Google Places API service for location search and details
 
-const GOOGLE_MAPS_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
+import { TargetLocation } from '../types';
 
-export type TargetLocation = { 
-  name: string; 
-  placeId?: string; 
-  lat: number; 
-  lng: number; 
-  address?: string; 
-};
+const GOOGLE_MAPS_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
 
 // Runtime check for API key
 export const checkGoogleMapsApiKey = (): boolean => {

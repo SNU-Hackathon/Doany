@@ -15,7 +15,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Categories, VerificationTypes } from '../constants';
+import { Categories } from '../constants';
 import { CreateGoalProvider, useCreateGoal } from '../features/createGoal/state';
 import {
   AIGoalDraft,
@@ -27,6 +27,7 @@ import { useAuth } from '../hooks/useAuth';
 import { AIService } from '../services/ai';
 import { GoalService } from '../services/goalService';
 import { CreateGoalForm, GoalDuration, GoalFrequency, TargetLocation } from '../types';
+import MapPreview from './MapPreview';
 import SimpleDatePicker, { DateSelection } from './SimpleDatePicker';
 
 interface CreateGoalModalProps {
@@ -705,96 +706,129 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
 
   const renderManualFormSection = () => (
     <View>
-      {/* Title */}
-      <View className="mb-4">
-        <Text className="text-gray-700 font-semibold mb-2">Goal Title</Text>
-        <TextInput
-          className="bg-white rounded-lg px-3 py-3 border border-gray-300 text-gray-900"
-          placeholder="Enter your goal title"
-          placeholderTextColor="#9CA3AF"
-          value={formData.title}
-          onChangeText={(text) => setFormData(prev => ({ ...prev, title: text }))}
-        />
+      {/* Review Header */}
+      <View className="mb-6">
+        <Text className="text-xl font-bold text-gray-800 mb-2">Review Your Goal</Text>
+        <Text className="text-gray-600">Review and confirm your goal details before saving</Text>
       </View>
 
-      {/* Description */}
-      <View className="mb-4">
-        <Text className="text-gray-700 font-semibold mb-2">Description (Optional)</Text>
-        <TextInput
-          className="bg-white rounded-lg px-3 py-3 border border-gray-300 text-gray-900"
-          placeholder="Describe your goal in more detail"
-          placeholderTextColor="#9CA3AF"
-          value={formData.description}
-          onChangeText={(text) => setFormData(prev => ({ ...prev, description: text }))}
-          multiline
-          textAlignVertical="top"
-          style={{ minHeight: 80 }}
-        />
-      </View>
-
-      {/* Category */}
-      <View className="mb-4">
-        <Text className="text-gray-700 font-semibold mb-2">Category</Text>
-        <View className="bg-white rounded-lg border border-gray-300">
-          <Picker
-            selectedValue={formData.category}
-            onValueChange={(value) => setFormData(prev => ({ ...prev, category: value }))}
+      {/* Basic Information */}
+      <View className="mb-6">
+        <View className="flex-row items-center justify-between mb-3">
+          <Text className="text-gray-700 font-semibold text-lg">Basic Information</Text>
+          <TouchableOpacity 
+            onPress={() => actions.setStep(0)}
+            className="flex-row items-center px-3 py-1 bg-blue-50 rounded-lg"
           >
-            {Categories.map((category) => (
-              <Picker.Item key={category} label={category} value={category} />
-            ))}
-          </Picker>
+            <Ionicons name="create-outline" size={16} color="#2563EB" />
+            <Text className="text-blue-600 text-sm ml-1">Edit</Text>
+          </TouchableOpacity>
+        </View>
+        
+        <View className="bg-white rounded-lg p-4 border border-gray-200">
+          <Text className="text-gray-800 font-medium text-lg mb-2">{formData.title || 'Not set'}</Text>
+          {formData.description && (
+            <Text className="text-gray-600 mb-2">{formData.description}</Text>
+          )}
+          <Text className="text-gray-500 text-sm">Category: {formData.category}</Text>
         </View>
       </View>
 
-      {/* Verification Methods - Multi-select */}
-      <View className="mb-4">
-        <Text className="text-gray-700 font-semibold mb-2">Verification Methods</Text>
+      {/* Schedule Information */}
+      <View className="mb-6">
+        <View className="flex-row items-center justify-between mb-3">
+          <Text className="text-gray-700 font-semibold text-lg">Schedule</Text>
+          <TouchableOpacity 
+            onPress={() => actions.setStep(1)}
+            className="flex-row items-center px-3 py-1 bg-blue-50 rounded-lg"
+          >
+            <Ionicons name="create-outline" size={16} color="#2563EB" />
+            <Text className="text-blue-600 text-sm ml-1">Edit</Text>
+          </TouchableOpacity>
+        </View>
+        
+        <View className="bg-white rounded-lg p-4 border border-gray-200">
+          <Text className="text-gray-800 mb-2">
+            <Text className="font-medium">Duration:</Text> {formData.duration.value} {formData.duration.type}
+          </Text>
+          <Text className="text-gray-800 mb-2">
+            <Text className="font-medium">Frequency:</Text> {formData.frequency.count} {formData.frequency.unit}
+          </Text>
+          {formData.startDate && (
+            <Text className="text-gray-800">
+              <Text className="font-medium">Start Date:</Text> {new Date(formData.startDate).toLocaleDateString()}
+            </Text>
+          )}
+        </View>
+      </View>
+
+      {/* Verification Methods */}
+      <View className="mb-6">
+        <Text className="text-gray-700 font-semibold text-lg mb-3">Verification Methods</Text>
         <View className="flex-row flex-wrap gap-2">
-          {VerificationTypes.map((method) => {
-            const isSelected = formData.verificationMethods.includes(method);
-            return (
-              <TouchableOpacity
-                key={method}
-                onPress={() => {
-                  const updated = isSelected
-                    ? formData.verificationMethods.filter(m => m !== method)
-                    : [...formData.verificationMethods, method];
-                  setFormData(prev => ({ ...prev, verificationMethods: updated }));
-                }}
-                className={`px-3 py-2 rounded-lg border ${
-                  isSelected ? 'bg-blue-600 border-blue-600' : 'bg-white border-gray-300'
-                }`}
-              >
-                <Text className={`text-sm font-medium ${
-                  isSelected ? 'text-white' : 'text-gray-700'
-                }`}>
+          {formData.verificationMethods.length > 0 ? (
+            formData.verificationMethods.map((method) => (
+              <View key={method} className="px-3 py-2 bg-blue-100 rounded-lg">
+                <Text className="text-blue-800 text-sm font-medium">
                   {method.charAt(0).toUpperCase() + method.slice(1)}
                 </Text>
-              </TouchableOpacity>
-            );
-          })}
+              </View>
+            ))
+          ) : (
+            <Text className="text-gray-500 italic">No verification methods selected</Text>
+          )}
         </View>
       </View>
 
-      {/* Conditional fields based on verification methods */}
+      {/* Target Location */}
       {formData.verificationMethods.includes('location') && (
-        <View className="mb-4">
-          <Text className="text-gray-700 font-semibold mb-2">Target Location</Text>
+        <View className="mb-6">
+          <Text className="text-gray-700 font-semibold text-lg mb-3">Target Location</Text>
           
-          {/* Target Location Display */}
+          {/* Target Location Display with Map Preview */}
           {formData.targetLocation ? (
-            <View className="bg-white rounded-lg p-3 border border-gray-300 mb-3">
-              <Text className="text-gray-800 font-medium">{formData.targetLocation.name}</Text>
+            <View className="bg-white rounded-lg p-4 border border-gray-200 mb-3">
+              <Text className="text-gray-800 font-medium text-lg mb-2">{formData.targetLocation.name}</Text>
               {formData.targetLocation.address && (
-                <Text className="text-gray-600 text-sm mt-1">{formData.targetLocation.address}</Text>
+                <Text className="text-gray-600 text-sm mb-2">{formData.targetLocation.address}</Text>
               )}
-              <Text className="text-gray-500 text-xs mt-1">
-                {formData.targetLocation.lat.toFixed(6)}, {formData.targetLocation.lng.toFixed(6)}
+              
+              {/* Map Preview */}
+              <View className="h-32 bg-gray-100 rounded-lg overflow-hidden mb-3">
+                <MapPreview 
+                  location={formData.targetLocation}
+                  onPress={() => {
+                    console.log('[NAV] Opening LocationPicker from map preview');
+                    const parentNav = navigation.getParent();
+                    if (parentNav) {
+                      parentNav.navigate('LocationPicker', { 
+                        returnTo: 'CreateGoal',
+                        onSelect: (location: TargetLocation) => {
+                          console.log('[CreateGoal] Location selected from map:', location);
+                          setFormData(prev => ({ ...prev, targetLocation: location }));
+                        }
+                      });
+                    } else {
+                      navigation.navigate('LocationPicker', { 
+                        returnTo: 'CreateGoal',
+                        onSelect: (location: TargetLocation) => {
+                          console.log('[CreateGoal] Location selected from map:', location);
+                          setFormData(prev => ({ ...prev, targetLocation: location }));
+                        }
+                      });
+                    }
+                  }}
+                />
+              </View>
+              
+              <Text className="text-gray-500 text-xs">
+                Coordinates: {formData.targetLocation.lat.toFixed(6)}, {formData.targetLocation.lng.toFixed(6)}
               </Text>
             </View>
           ) : (
-            <Text className="text-gray-500 italic mb-3">Not set</Text>
+            <View className="bg-gray-50 rounded-lg p-4 border border-gray-200 mb-3">
+              <Text className="text-gray-500 italic text-center">No location selected</Text>
+            </View>
           )}
 
           {/* Location Action Buttons */}
@@ -807,9 +841,23 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
                 // Try to navigate using parent navigator since CreateGoal is inside tabs
                 const parentNav = navigation.getParent();
                 if (parentNav) {
-                  parentNav.navigate('LocationPicker', { returnTo: 'CreateGoal' });
+                  console.log('[NAV] Using parent navigator');
+                  parentNav.navigate('LocationPicker', { 
+                    returnTo: 'CreateGoal',
+                    onSelect: (location: TargetLocation) => {
+                      console.log('[CreateGoal] Location selected:', location);
+                      setFormData(prev => ({ ...prev, targetLocation: location }));
+                    }
+                  });
                 } else {
-                  navigation.navigate('LocationPicker', { returnTo: 'CreateGoal' });
+                  console.log('[NAV] Using direct navigation');
+                  navigation.navigate('LocationPicker', { 
+                    returnTo: 'CreateGoal',
+                    onSelect: (location: TargetLocation) => {
+                      console.log('[CreateGoal] Location selected:', location);
+                      setFormData(prev => ({ ...prev, targetLocation: location }));
+                    }
+                  });
                 }
               }}
             >
@@ -973,29 +1021,51 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
             </TouchableOpacity>
           </View>
           
-          {/* Stepper Progress */}
-          <View className="flex-row items-center justify-between">
-            {STEPS.map((step, index) => (
-              <View key={step.id} className="flex-1 items-center">
-                <View className={`w-8 h-8 rounded-full items-center justify-center ${
-                  index <= state.step ? 'bg-blue-600' : 'bg-gray-300'
-                }`}>
-                  <Text className={`text-sm font-semibold ${
-                    index <= state.step ? 'text-white' : 'text-gray-600'
+          {/* Stepper Progress with Back Button */}
+          <View className="flex-row items-center justify-between mb-4">
+            {/* Back Button */}
+            {state.step > 0 && (
+              <TouchableOpacity 
+                onPress={() => actions.prev()}
+                className="flex-row items-center px-3 py-2 bg-gray-100 rounded-lg"
+              >
+                <Ionicons name="chevron-back" size={16} color="#6B7280" />
+                <Text className="text-gray-600 text-sm ml-1">Back</Text>
+              </TouchableOpacity>
+            )}
+            
+            {/* Step Indicators */}
+            <View className="flex-row items-center flex-1 justify-center">
+              {STEPS.map((step, index) => (
+                <TouchableOpacity
+                  key={step.id}
+                  onPress={() => actions.setStep(index)}
+                  disabled={index > state.step}
+                  className="flex-row items-center mx-2"
+                >
+                  <View className={`w-8 h-8 rounded-full items-center justify-center ${
+                    index <= state.step ? 'bg-blue-600' : 'bg-gray-300'
                   }`}>
-                    {index + 1}
+                    <Text className={`text-sm font-semibold ${
+                      index <= state.step ? 'text-white' : 'text-gray-600'
+                    }`}>
+                      {index + 1}
+                    </Text>
+                  </View>
+                  <Text className="text-gray-600 text-xs mt-1 text-center ml-2" numberOfLines={1}>
+                    {step.title}
                   </Text>
-                </View>
-                <Text className="text-gray-600 text-xs mt-1 text-center" numberOfLines={1}>
-                  {step.title}
-                </Text>
-                {index < STEPS.length - 1 && (
-                  <View className={`w-full h-1 mt-2 ${
-                    index < state.step ? 'bg-blue-600' : 'bg-gray-300'
-                  }`} />
-                )}
-              </View>
-            ))}
+                  {index < STEPS.length - 1 && (
+                    <View className={`w-8 h-1 mx-2 ${
+                      index < state.step ? 'bg-blue-600' : 'bg-gray-300'
+                    }`} />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+            
+            {/* Spacer for Back button */}
+            {state.step === 0 && <View className="w-20" />}
           </View>
         </View>
 

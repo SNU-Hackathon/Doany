@@ -28,7 +28,7 @@ export interface TargetLocation {
 }
 
 export interface PlacePrediction {
-  place_id: string;
+  placeId: string;
   description: string;
   structured_formatting?: {
     main_text: string;
@@ -37,7 +37,7 @@ export interface PlacePrediction {
 }
 
 export interface PlaceDetails {
-  place_id: string;
+  placeId: string;
   name: string;
   formatted_address: string;
   geometry: {
@@ -101,7 +101,10 @@ export type RootStackParamList = {
   Main: undefined;
   
   GoalDetail: { goalId: string };
-  LocationPicker: { onLocationSelected: (location: TargetLocation) => void };
+  LocationPicker: { 
+    returnTo?: string; 
+    onSelect?: (location: TargetLocation) => void;
+  };
 };
 
 export type MainTabParamList = {

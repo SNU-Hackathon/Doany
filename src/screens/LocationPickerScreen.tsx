@@ -7,14 +7,14 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
-  FlatList,
-  Platform,
+  FlatList, Linking, Platform,
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native';
 import { getPlaceDetails, reverseGeocode, searchPlaces } from '../services/places';
+import { PlacePrediction, TargetLocation } from '../types';
 
 // Platform-specific map imports
 let MapView: any;
@@ -50,18 +50,11 @@ if (Platform.OS === 'web') {
 }
 
 type RouteParams = {
-  onSelect?: (location: any) => void;
+  onSelect?: (location: TargetLocation) => void;
   returnTo?: string;
 };
 
-interface PlacePrediction {
-  placeId: string;
-  description: string;
-  structured_formatting?: {
-    main_text: string;
-    secondary_text: string;
-  };
-}
+
 
 export default function LocationPickerScreen() {
   const navigation = useNavigation();
@@ -97,6 +90,8 @@ export default function LocationPickerScreen() {
             'Set EXPO_PUBLIC_GOOGLE_MAPS_API_KEY environment variable and restart the app.',
             [{ text: 'OK' }]
           );
+        } else {
+          console.log('[LocationPicker] Google Maps API key is configured');
         }
       } catch (error) {
         console.error('[LocationPicker] Failed to check API key:', error);
@@ -391,6 +386,20 @@ export default function LocationPickerScreen() {
         <Ionicons name="location" size={20} color="white" />
         <Text style={{ color: 'white', fontWeight: '600', marginLeft: 8 }}>Use Current Location</Text>
         {loading && <ActivityIndicator size="small" color="white" style={{ marginLeft: 8 }} />}
+      </TouchableOpacity>
+
+      {/* Fallback: Open Google Maps */}
+      <TouchableOpacity
+        style={{ marginHorizontal: 16, marginBottom: 16, backgroundColor: '#F59E0B', borderRadius: 8, padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}
+        onPress={() => {
+          const query = searchQuery || 'nearby places';
+          const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+          console.log('[LocationPicker] Opening Google Maps with query:', url);
+          Linking.openURL(url);
+        }}
+      >
+        <Ionicons name="open-outline" size={20} color="white" />
+        <Text style={{ color: 'white', fontWeight: '600', marginLeft: 8 }}>Open in Google Maps</Text>
       </TouchableOpacity>
 
       {/* Search Results */}
