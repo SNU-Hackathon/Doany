@@ -466,7 +466,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       });
       setPickerPredictions(results);
       const seq = ++detailsFetchSeqRef.current;
-      const top = results.slice(0, 5);
+      const top = results.slice(0, 10);
       const detailPromises = top.map(async (p) => {
         try {
           const d = await getPlaceDetails(p.placeId, pickerSessionToken);
@@ -1264,18 +1264,23 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
             </TouchableOpacity>
           </View>
 
-          {/* Predictions */}
+          {/* Predictions (scrollable) */}
           {pickerPredictions.length > 0 && (
-            <View className="bg-white border-b border-gray-200" style={{ maxHeight: 200 }}>
-              {pickerPredictions.map((p) => (
-                <TouchableOpacity
-                  key={p.placeId}
-                  className="px-4 py-3 border-b border-gray-100"
-                  onPress={() => handlePickerPredictionSelect(p.placeId)}
-                >
-                  <Text className="text-gray-900" numberOfLines={1}>{p.description}</Text>
-                </TouchableOpacity>
-              ))}
+            <View className="bg-white border-b border-gray-200" style={{ maxHeight: 280 }}>
+              <FlatList
+                data={pickerPredictions}
+                keyExtractor={(item) => item.placeId}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    className="px-4 py-3 border-b border-gray-100"
+                    onPress={() => handlePickerPredictionSelect(item.placeId)}
+                  >
+                    <Text className="text-gray-900" numberOfLines={1}>{item.description}</Text>
+                  </TouchableOpacity>
+                )}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              />
             </View>
           )}
 
