@@ -256,7 +256,7 @@ export default function SimpleDatePicker({
   const dayShort = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
   return (
-    <View className="bg-white rounded-lg p-4 m-4">
+    <View className="bg-white rounded-lg p-4 mx-0 my-4">
       {/* Header */}
       <View className="mb-6">
         <Text className="text-2xl font-bold text-gray-800 text-center">Schedule</Text>
@@ -268,7 +268,7 @@ export default function SimpleDatePicker({
         <Text className="text-blue-800 font-semibold text-lg mb-3">Duration</Text>
         <View className="flex-row items-center space-x-3">
           <TextInput
-            className="bg-white border border-blue-300 rounded-lg px-4 text-center w-20 text-lg h-12"
+            className="bg-white border border-blue-300 rounded-lg px-4 text-center w-28 text-lg h-12"
             value={durationValue}
             onChangeText={handleDurationChange}
             keyboardType="number-pad"
@@ -295,7 +295,7 @@ export default function SimpleDatePicker({
       {/* Weekly Schedule - compact, supports multiple times */}
       <View className="mb-6 bg-white rounded-lg border border-gray-200 p-4">
         <View className="flex-row items-center justify-between mb-3">
-          <View className="flex-row items-center">
+            <View className="flex-row items-center">
             <Ionicons name="calendar" size={20} color="#059669" />
             <Text className="text-lg font-semibold text-gray-800 ml-2">Weekly Schedule</Text>
           </View>
@@ -311,14 +311,14 @@ export default function SimpleDatePicker({
         </View>
 
         {isEditingWeeklySchedule ? (
-          <View>
+            <View>
             {/* Day selector chips */}
             <View className="flex-row flex-wrap gap-2 mb-3">
               {dayShort.map((d, idx) => (
                 <TouchableOpacity
                   key={idx}
                   onPress={() => toggleWeekday(idx)}
-                  className={`px-3 py-2 rounded-full border ${selectedWeekdays.has(idx) ? 'bg-green-100 border-green-400' : 'bg-white border-gray-300'}`}
+                    className={`px-4 py-2 rounded-full border ${selectedWeekdays.has(idx) ? 'bg-green-100 border-green-400' : 'bg-white border-gray-300'}`}
                 >
                   <Text className={`${selectedWeekdays.has(idx) ? 'text-green-700 font-semibold' : 'text-gray-700'}`}>{d}</Text>
                 </TouchableOpacity>
@@ -330,13 +330,13 @@ export default function SimpleDatePicker({
               <View key={dayIdx} className="mb-3 p-3 bg-gray-50 rounded-lg">
                 <View className="flex-row items-center justify-between mb-2">
                   <Text className="text-gray-800 font-medium">{dayShort[dayIdx]}</Text>
-                  <TouchableOpacity onPress={() => openAddTimeModal(dayIdx)} className="px-2 py-1 bg-blue-100 rounded">
+                  <TouchableOpacity onPress={() => openAddTimeModal(dayIdx)} className="px-3 py-1 bg-blue-100 rounded">
                     <Text className="text-blue-700 text-xs font-semibold">Add time</Text>
                   </TouchableOpacity>
                 </View>
                 <View className="flex-row flex-wrap gap-2">
                   {(weeklyTimeSettings[dayIdx] || []).map((t, i) => (
-                    <View key={`${t}-${i}`} className="flex-row items-center bg-green-100 px-2 py-1 rounded-full">
+                    <View key={`${t}-${i}`} className="flex-row items-center bg-green-100 px-3 py-1 rounded-full">
                       <TouchableOpacity onPress={() => openEditTimeModal(dayIdx, i)}>
                         <Text className="text-green-800 font-medium mr-1">{t}</Text>
                       </TouchableOpacity>
@@ -388,7 +388,7 @@ export default function SimpleDatePicker({
       {/* Calendar */}
       <View className="mb-6">
         {/* Month/Year Navigation */}
-        <View className="flex-row items-center justify-between mb-3">
+          <View className="flex-row items-center justify-between mb-3">
           <TouchableOpacity onPress={goToPreviousMonth} className="p-2">
             <Ionicons name="chevron-back" size={24} color="#3B82F6" />
           </TouchableOpacity>
@@ -421,7 +421,7 @@ export default function SimpleDatePicker({
         </View>
 
         {/* Calendar grid */}
-        <View className="flex-row flex-wrap">
+          <View className="flex-row flex-wrap">
           {calendarDays.map((dayData, index) => (
             <View key={index} className="w-[14.28%] p-1" style={{ aspectRatio: 1 }}>
               {dayData ? (
@@ -456,7 +456,7 @@ export default function SimpleDatePicker({
         </View>
 
         {/* Calendar Legend */}
-        <View className="flex-row justify-center space-x-6 mt-3">
+          <View className="flex-row justify-center space-x-6 mt-3">
           <View className="flex-row items-center">
             <View className="w-3 h-3 bg-blue-600 rounded mr-2" />
             <Text className="text-xs text-gray-600">Selected range</Text>
@@ -501,7 +501,7 @@ export default function SimpleDatePicker({
               {/* Hour Picker (00-23) */}
               <View>
                 <Text className="text-center text-xs text-gray-500 mb-1">Hour</Text>
-                <View className="rounded-lg border border-gray-200 overflow-hidden" style={{ width: 100 }}>
+                <View className="rounded-lg border border-gray-200 overflow-hidden" style={{ width: 120 }}>
                   <Picker
                     selectedValue={editingTimeHour}
                     onValueChange={(v) => setEditingTimeHour(String(v).padStart(2, '0'))}
@@ -516,7 +516,7 @@ export default function SimpleDatePicker({
               {/* Minute Picker (00-59) */}
               <View>
                 <Text className="text-center text-xs text-gray-500 mb-1">Minute</Text>
-                <View className="rounded-lg border border-gray-200 overflow-hidden" style={{ width: 100 }}>
+                <View className="rounded-lg border border-gray-200 overflow-hidden" style={{ width: 120 }}>
                   <Picker
                     selectedValue={editingTimeMinute}
                     onValueChange={(v) => setEditingTimeMinute(String(v).padStart(2, '0'))}
