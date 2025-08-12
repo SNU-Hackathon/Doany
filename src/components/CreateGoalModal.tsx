@@ -499,6 +499,15 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     }
   }, [pickerCenter, pickerSessionToken]);
 
+  // Stable handler for viewable items change in predictions list
+  const handlePredictionsViewableItemsChanged = useCallback(({ viewableItems }: { viewableItems: Array<{ item: { placeId: string } }> }) => {
+    const ids = viewableItems.map((v) => v.item.placeId);
+    ensureDetailsFor(ids).then(() => {
+      const points = ids.map((id: string) => detailsCacheRef.current[id]).filter(Boolean) as Array<{ lat: number; lng: number; title?: string }>;
+      if (points.length) setPickerMarkers(points);
+    });
+  }, [ensureDetailsFor]);
+
   const handlePickerPredictionSelect = useCallback(async (placeId: string) => {
     try {
       setPickerLoading(true);
@@ -1288,13 +1297,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
                 )}
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}
-                onViewableItemsChanged={useRef(({ viewableItems }: { viewableItems: Array<{ item: { placeId: string } }> }) => {
-                  const ids = viewableItems.map((v) => v.item.placeId);
-                  ensureDetailsFor(ids).then(() => {
-                    const points = ids.map((id: string) => detailsCacheRef.current[id]).filter(Boolean);
-                    if (points.length) setPickerMarkers(points as any);
-                  });
-                }).current}
+                onViewableItemsChanged={handlePredictionsViewableItemsChanged}
                 viewabilityConfig={{ itemVisiblePercentThreshold: 25 }}
               />
             </View>
