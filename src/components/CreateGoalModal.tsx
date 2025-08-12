@@ -21,7 +21,7 @@ import { AIGoalDraft, mergeAIGoal, updateDraftWithDates, validateAIGoal } from '
 import { useAuth } from '../hooks/useAuth';
 import { AIService } from '../services/ai';
 import { GoalService } from '../services/goalService';
-import { getPlaceDetails, searchPlaces } from '../services/places';
+import { getPlaceDetails, searchPlaces, textSearchPlaces } from '../services/places';
 import { CreateGoalForm, GoalDuration, GoalFrequency, TargetLocation } from '../types';
 import MapPreview from './MapPreview';
 import SimpleDatePicker, { DateSelection } from './SimpleDatePicker';
@@ -85,6 +85,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
   const [pickerMarkers, setPickerMarkers] = useState<Array<{ lat: number; lng: number; title?: string }>>([]);
   const detailsFetchSeqRef = useRef(0);
   const detailsCacheRef = useRef<Record<string, { lat: number; lng: number; title?: string }>>({});
+  const [pickerCenterOverride, setPickerCenterOverride] = useState<{ latitude: number; longitude: number } | null>(null);
 
   // Helper: fetch details for a set of placeIds (caching to minimize quota)
   const ensureDetailsFor = useCallback(async (placeIds: string[]) => {
@@ -475,20 +476,30 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     }
     try {
       setPickerSearching(true);
-      const results = await searchPlaces(text.trim(), {
-        latitude: pickerCenter?.latitude,
-        longitude: pickerCenter?.longitude,
+      const center = pickerCenterOverride || pickerCenter;
+      const autoCompleteResults = await searchPlaces(text.trim(), {
+        latitude: center?.latitude,
+        longitude: center?.longitude,
         radiusMeters: 20000,
         sessionToken: pickerSessionToken,
       });
-      setPickerPredictions(results);
+      // 보강: Text Search로 더 많은 결과 확보
+      const textResults = await textSearchPlaces(text.trim(), {
+        latitude: center?.latitude,
+        longitude: center?.longitude,
+        radiusMeters: 25000,
+      });
+      const merged: { placeId: string; description: string }[] = [];
+      const seen = new Set<string>();
+      for (const r of autoCompleteResults) { if (!seen.has(r.placeId)) { merged.push(r); seen.add(r.placeId); } }
+      for (const r of textResults.results) { if (!seen.has(r.placeId)) { merged.push({ placeId: r.placeId, description: r.description }); seen.add(r.placeId); } }
+      setPickerPredictions(merged);
       // Prime markers for first viewport (~8 items)
-      const firstIds = results.slice(0, 8).map(r => r.placeId);
+      const firstIds = merged.slice(0, 15).map(r => r.placeId);
       await ensureDetailsFor(firstIds);
       const coords = firstIds.map(id => detailsCacheRef.current[id]).filter(Boolean) as Array<{ lat:number; lng:number; title?:string }>;
-      const center = pickerCenter;
       const sorted = center
-        ? coords.sort((a, b) => Math.hypot(a.lat - center.latitude, a.lng - center.longitude) - Math.hypot(b.lat - center.latitude, b.lng - center.longitude))
+        ? coords.sort((a, b) => Math.hypot(a.lat - center!.latitude, a.lng - center!.longitude) - Math.hypot(b.lat - center!.latitude, b.lng - center!.longitude))
         : coords;
       setPickerMarkers(sorted);
     } catch (e) {
@@ -497,7 +508,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     } finally {
       setPickerSearching(false);
     }
-  }, [pickerCenter, pickerSessionToken]);
+  }, [pickerCenter, pickerCenterOverride, pickerSessionToken]);
 
   // Stable handler for viewable items change in predictions list
   const handlePredictionsViewableItemsChanged = useCallback(({ viewableItems }: { viewableItems: Array<{ item: { placeId: string } }> }) => {

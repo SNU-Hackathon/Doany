@@ -125,6 +125,53 @@ export const getPlaceDetails = async (placeId: string, sessionToken?: string): P
   }
 };
 
+// Text search for places (fallback for broader results)
+export interface PlaceTextResult {
+  placeId: string;
+  description: string;
+  lat: number;
+  lng: number;
+}
+
+export const textSearchPlaces = async (
+  query: string,
+  opts: { latitude?: number; longitude?: number; radiusMeters?: number; pageToken?: string }
+): Promise<{ results: PlaceTextResult[]; nextPageToken?: string }> => {
+  try {
+    const apiKey = getApiKey();
+    const url = new URL('https://maps.googleapis.com/maps/api/place/textsearch/json');
+    if (opts.pageToken) {
+      url.searchParams.set('pagetoken', opts.pageToken);
+    } else {
+      url.searchParams.set('query', query);
+      if (typeof opts.latitude === 'number' && typeof opts.longitude === 'number') {
+        url.searchParams.set('location', `${opts.latitude},${opts.longitude}`);
+      }
+      if (opts.radiusMeters) url.searchParams.set('radius', String(opts.radiusMeters));
+    }
+    url.searchParams.set('key', apiKey);
+    url.searchParams.set('language', 'en');
+
+    const resp = await fetch(url.toString());
+    const data = await resp.json();
+    if (data.status === 'REQUEST_DENIED' || data.status === 'OVER_QUERY_LIMIT') {
+      console.error('[Places] Text search API error:', data.status, data.error_message);
+      throw new Error(data.error_message || `Places Text Search error: ${data.status}`);
+    }
+
+    const results: PlaceTextResult[] = (data.results || []).map((r: any) => ({
+      placeId: r.place_id,
+      description: `${r.name}${r.formatted_address ? ' · ' + r.formatted_address : ''}`,
+      lat: r.geometry?.location?.lat,
+      lng: r.geometry?.location?.lng,
+    }));
+    return { results, nextPageToken: data.next_page_token };
+  } catch (e) {
+    console.error('[Places] Text search error:', e);
+    return { results: [] };
+  }
+};
+
 // Reverse geocoding using Google Geocoding API
 export const reverseGeocode = async (lat: number, lng: number): Promise<string | null> => {
   try {

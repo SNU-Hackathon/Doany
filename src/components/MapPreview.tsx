@@ -69,7 +69,7 @@ export default function MapPreview({ location, markers = [], interactive = false
     longitudeDelta: 0.01,
   }), [center]);
 
-  // Fit to markers
+  // Fit to markers (avoid resetting when user interacts)
   useEffect(() => {
     if (!markers?.length) return;
     if (Platform.OS === 'web') {
@@ -81,7 +81,7 @@ export default function MapPreview({ location, markers = [], interactive = false
       const lngMax = Math.max(...lngs);
       const cLat = (latMin + latMax) / 2;
       const cLng = (lngMin + lngMax) / 2;
-      setCenter({ latitude: cLat, longitude: cLng });
+      if (!interactive) setCenter({ latitude: cLat, longitude: cLng });
       const span = Math.max(latMax - latMin, lngMax - lngMin);
       const z = span < 0.01 ? 16 : span < 0.05 ? 14 : span < 0.1 ? 12 : span < 0.5 ? 10 : 8;
       setWebZoom(z);
