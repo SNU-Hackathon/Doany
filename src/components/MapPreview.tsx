@@ -96,8 +96,8 @@ export default function MapPreview({ location, onPress }: MapPreviewProps) {
         return (
           <APIProvider apiKey={API_KEY}>
             <Map
-              defaultZoom={16}
-               defaultCenter={{ lat: mapRegion.latitude, lng: mapRegion.longitude }}
+              defaultZoom={14}
+              defaultCenter={{ lat: mapRegion.latitude, lng: mapRegion.longitude }}
               style={{ width: '100%', height: '100%' }}
               gestureHandling="none"
               disableDefaultUI
@@ -148,6 +148,9 @@ export default function MapPreview({ location, onPress }: MapPreviewProps) {
           showsMyLocationButton={false}
           toolbarEnabled={false}
           mapPadding={{ top: 0, right: 0, bottom: 0, left: 0 }}
+          loadingEnabled
+          loadingIndicatorColor="#3B82F6"
+          loadingBackgroundColor="#F3F4F6"
         >
           {center && (
             <Marker

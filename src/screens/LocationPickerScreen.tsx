@@ -265,7 +265,7 @@ export default function LocationPickerScreen() {
       style={{ backgroundColor: 'white', padding: 12, borderBottomWidth: 1, borderBottomColor: '#E5E7EB' }}
       onPress={() => handlePredictionSelect(item)}
     >
-      <Text style={{ color: '#1F2937', fontWeight: '500' }}>{item.description}</Text>
+      <Text style={{ color: '#1F2937', fontWeight: '500' }} numberOfLines={1}>{item.description}</Text>
     </TouchableOpacity>
   ), [handlePredictionSelect]);
 

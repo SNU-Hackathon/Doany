@@ -18,6 +18,7 @@ import {
   query,
   serverTimestamp,
   setDoc,
+  setLogLevel,
   Timestamp
 } from 'firebase/firestore';
 import { FirebaseStorage, getStorage } from 'firebase/storage';
@@ -71,13 +72,18 @@ export const auth: Auth = (() => {
 // Initialize Firestore with React Native optimizations
 export const db: Firestore = (() => {
   try {
-    return initializeFirestore(app, {
+    const instance = initializeFirestore(app, {
       experimentalForceLongPolling: true, // Required for React Native
     });
+    // Reduce noisy Firestore warnings in console
+    setLogLevel('error');
+    return instance;
   } catch (error) {
     // If already initialized, get the existing instance
     console.warn('🔥 Firestore already initialized, using existing instance');
-    return getFirestore(app);
+    const instance = getFirestore(app);
+    setLogLevel('error');
+    return instance;
   }
 })();
 
