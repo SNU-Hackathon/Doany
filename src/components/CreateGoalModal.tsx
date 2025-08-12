@@ -20,6 +20,7 @@ import { CreateGoalProvider, useCreateGoal } from '../features/createGoal/state'
 import { AIGoalDraft, mergeAIGoal, updateDraftWithDates, validateAIGoal } from '../features/goals/aiDraft';
 import { useAuth } from '../hooks/useAuth';
 import { AIService } from '../services/ai';
+import { getPlaceDetails, searchPlaces } from '../services/places';
 import { GoalService } from '../services/goalService';
 import { CreateGoalForm, GoalDuration, GoalFrequency, TargetLocation } from '../types';
 import MapPreview from './MapPreview';
@@ -71,6 +72,14 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     weekdays: Set<number>;
     timeSettings: { [key: string]: string[] };
   }>({ weekdays: new Set(), timeSettings: {} });
+
+  // Location picker overlay state
+  const [showLocationPicker, setShowLocationPicker] = useState(false);
+  const [pickerQuery, setPickerQuery] = useState('');
+  const [pickerPredictions, setPickerPredictions] = useState<{ placeId: string; description: string }[]>([]);
+  const [pickerSelectedLocation, setPickerSelectedLocation] = useState<TargetLocation | null>(null);
+  const [pickerLoading, setPickerLoading] = useState(false);
+  const [pickerSearching, setPickerSearching] = useState(false);
 
   // Handle weekly schedule changes
   const handleWeeklyScheduleChange = useCallback((weekdays: Set<number>, timeSettings: { [key: string]: string[] }) => {
@@ -413,27 +422,73 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
 
   // Robust navigation to LocationPicker at root level
   const openLocationPicker = useCallback(() => {
-    const params = {
-      returnTo: 'CreateGoal',
-      onSelect: (location: TargetLocation) => {
-        setFormData(prev => ({ ...prev, targetLocation: location }));
-      }
-    };
+    // Open in-app overlay modal instead of navigating (ensures it appears above RN Modal)
+    setPickerQuery('');
+    setPickerPredictions([]);
+    setPickerSelectedLocation(formData.targetLocation || null);
+    setShowLocationPicker(true);
+  }, [formData.targetLocation]);
 
-    // Try navigating up the tree to find a navigator that knows LocationPicker
-    let nav: any = navigation;
-    for (let i = 0; i < 3 && nav; i++) {
-      const state = nav?.getState?.();
-      const routeNames: string[] | undefined = state?.routeNames;
-      if (Array.isArray(routeNames) && routeNames.includes('LocationPicker')) {
-        nav.navigate('LocationPicker', params);
+  const closeLocationPicker = useCallback(() => setShowLocationPicker(false), []);
+
+  const handlePickerSearchChange = useCallback(async (text: string) => {
+    setPickerQuery(text);
+    if (!text.trim()) {
+      setPickerPredictions([]);
+      return;
+    }
+    try {
+      setPickerSearching(true);
+      const results = await searchPlaces(text.trim());
+      setPickerPredictions(results);
+    } catch (e) {
+      setPickerPredictions([]);
+    } finally {
+      setPickerSearching(false);
+    }
+  }, []);
+
+  const handlePickerPredictionSelect = useCallback(async (placeId: string) => {
+    try {
+      setPickerLoading(true);
+      const details = await getPlaceDetails(placeId);
+      setPickerSelectedLocation(details);
+      setPickerQuery(details.name);
+      setPickerPredictions([]);
+    } catch (e) {
+      Alert.alert('Error', 'Failed to get place details.');
+    } finally {
+      setPickerLoading(false);
+    }
+  }, []);
+
+  const handlePickerUseCurrentLocation = useCallback(async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Location Permission Required', 'Please allow location access.');
         return;
       }
-      nav = nav?.getParent?.();
+      setPickerLoading(true);
+      const current = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      setPickerSelectedLocation({ name: 'Current Location', lat: current.coords.latitude, lng: current.coords.longitude });
+      setPickerQuery('Current Location');
+      setPickerPredictions([]);
+    } catch (e) {
+      Alert.alert('Error', 'Failed to get current location.');
+    } finally {
+      setPickerLoading(false);
     }
-    // Fallback to direct navigate
-    (navigation as any).navigate?.('LocationPicker', params);
-  }, [navigation]);
+  }, []);
+
+  const handlePickerConfirm = useCallback(() => {
+    if (!pickerSelectedLocation) {
+      Alert.alert('No Location Selected', 'Please select a location first.');
+      return;
+    }
+    setFormData(prev => ({ ...prev, targetLocation: pickerSelectedLocation }));
+    setShowLocationPicker(false);
+  }, [pickerSelectedLocation]);
 
   // Handle current location selection
   const handleUseCurrentLocation = async () => {
@@ -1147,6 +1202,83 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
           windowSize={3}
           removeClippedSubviews={true}
         />
+
+      {/* Location Picker Overlay Modal */}
+      <Modal
+        visible={showLocationPicker}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={closeLocationPicker}
+      >
+        <View className="flex-1 bg-white">
+          {/* Header */}
+          <View className="bg-blue-600 px-4 pt-12 pb-4 flex-row items-center justify-between">
+            <TouchableOpacity onPress={closeLocationPicker}>
+              <Ionicons name="close" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+            <Text className="text-white font-semibold text-lg">Select Location</Text>
+            <View style={{ width: 24 }} />
+          </View>
+
+          {/* Search */}
+          <View className="p-4 border-b border-gray-200 bg-white">
+            <View className="flex-row items-center bg-gray-50 rounded-lg px-3 py-2 border border-gray-200">
+              <Ionicons name="search" size={20} color="#6B7280" />
+              <TextInput
+                className="flex-1 ml-2 text-gray-900"
+                placeholder="Search for a place (e.g., GymBox, Starbucks)"
+                placeholderTextColor="#9CA3AF"
+                value={pickerQuery}
+                onChangeText={handlePickerSearchChange}
+                autoCorrect={false}
+                autoCapitalize="none"
+              />
+              {pickerSearching && <ActivityIndicator size="small" color="#3B82F6" />}
+            </View>
+
+            <TouchableOpacity
+              className="mt-3 bg-green-600 rounded-lg py-3 flex-row items-center justify-center"
+              onPress={handlePickerUseCurrentLocation}
+              disabled={pickerLoading}
+            >
+              <Ionicons name="location" size={20} color="#FFFFFF" />
+              <Text className="text-white font-semibold ml-2">Use Current Location</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Predictions */}
+          {pickerPredictions.length > 0 && (
+            <View className="bg-white border-b border-gray-200">
+              {pickerPredictions.map((p) => (
+                <TouchableOpacity
+                  key={p.placeId}
+                  className="px-4 py-3 border-b border-gray-100"
+                  onPress={() => handlePickerPredictionSelect(p.placeId)}
+                >
+                  <Text className="text-gray-900">{p.description}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
+          {/* Big Map Preview */}
+          <View className="flex-1 m-4 rounded-xl overflow-hidden border border-gray-200">
+            <MapPreview location={pickerSelectedLocation || formData.targetLocation || null} onPress={() => {}} />
+          </View>
+
+          {/* Confirm */}
+          <View className="p-4">
+            <TouchableOpacity
+              className="bg-blue-600 rounded-lg py-3 flex-row items-center justify-center"
+              onPress={handlePickerConfirm}
+              disabled={!pickerSelectedLocation}
+            >
+              <Ionicons name="checkmark" size={20} color="#FFFFFF" />
+              <Text className="text-white font-semibold ml-2">Confirm Location</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
       </View>
     </Modal>
   );
