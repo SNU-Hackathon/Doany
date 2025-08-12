@@ -82,6 +82,8 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
   const [pickerSearching, setPickerSearching] = useState(false);
   const [pickerSessionToken] = useState(() => Math.random().toString(36).slice(2));
   const [pickerCenter, setPickerCenter] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [pickerMarkers, setPickerMarkers] = useState<Array<{ lat: number; lng: number; title?: string }>>([]);
+  const detailsFetchSeqRef = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -451,6 +453,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     setPickerQuery(text);
     if (!text.trim()) {
       setPickerPredictions([]);
+      setPickerMarkers([]);
       return;
     }
     try {
@@ -462,8 +465,27 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         sessionToken: pickerSessionToken,
       });
       setPickerPredictions(results);
+      const seq = ++detailsFetchSeqRef.current;
+      const top = results.slice(0, 5);
+      const detailPromises = top.map(async (p) => {
+        try {
+          const d = await getPlaceDetails(p.placeId, pickerSessionToken);
+          return { lat: d.lat, lng: d.lng, title: d.name };
+        } catch {
+          return null;
+        }
+      });
+      const coords = (await Promise.all(detailPromises)).filter(Boolean) as Array<{ lat: number; lng: number; title?: string }>;
+      if (seq === detailsFetchSeqRef.current) {
+        const center = pickerCenter;
+        const sorted = center
+          ? coords.sort((a, b) => Math.hypot(a.lat - center.latitude, a.lng - center.longitude) - Math.hypot(b.lat - center.latitude, b.lng - center.longitude))
+          : coords;
+        setPickerMarkers(sorted);
+      }
     } catch (e) {
       setPickerPredictions([]);
+      setPickerMarkers([]);
     } finally {
       setPickerSearching(false);
     }
@@ -476,6 +498,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       setPickerSelectedLocation(details);
       setPickerQuery(details.name);
       setPickerPredictions([]);
+      setPickerMarkers([{ lat: details.lat, lng: details.lng, title: details.name }]);
     } catch (e) {
       Alert.alert('Error', 'Failed to get place details.');
     } finally {
@@ -1204,31 +1227,29 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       <Modal
         visible={showLocationPicker}
         animationType="slide"
-        presentationStyle="fullScreen"
+        presentationStyle="pageSheet"
         onRequestClose={closeLocationPicker}
       >
         <View className="flex-1 bg-white">
-          {/* Header */}
-          <View className="bg-blue-600 px-4 pt-12 pb-4 flex-row items-center justify-between">
-            <TouchableOpacity onPress={closeLocationPicker}>
-              <Ionicons name="close" size={24} color="#FFFFFF" />
-            </TouchableOpacity>
-            <Text className="text-white font-semibold text-lg">Select Location</Text>
-            <View style={{ width: 24 }} />
+          {/* Drag handle */}
+          <View className="items-center pt-3 pb-2 bg-blue-600">
+            <View style={{ width: 44, height: 5, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.6)' }} />
+            <Text className="text-white font-semibold text-lg mt-2">Select Location</Text>
           </View>
 
           {/* Search */}
           <View className="p-4 border-b border-gray-200 bg-white">
-            <View className="flex-row items-center bg-gray-50 rounded-lg px-3 py-2 border border-gray-200">
+            <View className="flex-row items-center bg-gray-50 rounded-lg px-3 h-11 border border-gray-200">
               <Ionicons name="search" size={20} color="#6B7280" />
               <TextInput
                 className="flex-1 ml-2 text-gray-900"
-                placeholder="Search for a place (e.g., GymBox, Starbucks)"
+                placeholder="Search places (e.g., GymBox, Starbucks)"
                 placeholderTextColor="#9CA3AF"
                 value={pickerQuery}
                 onChangeText={handlePickerSearchChange}
                 autoCorrect={false}
                 autoCapitalize="none"
+                style={{ paddingVertical: 0 }}
               />
               {pickerSearching && <ActivityIndicator size="small" color="#3B82F6" />}
             </View>
@@ -1262,7 +1283,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
           <View className="flex-1 m-4 rounded-xl overflow-hidden border border-gray-200">
             <MapPreview
               location={pickerSelectedLocation || formData.targetLocation || null}
-              markers={pickerPredictions.map(p => ({ lat: 0, lng: 0 }))}
+              markers={pickerMarkers}
               interactive
               fitToMarkers
               onPress={() => {}}
