@@ -1,4 +1,5 @@
-import React, { useMemo } from 'react';
+import * as ExpoLocation from 'expo-location';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Platform, Text, TouchableOpacity, View } from 'react-native';
 import { TargetLocation } from '../types';
 
@@ -31,20 +32,40 @@ if (Platform.OS === 'web') {
 }
 
 interface MapPreviewProps {
-  location: TargetLocation;
+  location?: TargetLocation | null;
   onPress: () => void;
 }
 
 export default function MapPreview({ location, onPress }: MapPreviewProps) {
+  const [center, setCenter] = useState<{ latitude: number; longitude: number } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const init = async () => {
+      if (typeof location?.lat === 'number' && typeof location?.lng === 'number') {
+        setCenter({ latitude: location!.lat, longitude: location!.lng });
+        return;
+      }
+      try {
+        const { status } = await ExpoLocation.requestForegroundPermissionsAsync();
+        if (status !== 'granted') return;
+        const pos = await ExpoLocation.getCurrentPositionAsync({ accuracy: ExpoLocation.Accuracy.Balanced });
+        if (!cancelled) setCenter({ latitude: pos.coords.latitude, longitude: pos.coords.longitude });
+      } catch {}
+    };
+    init();
+    return () => { cancelled = true; };
+  }, [location?.lat, location?.lng]);
+
   const mapRegion = useMemo(() => ({
-    latitude: location.lat,
-    longitude: location.lng,
+    latitude: center?.latitude ?? 37.5665,
+    longitude: center?.longitude ?? 126.9780,
     latitudeDelta: 0.01,
     longitudeDelta: 0.01,
-  }), [location.lat, location.lng]);
+  }), [center]);
 
   const MapComponent = useMemo(() => {
-    if (Platform.OS === 'web') {
+       if (Platform.OS === 'web') {
       // Web: use vis.gl with APIProvider
       const API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
       if (!API_KEY) {
@@ -63,7 +84,7 @@ export default function MapPreview({ location, onPress }: MapPreviewProps) {
               borderColor: '#E5E7EB'
             }}>
               <Text style={{ color: '#6B7280', fontSize: 12, textAlign: 'center' }}>
-                {location.name}
+                {location?.name || 'Map Preview'}
               </Text>
             </View>
           </View>
@@ -76,15 +97,17 @@ export default function MapPreview({ location, onPress }: MapPreviewProps) {
           <APIProvider apiKey={API_KEY}>
             <Map
               defaultZoom={16}
-              defaultCenter={{ lat: location.lat, lng: location.lng }}
+               defaultCenter={{ lat: mapRegion.latitude, lng: mapRegion.longitude }}
               style={{ width: '100%', height: '100%' }}
               gestureHandling="none"
               disableDefaultUI
             >
-              <AdvancedMarker 
-                position={{ lat: location.lat, lng: location.lng }}
-                title={location.name}
-              />
+               {center && (
+                 <AdvancedMarker 
+                   position={{ lat: mapRegion.latitude, lng: mapRegion.longitude }}
+                   title={location?.name ?? 'Selected'}
+                 />
+               )}
             </Map>
           </APIProvider>
         );
@@ -105,7 +128,7 @@ export default function MapPreview({ location, onPress }: MapPreviewProps) {
               borderColor: '#E5E7EB'
             }}>
               <Text style={{ color: '#6B7280', fontSize: 12, textAlign: 'center' }}>
-                {location.name}
+                {location?.name || 'Map Preview'}
               </Text>
             </View>
           </View>
@@ -113,7 +136,7 @@ export default function MapPreview({ location, onPress }: MapPreviewProps) {
       }
     } else {
       // Native: use react-native-maps
-      return (
+       return (
         <MapView
           style={{ flex: 1 }}
           region={mapRegion}
@@ -126,14 +149,16 @@ export default function MapPreview({ location, onPress }: MapPreviewProps) {
           toolbarEnabled={false}
           mapPadding={{ top: 0, right: 0, bottom: 0, left: 0 }}
         >
-          <Marker
-            coordinate={{
-              latitude: location.lat,
-              longitude: location.lng,
-            }}
-            title={location.name}
-            pinColor="#3B82F6"
-          />
+          {center && (
+            <Marker
+              coordinate={{
+                latitude: mapRegion.latitude,
+                longitude: mapRegion.longitude,
+              }}
+              title={location?.name ?? 'Selected'}
+              pinColor="#3B82F6"
+            />
+          )}
         </MapView>
       );
     }

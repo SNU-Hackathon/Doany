@@ -411,6 +411,30 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     console.timeEnd('[CreateGoalModal] Location Selection');
   };
 
+  // Robust navigation to LocationPicker at root level
+  const openLocationPicker = useCallback(() => {
+    const params = {
+      returnTo: 'CreateGoal',
+      onSelect: (location: TargetLocation) => {
+        setFormData(prev => ({ ...prev, targetLocation: location }));
+      }
+    };
+
+    // Try navigating up the tree to find a navigator that knows LocationPicker
+    let nav: any = navigation;
+    for (let i = 0; i < 3 && nav; i++) {
+      const state = nav?.getState?.();
+      const routeNames: string[] | undefined = state?.routeNames;
+      if (Array.isArray(routeNames) && routeNames.includes('LocationPicker')) {
+        nav.navigate('LocationPicker', params);
+        return;
+      }
+      nav = nav?.getParent?.();
+    }
+    // Fallback to direct navigate
+    (navigation as any).navigate?.('LocationPicker', params);
+  }, [navigation]);
+
   // Handle current location selection
   const handleUseCurrentLocation = async () => {
     try {
@@ -783,29 +807,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       <View className="flex-row space-x-3">
         <TouchableOpacity
           className="flex-1 bg-blue-500 rounded-lg p-3 flex-row items-center justify-center"
-          onPress={() => {
-            console.log('[NAV] Attempting to navigate to LocationPicker');
-            console.log('[NAV] routes:', navigation.getState()?.routeNames);
-            // Navigate to LocationPicker using parent navigator since CreateGoal is inside tabs
-            const parentNav = navigation.getParent();
-            if (parentNav) {
-              console.log('[NAV] Using parent navigator');
-              parentNav.navigate('LocationPicker', { 
-                onSelect: (location: any) => {
-                  console.log('[CreateGoal] Location selected:', location);
-                  setFormData(prev => ({ ...prev, targetLocation: location }));
-                }
-              });
-            } else {
-              console.log('[NAV] Using direct navigation');
-              navigation.navigate('LocationPicker', { 
-                onSelect: (location: any) => {
-                  console.log('[CreateGoal] Location selected:', location);
-                  setFormData(prev => ({ ...prev, targetLocation: location }));
-                }
-              });
-            }
-          }}
+          onPress={openLocationPicker}
         >
           <Ionicons name="search" size={20} color="white" />
           <Text className="text-white font-semibold ml-2">Search</Text>
@@ -911,25 +913,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
                 <MapPreview 
                   location={formData.targetLocation}
                   onPress={() => {
-                    console.log('[NAV] Opening LocationPicker from map preview');
-                    const parentNav = navigation.getParent();
-                    if (parentNav) {
-                      parentNav.navigate('LocationPicker', { 
-                        returnTo: 'CreateGoal',
-                        onSelect: (location: TargetLocation) => {
-                          console.log('[CreateGoal] Location selected from map:', location);
-                          setFormData(prev => ({ ...prev, targetLocation: location }));
-                        }
-                      });
-                    } else {
-                      navigation.navigate('LocationPicker', { 
-                        returnTo: 'CreateGoal',
-                        onSelect: (location: TargetLocation) => {
-                          console.log('[CreateGoal] Location selected from map:', location);
-                          setFormData(prev => ({ ...prev, targetLocation: location }));
-                        }
-                      });
-                    }
+                    openLocationPicker();
                   }}
                 />
               </View>
