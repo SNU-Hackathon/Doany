@@ -50,8 +50,11 @@ export class GoalService {
           endDate: goalData.endDate?.toISOString()
         },
         notes: goalData.notes || '',
+        // Dual timestamps: server authoritative + client for instant UI sort
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
+        createdAtClient: Timestamp.fromDate(new Date()),
+        updatedAtClient: Timestamp.fromDate(new Date()),
         // Legacy fields for backward compatibility
         verificationType: goalData.verificationType || goalData.verificationMethods?.[0] || 'manual',
         timeFrame: goalData.timeFrame || 'daily',

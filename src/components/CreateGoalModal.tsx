@@ -70,19 +70,19 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
   const [filteredExamples, setFilteredExamples] = useState<string[]>(AIService.getExamplePrompts());
   const [weeklyScheduleData, setWeeklyScheduleData] = useState<{
     weekdays: Set<number>;
-    timeSettings: { [key: string]: string };
+    timeSettings: { [key: string]: string[] };
   }>({ weekdays: new Set(), timeSettings: {} });
 
   // Handle weekly schedule changes
-  const handleWeeklyScheduleChange = useCallback((weekdays: Set<number>, timeSettings: { [key: string]: string }) => {
-    // Only update and log if there are actual changes
-    const hasChanges = weekdays.size > 0 || Object.keys(timeSettings).length > 0;
-    
-    if (hasChanges) {
-      setWeeklyScheduleData({ weekdays, timeSettings });
-      console.log('[CreateGoalModal] Weekly schedule updated:', { weekdays: Array.from(weekdays), timeSettings });
+  const handleWeeklyScheduleChange = useCallback((weekdays: Set<number>, timeSettings: { [key: string]: string[] }) => {
+    console.log('[CreateGoalModal] Weekly schedule change received:', { weekdays: Array.from(weekdays), timeSettings });
+    setWeeklyScheduleData({ weekdays, timeSettings });
+    // Keep a simple flag on form data; detailed schedule will be saved later alongside this state
+    setFormData(prev => ({ ...prev, needsWeeklySchedule: weekdays.size > 0 }));
+    if (aiDraft.title) {
+      setAiDraft(prev => ({ ...prev, needsWeeklySchedule: weekdays.size > 0 }));
     }
-  }, []);
+  }, [aiDraft.title]);
 
   // Refs for cleanup
   const mountedRef = useRef(true);
@@ -504,79 +504,46 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       return;
     }
 
-    console.time('[CreateGoalModal] Goal Creation - Total');
-    console.time('[CreateGoalModal] Goal Creation - Phase 1 (Optimistic)');
-
+    console.time('[CreateGoalModal] Goal Creation - Single Phase');
     try {
-      // Phase 1: Optimistic UI - Create local draft immediately
       setAppState('SAVING');
       setLoading(true);
 
-      // Generate optimistic goal ID
-      optimisticGoalId.current = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      
-      // Show immediate success and close modal
-      setTimeout(() => {
-        if (mountedRef.current) {
-          setAppState('SAVED_OPTIMISTIC');
-          console.timeEnd('[CreateGoalModal] Goal Creation - Phase 1 (Optimistic)');
-          
-          // Close modal and notify parent immediately (optimistic)
-          handleClose();
-          onGoalCreated();
-          
-          // Start Phase 2 in background
-          performBackgroundGoalCreation();
-        }
-      }, 200); // Small delay to show saving state
-
-    } catch (error) {
-      console.error('[CreateGoalModal] Optimistic goal creation failed:', error);
-      setLoading(false);
-      setAppState('READY_TO_REVIEW');
-      Alert.alert('Error', 'Failed to create goal. Please try again.');
-    }
-  };
-
-  // Phase 2: Background goal creation
-  const performBackgroundGoalCreation = async () => {
-    console.time('[CreateGoalModal] Goal Creation - Phase 2 (Background)');
-    
-    try {
-      setBackgroundTaskProgress('Saving to database...');
-      
-      // Perform actual Firestore write
+      // Build payload with safe defaults
       const goalData = {
         ...formData,
-        userId: user!.id,
+        title: (formData.title && formData.title.trim()) || aiDraft.title || 'New Goal',
+        category: formData.category || 'Personal',
+        frequency: formData.frequency || { count: 1, unit: 'per_day' },
+        duration: formData.duration || { type: 'weeks', value: 2 },
+        verificationMethods: (formData.verificationMethods?.length ? formData.verificationMethods : ['manual']) as any,
+        userId: user.id,
         createdAt: new Date(),
         updatedAt: new Date(),
       };
 
-      console.log('[CreateGoalModal] Saving goal:', goalData);
+      console.log('[CreateGoalModal] Saving goal (single phase):', goalData);
       await GoalService.createGoal(goalData);
-      
-      setBackgroundTaskProgress('Goal saved successfully!');
-      console.log('[CreateGoalModal] Goal created successfully');
 
-    } catch (error: any) {
-      console.error('[CreateGoalModal] Background goal creation failed:', error);
-      setBackgroundTaskProgress('Save failed - will retry later');
-      
-      // Could implement retry logic here
-      // For now, we'll just log the error and let the optimistic UI stand
+      if (mountedRef.current) {
+        setAppState('SAVED_OPTIMISTIC');
+        setLoading(false);
+        handleClose();
+        onGoalCreated();
+      }
+    } catch (error) {
+      console.error('[CreateGoalModal] Goal creation failed:', error);
+      Alert.alert('Error', 'Failed to create goal. Please try again.');
+      if (mountedRef.current) {
+        setLoading(false);
+        setAppState('READY_TO_REVIEW');
+      }
     } finally {
-      console.timeEnd('[CreateGoalModal] Goal Creation - Phase 2 (Background)');
-      console.timeEnd('[CreateGoalModal] Goal Creation - Total');
-      
-      // Clear background progress after a delay
-      setTimeout(() => {
-        if (mountedRef.current) {
-          setBackgroundTaskProgress('');
-        }
-      }, 3000);
+      console.timeEnd('[CreateGoalModal] Goal Creation - Single Phase');
     }
   };
+ 
+  // Background creation removed for reliability during development
 
   // Form sections as separate components for FlatList
   const renderAISection = () => (
@@ -670,7 +637,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       {appState === 'IDLE' && (
         <View style={{ marginTop: 16 }}>
           <Text style={{ fontSize: 14, color: '#2563eb', marginBottom: 12, fontWeight: '600' }}>
-            💡 추천 목표 예시 (클릭하여 입력)
+            💡 Recommended goal examples (tap to insert)
           </Text>
           
           {/* Category tabs */}
@@ -680,18 +647,18 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
             style={{ marginBottom: 12 }}
             contentContainerStyle={{ paddingHorizontal: 4 }}
           >
-            {['전체', '건강', '학습', '업무', '개발', '재정'].map((category, index) => (
+            {['All', 'Health', 'Learning', 'Work', 'Development', 'Finance'].map((category, index) => (
               <TouchableOpacity
                 key={category}
                 onPress={() => {
                   // Filter examples by category
                   const categoryExamples = {
-                    '전체': AIService.getExamplePrompts(),
-                    '건강': AIService.getExamplePrompts().slice(0, 8),
-                    '학습': AIService.getExamplePrompts().slice(8, 16),
-                    '업무': AIService.getExamplePrompts().slice(16, 24),
-                    '개발': AIService.getExamplePrompts().slice(24, 32),
-                    '재정': AIService.getExamplePrompts().slice(32, 40)
+                    'All': AIService.getExamplePrompts(),
+                    'Health': AIService.getExamplePrompts().slice(0, 8),
+                    'Learning': AIService.getExamplePrompts().slice(8, 16),
+                    'Work': AIService.getExamplePrompts().slice(16, 24),
+                    'Development': AIService.getExamplePrompts().slice(24, 32),
+                    'Finance': AIService.getExamplePrompts().slice(32, 40)
                   };
                   setSelectedCategory(index);
                   setFilteredExamples(categoryExamples[category as keyof typeof categoryExamples]);
@@ -777,31 +744,6 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
           }));
         }}
         onNavigateToStep={goToStep}
-        autoExpandWeeklySchedule={aiDraft.needsWeeklySchedule || false}
-        aiGoal={aiDraft.title ? {
-          title: aiDraft.title,
-          category: aiDraft.category || 'Personal',
-          verificationMethods: aiDraft.verificationMethods || [],
-          frequency: {
-            count: aiDraft.frequency?.count || 1,
-            unit: aiDraft.frequency?.unit || 'per_day'
-          },
-          duration: {
-            type: aiDraft.duration?.type || 'weeks',
-            value: aiDraft.duration?.value || 2,
-            startDate: aiDraft.duration?.startDate || new Date().toISOString(),
-            endDate: aiDraft.duration?.endDate
-          },
-          targetLocation: aiDraft.targetLocation ? {
-            name: aiDraft.targetLocation.name || '',
-            lat: aiDraft.targetLocation.lat || 0,
-            lng: aiDraft.targetLocation.lng || 0,
-            placeId: aiDraft.targetLocation.placeId
-          } : undefined,
-          notes: aiDraft.notes,
-          needsWeeklySchedule: aiDraft.needsWeeklySchedule,
-          weeklySchedule: aiDraft.weeklySchedule
-        } : undefined}
         onWeeklyScheduleChange={handleWeeklyScheduleChange}
       />
     </View>
@@ -1136,31 +1078,6 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
             onStartDateChange={(date) => setFormData(prev => ({ ...prev, duration: { ...prev.duration, startDate: date } }))}
             onEndDateChange={(date) => setFormData(prev => ({ ...prev, duration: { ...prev.duration, endDate: date } }))}
             onNavigateToStep={goToStep}
-            autoExpandWeeklySchedule={formData.needsWeeklySchedule}
-            aiGoal={aiDraft.title ? {
-              title: aiDraft.title,
-              category: aiDraft.category || 'Personal',
-              verificationMethods: aiDraft.verificationMethods || [],
-              frequency: {
-                count: aiDraft.frequency?.count || 1,
-                unit: aiDraft.frequency?.unit || 'per_day'
-              },
-              duration: {
-                type: aiDraft.duration?.type || 'weeks',
-                value: aiDraft.duration?.value || 2,
-                startDate: aiDraft.duration?.startDate || new Date().toISOString(),
-                endDate: aiDraft.duration?.endDate
-              },
-              targetLocation: aiDraft.targetLocation ? {
-                name: aiDraft.targetLocation.name || '',
-                lat: aiDraft.targetLocation.lat || 0,
-                lng: aiDraft.targetLocation.lng || 0,
-                placeId: aiDraft.targetLocation.placeId
-              } : undefined,
-              notes: aiDraft.notes,
-              needsWeeklySchedule: aiDraft.needsWeeklySchedule,
-              weeklySchedule: aiDraft.weeklySchedule
-            } : undefined}
             onWeeklyScheduleChange={handleWeeklyScheduleChange}
           />
         );
@@ -1222,9 +1139,9 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
             <Text className="text-lg font-bold text-gray-800">Create Goal</Text>
             <TouchableOpacity
               onPress={handleSubmit}
-              disabled={loading || appState !== 'READY_TO_REVIEW' || !formData.title.trim()}
+              disabled={loading || state.step !== 2}
               className={`px-4 py-2 rounded-lg ${
-                loading || appState !== 'READY_TO_REVIEW' || !formData.title.trim()
+                loading || state.step !== 2
                   ? 'bg-gray-400' 
                   : 'bg-blue-600'
               }`}
@@ -1244,7 +1161,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
             {STEPS.map((step, index) => (
               <TouchableOpacity
                 key={step.id}
-                onPress={() => actions.setStep(index)}
+                onPress={() => goToStep(index)}
                 disabled={index > state.step}
                 className="flex-row items-center"
               >

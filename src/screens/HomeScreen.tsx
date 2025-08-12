@@ -142,7 +142,8 @@ export default function HomeScreen() {
     
     const goalsQuery = query(
       collection(db, 'users', user.id, 'goals'),
-      orderBy('createdAt', 'desc')
+      // Prefer server timestamp if present; client fallback handled after snapshot
+      orderBy('createdAtClient', 'desc')
     );
 
     const unsubscribe = onSnapshot(goalsQuery, async (snapshot) => {
@@ -182,7 +183,12 @@ export default function HomeScreen() {
           return Array.from(new Map(goals.map(g => [g.id, g])).values());
         };
 
-        const processedGoals = dedupeGoals(goalsWithProgress);
+        // Client-side sort using client timestamp fallback
+        const processedGoals = dedupeGoals(goalsWithProgress).sort((a: any, b: any) => {
+          const aTs = a.createdAtClient?.toMillis?.() ?? a.createdAt?.getTime?.() ?? 0;
+          const bTs = b.createdAtClient?.toMillis?.() ?? b.createdAt?.getTime?.() ?? 0;
+          return bTs - aTs;
+        });
         console.log('[GOAL:list:ids]', processedGoals.map(d => d.id).slice(0, 10));
         setGoals(processedGoals);
         setLoading(false);
