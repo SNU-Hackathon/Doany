@@ -745,6 +745,8 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         }}
         onNavigateToStep={goToStep}
         onWeeklyScheduleChange={handleWeeklyScheduleChange}
+        verificationMethods={formData.verificationMethods}
+        onVerificationMethodsChange={(methods) => setFormData(prev => ({ ...prev, verificationMethods: methods }))}
       />
     </View>
   );
@@ -1079,6 +1081,8 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
             onEndDateChange={(date) => setFormData(prev => ({ ...prev, duration: { ...prev.duration, endDate: date } }))}
             onNavigateToStep={goToStep}
             onWeeklyScheduleChange={handleWeeklyScheduleChange}
+            verificationMethods={formData.verificationMethods}
+            onVerificationMethodsChange={(methods) => setFormData(prev => ({ ...prev, verificationMethods: methods }))}
           />
         );
       case 'location':

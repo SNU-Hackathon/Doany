@@ -12,6 +12,7 @@ import {
   View
 } from 'react-native';
 import { convertDurationToRange } from '../features/goals/aiDraft';
+import { VerificationType } from '../types';
 
 export interface DateSelection {
   mode: 'duration';
@@ -28,6 +29,8 @@ interface SimpleDatePickerProps {
   onEndDateChange: (date: string) => void;
   onNavigateToStep: (stepIndex: number) => void;
   onWeeklyScheduleChange?: (weekdays: Set<number>, timeSettings: { [key: string]: string[] }) => void;
+  verificationMethods?: VerificationType[];
+  onVerificationMethodsChange?: (methods: VerificationType[]) => void;
 }
 
 export default function SimpleDatePicker({
@@ -36,7 +39,9 @@ export default function SimpleDatePicker({
   onStartDateChange,
   onEndDateChange,
   onNavigateToStep,
-  onWeeklyScheduleChange
+  onWeeklyScheduleChange,
+  verificationMethods = [],
+  onVerificationMethodsChange
 }: SimpleDatePickerProps) {
   const today = new Date().toISOString().split('T')[0];
 
@@ -254,6 +259,14 @@ export default function SimpleDatePicker({
   const calendarDays = generateCalendarDays();
 
   const dayShort = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  // Verification Methods (bottom section)
+  const allMethods: VerificationType[] = ['location', 'time', 'screentime', 'manual'];
+  const toggleMethod = (method: VerificationType) => {
+    const set = new Set(verificationMethods);
+    if (set.has(method)) set.delete(method); else set.add(method);
+    onVerificationMethodsChange?.(Array.from(set));
+  };
 
   return (
     <View className="bg-white rounded-lg p-4 mx-0 my-4">
@@ -478,6 +491,27 @@ export default function SimpleDatePicker({
           )}
         </View>
       )}
+
+      {/* Verification Methods */}
+      <View className="mb-4 p-4 bg-white rounded-lg border border-gray-200">
+        <Text className="text-gray-800 font-semibold text-lg mb-3">Verification Methods</Text>
+        <View className="flex-row flex-wrap gap-2">
+          {allMethods.map((m) => {
+            const selected = verificationMethods?.includes(m);
+            return (
+              <TouchableOpacity
+                key={m}
+                onPress={() => toggleMethod(m)}
+                className={`px-3 py-2 rounded-full border ${selected ? 'bg-blue-600 border-blue-600' : 'bg-white border-gray-300'}`}
+                activeOpacity={0.8}
+              >
+                <Text className={`${selected ? 'text-white' : 'text-gray-700'} font-medium`}>{m.charAt(0).toUpperCase() + m.slice(1)}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+        <Text className="text-xs text-gray-500 mt-2">Select one or more methods to verify your progress.</Text>
+      </View>
 
       {/* Navigation Buttons */}
       <View className="flex-row space-x-3">
