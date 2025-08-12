@@ -20,8 +20,8 @@ import { CreateGoalProvider, useCreateGoal } from '../features/createGoal/state'
 import { AIGoalDraft, mergeAIGoal, updateDraftWithDates, validateAIGoal } from '../features/goals/aiDraft';
 import { useAuth } from '../hooks/useAuth';
 import { AIService } from '../services/ai';
-import { getPlaceDetails, searchPlaces } from '../services/places';
 import { GoalService } from '../services/goalService';
+import { getPlaceDetails, searchPlaces } from '../services/places';
 import { CreateGoalForm, GoalDuration, GoalFrequency, TargetLocation } from '../types';
 import MapPreview from './MapPreview';
 import SimpleDatePicker, { DateSelection } from './SimpleDatePicker';
@@ -987,31 +987,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
           <View className="flex-row space-x-3">
             <TouchableOpacity
               className="flex-1 bg-blue-500 rounded-lg p-3 flex-row items-center justify-center"
-              onPress={() => {
-                console.log('[NAV] Attempting to navigate to LocationPicker');
-                console.log('[NAV] routes:', navigation.getState()?.routeNames);
-                // Try to navigate using parent navigator since CreateGoal is inside tabs
-                const parentNav = navigation.getParent();
-                if (parentNav) {
-                  console.log('[NAV] Using parent navigator');
-                  parentNav.navigate('LocationPicker', { 
-                    returnTo: 'CreateGoal',
-                    onSelect: (location: TargetLocation) => {
-                      console.log('[CreateGoal] Location selected:', location);
-                      setFormData(prev => ({ ...prev, targetLocation: location }));
-                    }
-                  });
-                } else {
-                  console.log('[NAV] Using direct navigation');
-                  navigation.navigate('LocationPicker', { 
-                    returnTo: 'CreateGoal',
-                    onSelect: (location: TargetLocation) => {
-                      console.log('[CreateGoal] Location selected:', location);
-                      setFormData(prev => ({ ...prev, targetLocation: location }));
-                    }
-                  });
-                }
-              }}
+              onPress={openLocationPicker}
             >
               <Ionicons name="search" size={20} color="white" />
               <Text className="text-white font-semibold ml-2">Search</Text>
