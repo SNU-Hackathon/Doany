@@ -153,6 +153,8 @@ export interface AIGoal {
   notes?: string;
   missingFields?: string[];
   followUpQuestion?: string;
+  needsWeeklySchedule?: boolean;
+  weeklySchedule?: { [key: string]: string }; // Day-specific time settings (e.g., { "monday": "09:00", "wednesday": "14:00" })
 }
 
 export interface AIContext {
@@ -179,4 +181,8 @@ export interface CreateGoalForm {
   timeFrame?: TimeFrame;
   startDate?: Date;
   endDate?: Date;
+  
+  // Weekly schedule support
+  needsWeeklySchedule?: boolean;
+  weeklySchedule?: { [key: string]: string };
 }

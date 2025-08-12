@@ -27,6 +27,8 @@ export interface AIGoalDraft {
   missingFields?: string[];   // computed via validator
   followUpQuestion?: string;  // not used for dates when picker is visible
   lastAskedField?: string;    // track what we last asked to avoid re-asking
+  needsWeeklySchedule?: boolean; // AI determines if weekly schedule is needed
+  weeklySchedule?: { [key: string]: string };
 }
 
 /**
@@ -46,6 +48,7 @@ export function mergeAIGoal(draft: AIGoalDraft, incoming: Partial<AIGoalDraft>):
   if (incoming.targetLocation) merged.targetLocation = { ...merged.targetLocation, ...incoming.targetLocation };
   if (incoming.notes?.trim()) merged.notes = incoming.notes.trim();
   if (incoming.lastAskedField) merged.lastAskedField = incoming.lastAskedField;
+  if (incoming.needsWeeklySchedule !== undefined) merged.needsWeeklySchedule = incoming.needsWeeklySchedule;
 
   // Always recompute validation after merge
   const validation = validateAIGoal(merged);

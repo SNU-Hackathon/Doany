@@ -4,12 +4,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
 import { useNavigation } from '@react-navigation/native';
 import * as Location from 'expo-location';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   FlatList,
   Modal,
+  ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
@@ -17,12 +18,7 @@ import {
 } from 'react-native';
 import { Categories } from '../constants';
 import { CreateGoalProvider, useCreateGoal } from '../features/createGoal/state';
-import {
-  AIGoalDraft,
-  mergeAIGoal,
-  updateDraftWithDates,
-  validateAIGoal
-} from '../features/goals/aiDraft';
+import { AIGoalDraft, mergeAIGoal, updateDraftWithDates, validateAIGoal } from '../features/goals/aiDraft';
 import { useAuth } from '../hooks/useAuth';
 import { AIService } from '../services/ai';
 import { GoalService } from '../services/goalService';
@@ -67,8 +63,26 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
   const [aiContext, setAiContext] = useState<any>(null);
   const [followUpQuestion, setFollowUpQuestion] = useState<string>('');
   const [aiDraft, setAiDraft] = useState<AIGoalDraft>({});
+  const [rememberedPrompt, setRememberedPrompt] = useState(''); // Remember the original AI prompt
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [backgroundTaskProgress, setBackgroundTaskProgress] = useState<string>('');
+  const [selectedCategory, setSelectedCategory] = useState(0); // 0 for all
+  const [filteredExamples, setFilteredExamples] = useState<string[]>(AIService.getExamplePrompts());
+  const [weeklyScheduleData, setWeeklyScheduleData] = useState<{
+    weekdays: Set<number>;
+    timeSettings: { [key: string]: string };
+  }>({ weekdays: new Set(), timeSettings: {} });
+
+  // Handle weekly schedule changes
+  const handleWeeklyScheduleChange = useCallback((weekdays: Set<number>, timeSettings: { [key: string]: string }) => {
+    // Only update and log if there are actual changes
+    const hasChanges = weekdays.size > 0 || Object.keys(timeSettings).length > 0;
+    
+    if (hasChanges) {
+      setWeeklyScheduleData({ weekdays, timeSettings });
+      console.log('[CreateGoalModal] Weekly schedule updated:', { weekdays: Array.from(weekdays), timeSettings });
+    }
+  }, []);
 
   // Refs for cleanup
   const mountedRef = useRef(true);
@@ -106,18 +120,67 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     if (stepIndex >= 0 && stepIndex < STEPS.length) {
       console.log('[Stepper] Moving to step:', stepIndex, STEPS[stepIndex].title);
       actions.setStep(stepIndex);
+      
+      // Update app state based on the step we're moving to
+      switch (stepIndex) {
+        case 0: // AI Assistant
+          setAppState('IDLE');
+          setShowDatePicker(false);
+          // Clear follow-up question and reset AI state when returning to AI Assistant
+          setFollowUpQuestion('');
+          setLoading(false);
+          // Restore the remembered prompt when returning to AI Assistant
+          if (rememberedPrompt) {
+            setAiPrompt(rememberedPrompt);
+          }
+          break;
+        case 1: // Schedule
+          setAppState('NEEDS_DATES');
+          setShowDatePicker(true);
+          break;
+        case 2: // Review
+          setAppState('READY_TO_REVIEW');
+          setShowDatePicker(false);
+          break;
+      }
     }
   };
 
   const nextStep = () => {
     if (state.step < STEPS.length - 1) {
-      actions.next();
+      const nextStepIndex = state.step + 1;
+      actions.setStep(nextStepIndex);
+      
+      // Update app state based on the next step
+      switch (nextStepIndex) {
+        case 1: // Schedule
+          setAppState('NEEDS_DATES');
+          setShowDatePicker(true);
+          break;
+        case 2: // Review
+          setAppState('READY_TO_REVIEW');
+          setShowDatePicker(false);
+          break;
+      }
     }
   };
 
   const prevStep = () => {
     if (state.step > 0) {
-      actions.prev();
+      const prevStepIndex = state.step - 1;
+      actions.setStep(prevStepIndex);
+      
+      // Update app state based on the previous step
+      switch (prevStepIndex) {
+        case 0: // AI Assistant
+          setAppState('IDLE');
+          setShowDatePicker(false);
+          break;
+        case 1: // Schedule
+          setAppState('NEEDS_DATES');
+          setShowDatePicker(true);
+          break;
+      }
     }
   };
 
@@ -188,6 +251,9 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     console.time('[CreateGoalModal] AI Generation');
     console.log('[CreateGoalModal] Starting AI generation:', aiPrompt);
 
+    // Remember the prompt for future reference
+    setRememberedPrompt(aiPrompt.trim());
+
     try {
       setAppState('GENERATING');
       setLoading(true);
@@ -233,6 +299,10 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         setFollowUpQuestion(validation.followUpQuestion || 'Please select your start date and duration using the calendar below.');
         setAppState('NEEDS_DATES');
         setShowDatePicker(true);
+        // Automatically move to Schedule step
+        actions.setStep(1);
+        // Clear the follow-up question since we're moving to the next step
+        setFollowUpQuestion('');
       } else if (validation.missingFields && validation.missingFields.length > 0) {
         if (validation.missingFields.includes('targetLocation')) {
           setFollowUpQuestion(validation.followUpQuestion || 'Please select a location for your goal.');
@@ -513,14 +583,15 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     <View style={{ marginBottom: 24, backgroundColor: '#EFF6FF', borderRadius: 8, padding: 16, borderWidth: 1, borderColor: '#BFDBFE' }}>
       <Text style={{ color: '#1D4ED8', fontWeight: '600', marginBottom: 12 }}>🤖 AI Goal Assistant</Text>
       
-      {followUpQuestion && (
+      {/* Only show follow-up question when not in AI Assistant step */}
+      {followUpQuestion && state.step !== 0 && (
         <View className="mb-3 bg-blue-100 rounded-lg p-3">
           <Text className="text-blue-800 text-sm">{followUpQuestion}</Text>
         </View>
       )}
 
-      {/* Show selected dates as chips */}
-      {(aiDraft.startDate || aiDraft.duration) && (
+      {/* Only show selected dates when not in AI Assistant step */}
+      {state.step !== 0 && (aiDraft.startDate || aiDraft.duration) && (
         <View className="mb-3">
           <Text className="text-blue-700 text-xs mb-2">Selected:</Text>
           <View className="flex-row flex-wrap gap-2">
@@ -595,27 +666,95 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         </TouchableOpacity>
       </View>
 
-      {/* Example prompts - horizontal scroll */}
-              {appState === 'IDLE' && (
-        <View style={{ marginTop: 12 }}>
-          <Text style={{ fontSize: 12, color: '#2563eb', marginBottom: 8 }}>Quick examples:</Text>
-          <View style={{ flexDirection: 'row' }}>
-            {AIService.getExamplePrompts().slice(0, 2).map((example: string, index: number) => (
+      {/* Example prompts - horizontal scroll with categories */}
+      {appState === 'IDLE' && (
+        <View style={{ marginTop: 16 }}>
+          <Text style={{ fontSize: 14, color: '#2563eb', marginBottom: 12, fontWeight: '600' }}>
+            💡 추천 목표 예시 (클릭하여 입력)
+          </Text>
+          
+          {/* Category tabs */}
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+            style={{ marginBottom: 12 }}
+            contentContainerStyle={{ paddingHorizontal: 4 }}
+          >
+            {['전체', '건강', '학습', '업무', '개발', '재정'].map((category, index) => (
+              <TouchableOpacity
+                key={category}
+                onPress={() => {
+                  // Filter examples by category
+                  const categoryExamples = {
+                    '전체': AIService.getExamplePrompts(),
+                    '건강': AIService.getExamplePrompts().slice(0, 8),
+                    '학습': AIService.getExamplePrompts().slice(8, 16),
+                    '업무': AIService.getExamplePrompts().slice(16, 24),
+                    '개발': AIService.getExamplePrompts().slice(24, 32),
+                    '재정': AIService.getExamplePrompts().slice(32, 40)
+                  };
+                  setSelectedCategory(index);
+                  setFilteredExamples(categoryExamples[category as keyof typeof categoryExamples]);
+                }}
+                style={{
+                  backgroundColor: selectedCategory === index ? '#2563eb' : '#e5e7eb',
+                  paddingHorizontal: 16,
+                  paddingVertical: 8,
+                  borderRadius: 20,
+                  marginRight: 8,
+                  borderWidth: 1,
+                  borderColor: selectedCategory === index ? '#2563eb' : '#d1d5db'
+                }}
+              >
+                <Text style={{
+                  color: selectedCategory === index ? 'white' : '#6b7280',
+                  fontSize: 12,
+                  fontWeight: selectedCategory === index ? '600' : '500'
+                }}>
+                  {category}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+          
+          {/* Example prompts horizontal scroll */}
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+            style={{ maxHeight: 120 }}
+            contentContainerStyle={{ paddingHorizontal: 4 }}
+          >
+            {(filteredExamples.length > 0 ? filteredExamples : AIService.getExamplePrompts()).map((example: string, index: number) => (
               <TouchableOpacity
                 key={index}
                 onPress={() => setAiPrompt(example)}
                 style={{
                   backgroundColor: '#dbeafe',
-                  borderRadius: 16,
-                  paddingHorizontal: 12,
-                  paddingVertical: 4,
-                  marginRight: 8
+                  borderRadius: 12,
+                  paddingHorizontal: 16,
+                  paddingVertical: 10,
+                  marginRight: 12,
+                  borderWidth: 1,
+                  borderColor: '#93c5fd',
+                  minWidth: 140,
+                  maxWidth: 180
                 }}
               >
-                <Text style={{ color: '#1d4ed8', fontSize: 12 }}>{example}</Text>
+                <Text 
+                  style={{ 
+                    color: '#1e40af', 
+                    fontSize: 12, 
+                    fontWeight: '500',
+                    textAlign: 'center',
+                    lineHeight: 16
+                  }}
+                  numberOfLines={3}
+                >
+                  {example}
+                </Text>
               </TouchableOpacity>
             ))}
-          </View>
+          </ScrollView>
         </View>
       )}
     </View>
@@ -624,10 +763,46 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
   const renderDatePickerSection = () => (
     <View style={{ marginBottom: 24 }}>
       <SimpleDatePicker
-        onConfirm={handleDateSelection}
-        onCancel={handleDatePickerCancel}
-        initialStartDate={aiDraft.startDate}
-        initialEndDate={aiDraft.duration?.endDate}
+        startDate={aiDraft.startDate || null}
+        endDate={aiDraft.duration?.endDate || null}
+        onStartDateChange={(date) => {
+          // Update AI draft with new start date
+          setAiDraft(prev => ({ ...prev, startDate: date }));
+        }}
+        onEndDateChange={(date) => {
+          // Update AI draft with new end date
+          setAiDraft(prev => ({ 
+            ...prev, 
+            duration: { ...prev.duration, endDate: date } 
+          }));
+        }}
+        onNavigateToStep={goToStep}
+        autoExpandWeeklySchedule={aiDraft.needsWeeklySchedule || false}
+        aiGoal={aiDraft.title ? {
+          title: aiDraft.title,
+          category: aiDraft.category || 'Personal',
+          verificationMethods: aiDraft.verificationMethods || [],
+          frequency: {
+            count: aiDraft.frequency?.count || 1,
+            unit: aiDraft.frequency?.unit || 'per_day'
+          },
+          duration: {
+            type: aiDraft.duration?.type || 'weeks',
+            value: aiDraft.duration?.value || 2,
+            startDate: aiDraft.duration?.startDate || new Date().toISOString(),
+            endDate: aiDraft.duration?.endDate
+          },
+          targetLocation: aiDraft.targetLocation ? {
+            name: aiDraft.targetLocation.name || '',
+            lat: aiDraft.targetLocation.lat || 0,
+            lng: aiDraft.targetLocation.lng || 0,
+            placeId: aiDraft.targetLocation.placeId
+          } : undefined,
+          notes: aiDraft.notes,
+          needsWeeklySchedule: aiDraft.needsWeeklySchedule,
+          weeklySchedule: aiDraft.weeklySchedule
+        } : undefined}
+        onWeeklyScheduleChange={handleWeeklyScheduleChange}
       />
     </View>
   );
@@ -954,7 +1129,41 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       case 'ai':
         return renderAISection();
       case 'datePicker':
-        return renderDatePickerSection();
+        return (
+          <SimpleDatePicker
+            startDate={formData.duration?.startDate || null}
+            endDate={formData.duration?.endDate || null}
+            onStartDateChange={(date) => setFormData(prev => ({ ...prev, duration: { ...prev.duration, startDate: date } }))}
+            onEndDateChange={(date) => setFormData(prev => ({ ...prev, duration: { ...prev.duration, endDate: date } }))}
+            onNavigateToStep={goToStep}
+            autoExpandWeeklySchedule={formData.needsWeeklySchedule}
+            aiGoal={aiDraft.title ? {
+              title: aiDraft.title,
+              category: aiDraft.category || 'Personal',
+              verificationMethods: aiDraft.verificationMethods || [],
+              frequency: {
+                count: aiDraft.frequency?.count || 1,
+                unit: aiDraft.frequency?.unit || 'per_day'
+              },
+              duration: {
+                type: aiDraft.duration?.type || 'weeks',
+                value: aiDraft.duration?.value || 2,
+                startDate: aiDraft.duration?.startDate || new Date().toISOString(),
+                endDate: aiDraft.duration?.endDate
+              },
+              targetLocation: aiDraft.targetLocation ? {
+                name: aiDraft.targetLocation.name || '',
+                lat: aiDraft.targetLocation.lat || 0,
+                lng: aiDraft.targetLocation.lng || 0,
+                placeId: aiDraft.targetLocation.placeId
+              } : undefined,
+              notes: aiDraft.notes,
+              needsWeeklySchedule: aiDraft.needsWeeklySchedule,
+              weeklySchedule: aiDraft.weeklySchedule
+            } : undefined}
+            onWeeklyScheduleChange={handleWeeklyScheduleChange}
+          />
+        );
       case 'location':
         return renderLocationSection();
       case 'manualForm':
@@ -964,24 +1173,33 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     }
   };
 
-  // Build sections array based on current state
+  // Build sections array based on current state and step
   const getSections = () => {
     const sections = [];
 
-    if (appState === 'IDLE' || appState === 'GENERATING' || appState === 'NEEDS_INFO') {
-      sections.push({ type: 'ai', key: 'ai-section' });
-    }
-
-    if (appState === 'NEEDS_DATES' && showDatePicker) {
-      sections.push({ type: 'datePicker', key: 'date-picker-section' });
-    }
-
-    if (appState === 'NEEDS_LOCATION') {
-      sections.push({ type: 'location', key: 'location-section' });
-    }
-
-    if (appState === 'READY_TO_REVIEW') {
-      sections.push({ type: 'manualForm', key: 'manual-form-section' });
+    // Render based on current step, not just appState
+    switch (state.step) {
+      case 0: // AI Assistant
+        sections.push({ type: 'ai', key: 'ai-section' });
+        break;
+      case 1: // Schedule
+        sections.push({ type: 'datePicker', key: 'date-picker-section' });
+        break;
+      case 2: // Review
+        sections.push({ type: 'manualForm', key: 'manual-form-section' });
+        break;
+      default:
+        // Fallback to appState-based rendering for backward compatibility
+        if (appState === 'IDLE' || appState === 'GENERATING' || appState === 'NEEDS_INFO') {
+          sections.push({ type: 'ai', key: 'ai-section' });
+        } else if (appState === 'NEEDS_DATES' && showDatePicker) {
+          sections.push({ type: 'datePicker', key: 'date-picker-section' });
+        } else if (appState === 'NEEDS_LOCATION') {
+          sections.push({ type: 'location', key: 'location-section' });
+        } else if (appState === 'READY_TO_REVIEW') {
+          sections.push({ type: 'manualForm', key: 'manual-form-section' });
+        }
+        break;
     }
 
     return sections;
@@ -1021,29 +1239,17 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
             </TouchableOpacity>
           </View>
           
-          {/* Stepper Progress with Back Button */}
-          <View className="flex-row items-center justify-between mb-4">
-            {/* Back Button */}
-            {state.step > 0 && (
-              <TouchableOpacity 
-                onPress={() => actions.prev()}
-                className="flex-row items-center px-3 py-2 bg-gray-100 rounded-lg"
+          {/* Stepper Progress - Fixed position for all steps */}
+          <View className="flex-row items-center justify-center mb-6">
+            {STEPS.map((step, index) => (
+              <TouchableOpacity
+                key={step.id}
+                onPress={() => actions.setStep(index)}
+                disabled={index > state.step}
+                className="flex-row items-center"
               >
-                <Ionicons name="chevron-back" size={16} color="#6B7280" />
-                <Text className="text-gray-600 text-sm ml-1">Back</Text>
-              </TouchableOpacity>
-            )}
-            
-            {/* Step Indicators */}
-            <View className="flex-row items-center flex-1 justify-center">
-              {STEPS.map((step, index) => (
-                <TouchableOpacity
-                  key={step.id}
-                  onPress={() => actions.setStep(index)}
-                  disabled={index > state.step}
-                  className="flex-row items-center mx-2"
-                >
-                  <View className={`w-8 h-8 rounded-full items-center justify-center ${
+                <View className="flex-col items-center">
+                  <View className={`w-10 h-10 rounded-full items-center justify-center ${
                     index <= state.step ? 'bg-blue-600' : 'bg-gray-300'
                   }`}>
                     <Text className={`text-sm font-semibold ${
@@ -1052,20 +1258,32 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
                       {index + 1}
                     </Text>
                   </View>
-                  <Text className="text-gray-600 text-xs mt-1 text-center ml-2" numberOfLines={1}>
+                  <Text className="text-gray-600 text-xs mt-2 text-center" numberOfLines={1}>
                     {step.title}
                   </Text>
-                  {index < STEPS.length - 1 && (
-                    <View className={`w-8 h-1 mx-2 ${
-                      index < state.step ? 'bg-blue-600' : 'bg-gray-300'
+                </View>
+                {/* Add spacing between steps */}
+                {index < STEPS.length - 1 && <View className="w-16" />}
+              </TouchableOpacity>
+            ))}
+          </View>
+          
+          {/* Thin progress bar below stepper - 3 connected bars without circles */}
+          <View className="flex-row items-center justify-center mb-6">
+            <View className="flex-row items-center">
+              {[0, 1, 2].map((stepIndex) => (
+                <React.Fragment key={stepIndex}>
+                  <View className={`w-20 h-1 ${
+                    stepIndex <= state.step ? 'bg-blue-600' : 'bg-gray-300'
+                  }`} />
+                  {stepIndex < 2 && (
+                    <View className={`w-1 h-1 mx-1 rounded-full ${
+                      stepIndex < state.step ? 'bg-blue-600' : 'bg-gray-300'
                     }`} />
                   )}
-                </TouchableOpacity>
+                </React.Fragment>
               ))}
             </View>
-            
-            {/* Spacer for Back button */}
-            {state.step === 0 && <View className="w-20" />}
           </View>
         </View>
 

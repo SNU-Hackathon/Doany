@@ -297,13 +297,20 @@ If ANY of these are unclear, add to missingFields and ask followUpQuestion:
 
       // Detect verification methods
       if (lowerPrompt.includes('gym') || lowerPrompt.includes('location') || 
-          lowerPrompt.includes('place') || lowerPrompt.includes('office')) {
+          lowerPrompt.includes('place') || lowerPrompt.includes('office') || 
+          lowerPrompt.includes('cafe') || lowerPrompt.includes('park') || 
+          lowerPrompt.includes('library') || lowerPrompt.includes('studio') ||
+          lowerPrompt.includes('home')) {
         verificationMethods.push('location');
         missingFields.push('targetLocation');
       }
 
       if (lowerPrompt.includes('time') || lowerPrompt.includes('am') || 
-          lowerPrompt.includes('pm') || /\d+:\d+/.test(lowerPrompt)) {
+          lowerPrompt.includes('pm') || /\d+:\d+/.test(lowerPrompt) ||
+          lowerPrompt.includes('schedule') || lowerPrompt.includes('morning') ||
+          lowerPrompt.includes('evening') || lowerPrompt.includes('night') ||
+          lowerPrompt.includes('daily') || lowerPrompt.includes('weekly') ||
+          lowerPrompt.includes('hour') || lowerPrompt.includes('o\'clock')) {
         verificationMethods.push('time');
       }
 
@@ -335,6 +342,92 @@ If ANY of these are unclear, add to missingFields and ask followUpQuestion:
         missingFields.push('duration');
       }
 
+      // Determine if weekly schedule is needed
+      const needsWeeklySchedule = lowerPrompt.includes('week') || 
+                                 lowerPrompt.includes('weekly') || 
+                                 lowerPrompt.includes('monday') || 
+                                 lowerPrompt.includes('tuesday') || 
+                                 lowerPrompt.includes('wednesday') || 
+                                 lowerPrompt.includes('thursday') || 
+                                 lowerPrompt.includes('friday') || 
+                                 lowerPrompt.includes('saturday') || 
+                                 lowerPrompt.includes('sunday') ||
+                                 (frequency.unit === 'per_week' && frequency.count > 1);
+
+      // Extract specific day and time information for weekly schedule
+      let weeklySchedule: { [key: string]: string } = {};
+      if (needsWeeklySchedule) {
+        const dayTimePatterns = [
+          { day: 'monday', regex: /monday\s*(\d{1,2}):?(\d{2})?\s*(am|pm)?/i },
+          { day: 'tuesday', regex: /tuesday\s*(\d{1,2}):?(\d{2})?\s*(am|pm)?/i },
+          { day: 'wednesday', regex: /wednesday\s*(\d{1,2}):?(\d{2})?\s*(am|pm)?/i },
+          { day: 'thursday', regex: /thursday\s*(\d{1,2}):?(\d{2})?\s*(am|pm)?/i },
+          { day: 'friday', regex: /friday\s*(\d{1,2}):?(\d{2})?\s*(am|pm)?/i },
+          { day: 'saturday', regex: /saturday\s*(\d{1,2}):?(\d{2})?\s*(am|pm)?/i },
+          { day: 'sunday', regex: /sunday\s*(\d{1,2}):?(\d{2})?\s*(am|pm)?/i },
+        ];
+
+        // Also check for Korean day names
+        const koreanDayTimePatterns = [
+          { day: 'monday', regex: /월요일\s*(\d{1,2})시?/i },
+          { day: 'tuesday', regex: /화요일\s*(\d{1,2})시?/i },
+          { day: 'wednesday', regex: /수요일\s*(\d{1,2})시?/i },
+          { day: 'thursday', regex: /목요일\s*(\d{1,2})시?/i },
+          { day: 'friday', regex: /금요일\s*(\d{1,2})시?/i },
+          { day: 'saturday', regex: /토요일\s*(\d{1,2})시?/i },
+          { day: 'sunday', regex: /일요일\s*(\d{1,2})시?/i },
+        ];
+
+        // Check English patterns
+        dayTimePatterns.forEach(({ day, regex }) => {
+          const match = lowerPrompt.match(regex);
+          if (match) {
+            let hour = parseInt(match[1]);
+            const minute = match[2] ? parseInt(match[2]) : 0;
+            const ampm = match[3]?.toLowerCase();
+            
+            // Convert to 24-hour format
+            if (ampm === 'pm' && hour !== 12) hour += 12;
+            if (ampm === 'am' && hour === 12) hour = 0;
+            
+            const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+            weeklySchedule[day] = timeString;
+          }
+        });
+
+        // Check Korean patterns
+        koreanDayTimePatterns.forEach(({ day, regex }) => {
+          const match = lowerPrompt.match(regex);
+          if (match) {
+            let hour = parseInt(match[1]);
+            const timeString = `${hour.toString().padStart(2, '0')}:00`;
+            weeklySchedule[day] = timeString;
+          }
+        });
+
+        // Check for general time patterns without specific days
+        if (Object.keys(weeklySchedule).length === 0) {
+          const timeMatch = lowerPrompt.match(/(\d{1,2}):?(\d{2})?\s*(am|pm)?/);
+          if (timeMatch) {
+            let hour = parseInt(timeMatch[1]);
+            const minute = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+            const ampm = timeMatch[3]?.toLowerCase();
+            
+            if (ampm === 'pm' && hour !== 12) hour += 12;
+            if (ampm === 'am' && hour === 12) hour = 0;
+            
+            const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+            
+            // If no specific days mentioned but weekly pattern exists, apply to common weekdays
+            if (lowerPrompt.includes('week') || lowerPrompt.includes('weekly')) {
+              weeklySchedule['monday'] = timeString;
+              weeklySchedule['wednesday'] = timeString;
+              weeklySchedule['friday'] = timeString;
+            }
+          }
+        }
+      }
+
       // Generate follow-up question
       if (missingFields.length > 0) {
         const missing = missingFields.join(', ');
@@ -354,7 +447,9 @@ If ANY of these are unclear, add to missingFields and ask followUpQuestion:
         },
         notes: prompt,
         missingFields: missingFields.length > 0 ? missingFields : undefined,
-        followUpQuestion: followUpQuestion || undefined
+        followUpQuestion: followUpQuestion || undefined,
+        needsWeeklySchedule,
+        weeklySchedule
       };
 
       console.log('[AI] Local heuristic result:', goal);
@@ -499,16 +594,59 @@ If ANY of these are unclear, add to missingFields and ask followUpQuestion:
   }
 
   /**
-   * Get example prompts for user inspiration
+   * Get example prompts for different goal categories
    */
   static getExamplePrompts(): string[] {
     return [
-      "Go to the gym 3 times a week",
-      "Read for 30 minutes daily",
-      "Meditate for 10 minutes every morning",
-      "Walk 10,000 steps per day",
-      "Learn Spanish for 1 hour daily",
-      "Drink 8 glasses of water daily"
+      // Fitness & Health
+      'Go to the gym 3 times a week',
+      'Run 5km every morning',
+      'Practice yoga for 30 minutes daily',
+      'Swim twice a week',
+      'Do 100 push-ups daily',
+      'Walk 10,000 steps every day',
+      'Meditate for 20 minutes before bed',
+      'Drink 8 glasses of water daily',
+      
+      // Learning & Education
+      'Read 30 minutes every day',
+      'Learn Spanish for 1 hour daily',
+      'Practice piano for 45 minutes daily',
+      'Study coding for 2 hours every weekend',
+      'Write 500 words daily',
+      'Watch one educational video daily',
+      'Learn to cook 3 new recipes per week',
+      'Practice drawing for 1 hour daily',
+      
+      // Work & Productivity
+      'Complete 3 important tasks daily',
+      'Review and plan next day every evening',
+      'Take a 5-minute break every hour',
+      'Organize workspace every Friday',
+      'Learn one new skill per month',
+      'Network with 2 new people weekly',
+      'Update portfolio every month',
+      'Track time spent on projects daily',
+      
+      // Personal Development
+      'Journal for 15 minutes daily',
+      'Call family members weekly',
+      'Try one new hobby per month',
+      'Practice gratitude every morning',
+      'Learn to play guitar for 1 hour daily',
+      'Visit one new place monthly',
+      'Volunteer 4 hours per month',
+      'Practice public speaking weekly',
+      
+      // Financial Goals
+      'Save $100 every week',
+      'Track all expenses daily',
+      'Invest 10% of income monthly',
+      'Review budget every Sunday',
+      'Cook meals at home 5 days a week',
+      'Cancel unused subscriptions monthly',
+      'Read one finance book per month',
+      'Set aside emergency fund weekly'
     ];
   }
 }

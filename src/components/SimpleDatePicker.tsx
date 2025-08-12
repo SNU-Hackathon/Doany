@@ -1,15 +1,15 @@
-// Simple Date Picker Component - Fallback without external dependencies
+// Simple Date Picker Component - Schedule Step with Calendar
 
 import { Ionicons } from '@expo/vector-icons';
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  Alert,
   Text,
   TextInput,
   TouchableOpacity,
   View
 } from 'react-native';
 import { convertDurationToRange } from '../features/goals/aiDraft';
+import { AIGoal } from '../types';
 
 export interface DateSelection {
   mode: 'duration';
@@ -20,21 +20,28 @@ export interface DateSelection {
 }
 
 interface SimpleDatePickerProps {
-  onConfirm: (selection: DateSelection) => void;
-  onCancel: () => void;
-  initialStartDate?: string;
-  initialEndDate?: string;
+  startDate: string | null;
+  endDate: string | null;
+  onStartDateChange: (date: string) => void;
+  onEndDateChange: (date: string) => void;
+  onNavigateToStep: (stepIndex: number) => void;
+  autoExpandWeeklySchedule?: boolean;
+  aiGoal?: AIGoal;
+  onWeeklyScheduleChange?: (weekdays: Set<number>, timeSettings: { [key: string]: string }) => void;
 }
 
 export default function SimpleDatePicker({
-  onConfirm,
-  onCancel,
-  initialStartDate,
-  initialEndDate
+  startDate: initialStartDate,
+  endDate: initialEndDate,
+  onStartDateChange,
+  onEndDateChange,
+  onNavigateToStep,
+  autoExpandWeeklySchedule = false,
+  aiGoal,
+  onWeeklyScheduleChange
 }: SimpleDatePickerProps) {
   const today = new Date().toISOString().split('T')[0];
   
-  const mode = 'duration'; // Only use duration mode
   const [startDate, setStartDate] = useState(initialStartDate || today);
   const [endDate, setEndDate] = useState(initialEndDate || '');
   const [durationType, setDurationType] = useState<'days' | 'weeks' | 'months'>('weeks');
@@ -43,10 +50,93 @@ export default function SimpleDatePicker({
   // Calendar navigation state
   const [currentMonth, setCurrentMonth] = useState(new Date(startDate || today));
   
-  // Weekday-based goal state
-  const [selectedWeekdays, setSelectedWeekdays] = useState<number[]>([]);
+  // Weekday-based goal state for Weekly Schedule
+  const [selectedWeekdays, setSelectedWeekdays] = useState<Set<number>>(new Set());
   const [selectedTime, setSelectedTime] = useState<string>('10:00');
-  // Removed dateRange state as it's not needed for duration mode
+  
+  // Accordion state for Weekly Schedule - auto-expand if AI suggests it
+  const [showWeeklySchedule, setShowWeeklySchedule] = useState(autoExpandWeeklySchedule);
+  const [weeklyTimeSettings, setWeeklyTimeSettings] = useState<{ [key: string]: string }>({});
+  const [isEditingWeeklySchedule, setIsEditingWeeklySchedule] = useState(false);
+
+  // Use ref to track previous weekly schedule data
+  const prevWeeklyDataRef = useRef<string>('');
+
+  // Initialize weekly schedule from AI data if available
+  useEffect(() => {
+    if (autoExpandWeeklySchedule && aiGoal?.weeklySchedule) {
+      const weekdays = new Set<number>();
+      const timeSettings: { [key: string]: string } = {};
+      
+      // Convert day names to indices and set times
+      Object.entries(aiGoal.weeklySchedule).forEach(([day, time]) => {
+        const dayIndex = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
+          .indexOf(day.toLowerCase());
+        if (dayIndex !== -1) {
+          weekdays.add(dayIndex);
+          timeSettings[dayIndex] = time;
+        }
+      });
+      
+      // Set initial values without triggering callback
+      setSelectedWeekdays(weekdays);
+      setWeeklyTimeSettings(timeSettings);
+      setShowWeeklySchedule(true); // Auto-open when AI suggests it
+      
+      // Update ref to prevent unnecessary callback
+      prevWeeklyDataRef.current = JSON.stringify({ 
+        weekdays: Array.from(weekdays), 
+        timeSettings 
+      });
+    }
+  }, [autoExpandWeeklySchedule, aiGoal?.weeklySchedule]);
+
+  // Auto-open weekly schedule if AI detects time-related information
+  useEffect(() => {
+    if (aiGoal?.title) {
+      const title = aiGoal.title.toLowerCase();
+      const hasTimeInfo = /\d{1,2}:\d{2}|am|pm|morning|evening|night|hour|o'clock/.test(title);
+      const hasDayInfo = /monday|tuesday|wednesday|thursday|friday|saturday|sunday|week|weekly/.test(title);
+      
+      if (hasTimeInfo || hasDayInfo) {
+        setShowWeeklySchedule(true);
+        
+        // Auto-populate with detected information
+        if (aiGoal.weeklySchedule) {
+          const weekdays = new Set<number>();
+          const timeSettings: { [key: string]: string } = {};
+          
+          Object.entries(aiGoal.weeklySchedule).forEach(([day, time]) => {
+            const dayIndex = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
+              .indexOf(day.toLowerCase());
+            if (dayIndex !== -1) {
+              weekdays.add(dayIndex);
+              timeSettings[dayIndex] = time;
+            }
+          });
+          
+          setSelectedWeekdays(weekdays);
+          setWeeklyTimeSettings(timeSettings);
+        }
+      }
+    }
+  }, [aiGoal?.title, aiGoal?.weeklySchedule]);
+
+  // Notify parent component when weekly schedule changes
+  useEffect(() => {
+    if (onWeeklyScheduleChange) {
+      const currentData = JSON.stringify({ 
+        weekdays: Array.from(selectedWeekdays), 
+        timeSettings: weeklyTimeSettings 
+      });
+      
+      // Only notify if data actually changed
+      if (currentData !== prevWeeklyDataRef.current) {
+        prevWeeklyDataRef.current = currentData;
+        onWeeklyScheduleChange(selectedWeekdays, weeklyTimeSettings);
+      }
+    }
+  }, [selectedWeekdays, weeklyTimeSettings, onWeeklyScheduleChange]);
 
   // Calendar navigation functions
   const goToPreviousMonth = () => {
@@ -99,7 +189,7 @@ export default function SimpleDatePicker({
         isPast: dateStr < today,
         isSelected: dateStr === startDate || (endDate && dateStr === endDate),
         isInRange: endDate && dateStr > startDate && dateStr < endDate,
-        isWeekdayGoal: endDate && dateStr >= startDate && dateStr <= endDate && selectedWeekdays.includes(new Date(dateStr).getDay())
+        isWeekdayGoal: endDate && dateStr >= startDate && dateStr <= endDate && selectedWeekdays.has(new Date(dateStr).getDay())
       });
     }
     
@@ -114,24 +204,6 @@ export default function SimpleDatePicker({
     const value = parseInt(durationValue) || 1;
     const range = convertDurationToRange(dateStr, durationType, value);
     setEndDate(range.endDate);
-  };
-
-  const handleConfirm = () => {
-    if (!startDate) {
-      Alert.alert('Invalid Date', 'Please select a start date');
-      return;
-    }
-
-    const selection: DateSelection = {
-      mode: 'duration',
-      startDate,
-      endDate,
-      durationType,
-      durationValue: parseInt(durationValue) || 1
-    };
-
-    console.log('[SimpleDatePicker] Confirming selection:', selection);
-    onConfirm(selection);
   };
 
   const handleDurationChange = (value: string) => {
@@ -155,44 +227,39 @@ export default function SimpleDatePicker({
   const calendarDays = generateCalendarDays();
 
   return (
-    <View className="bg-white rounded-lg border border-gray-200 p-4 m-4">
-      {/* Header */}
-      <View className="flex-row items-center justify-between mb-4">
-        <View className="flex-row items-center">
-          <Ionicons name="calendar" size={20} color="#3B82F6" />
-          <Text className="text-lg font-bold text-gray-800 ml-2">
-            Select Date & Duration
-          </Text>
-        </View>
-        <TouchableOpacity onPress={onCancel}>
-          <Ionicons name="close" size={24} color="#6B7280" />
-        </TouchableOpacity>
+    <View className="bg-white rounded-lg p-4 m-4">
+      {/* Header - Just title text, no box wrapper */}
+      <View className="mb-6">
+        <Text className="text-2xl font-bold text-gray-800 text-center">
+          Schedule
+        </Text>
+        <Text className="text-gray-600 text-center mt-2">
+          Set your goal duration and schedule
+        </Text>
       </View>
 
-      {/* Duration Mode Only */}
-
-      {/* Duration Controls */}
-      <View className="mb-4 p-3 bg-blue-50 rounded-lg">
-          <Text className="text-blue-800 font-semibold mb-2">Duration</Text>
-          <View className="flex-row items-center space-x-2">
+      {/* Duration Controls - Larger size */}
+      <View className="mb-6 p-4 bg-blue-50 rounded-lg">
+          <Text className="text-blue-800 font-semibold text-lg mb-3">Duration</Text>
+          <View className="flex-row items-center space-x-3">
             <TextInput
-              className="bg-white border border-blue-300 rounded-lg px-3 py-2 text-center w-16"
+              className="bg-white border border-blue-300 rounded-lg px-4 py-3 text-center w-20 text-lg"
               value={durationValue}
               onChangeText={handleDurationChange}
               keyboardType="number-pad"
               placeholder="1"
               maxLength={3}
             />
-            <View className="flex-row space-x-1">
+            <View className="flex-row space-x-2">
               {(['days', 'weeks', 'months'] as const).map((type) => (
                 <TouchableOpacity
                   key={type}
-                  className={`px-3 py-2 rounded-lg ${
+                  className={`px-4 py-3 rounded-lg ${
                     durationType === type ? 'bg-blue-600' : 'bg-white border border-blue-300'
                   }`}
                   onPress={() => handleDurationTypeChange(type)}
                 >
-                  <Text className={`text-sm font-semibold ${
+                  <Text className={`text-base font-semibold ${
                     durationType === type ? 'text-white' : 'text-blue-600'
                   }`}>
                     {type}
@@ -202,55 +269,154 @@ export default function SimpleDatePicker({
             </View>
           </View>
           {endDate && (
-            <Text className="text-blue-700 text-sm mt-2">
+            <Text className="text-blue-700 text-base mt-3">
               Will end on: {new Date(endDate).toLocaleDateString()}
             </Text>
           )}
         </View>
 
-        {/* Weekday-based Goal Selection */}
-        <View className="mb-4 p-3 bg-green-50 rounded-lg">
-          <Text className="text-gray-700 font-semibold mb-2">Weekly Schedule (Optional)</Text>
-          <Text className="text-gray-600 text-sm mb-3">Select days and time for recurring goals</Text>
-          
-          {/* Weekday Selection */}
-          <View className="flex-row justify-between mb-3">
-            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, index) => (
-              <TouchableOpacity
-                key={day}
-                onPress={() => {
-                  const newWeekdays = selectedWeekdays.includes(index)
-                    ? selectedWeekdays.filter(d => d !== index)
-                    : [...selectedWeekdays, index];
-                  setSelectedWeekdays(newWeekdays);
-                }}
-                className={`w-10 h-10 rounded-full items-center justify-center ${
-                  selectedWeekdays.includes(index) ? 'bg-green-600' : 'bg-white border border-gray-300'
-                }`}
-              >
-                <Text className={`text-sm font-semibold ${
-                  selectedWeekdays.includes(index) ? 'text-white' : 'text-gray-600'
-                }`}>
-                  {day}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-          
-          {/* Time Selection */}
-          <View className="flex-row items-center space-x-2">
-            <Text className="text-gray-600 text-sm">Time:</Text>
-            <TextInput
-              className="bg-white border border-gray-300 rounded-lg px-3 py-2 flex-1"
-              value={selectedTime}
-              onChangeText={setSelectedTime}
-              placeholder="10:00"
+        {/* Weekly Schedule Section */}
+        <View className="mt-6 bg-white rounded-lg p-4 border border-gray-200">
+          <TouchableOpacity
+            onPress={() => setShowWeeklySchedule(!showWeeklySchedule)}
+            className="flex-row items-center justify-between mb-3"
+          >
+            <View className="flex-row items-center">
+              <Ionicons name="calendar" size={20} color="#059669" />
+              <Text className="text-lg font-semibold text-gray-800 ml-2">Weekly Schedule</Text>
+              {selectedWeekdays.size > 0 && (
+                <View className="bg-green-100 px-2 py-1 rounded-full ml-2">
+                  <Text className="text-green-800 text-xs font-medium">
+                    {selectedWeekdays.size} days
+                  </Text>
+                </View>
+              )}
+            </View>
+            <Ionicons
+              name={showWeeklySchedule ? 'chevron-up' : 'chevron-down'}
+              size={24}
+              color="#6B7280"
             />
-          </View>
+          </TouchableOpacity>
+
+          {showWeeklySchedule && (
+            <View>
+              {!isEditingWeeklySchedule ? (
+                // Display mode - show selected weekdays and times
+                <View>
+                  {selectedWeekdays.size > 0 ? (
+                    <View>
+                      <Text className="text-sm text-gray-600 mb-3">Scheduled days and times:</Text>
+                      <View className="flex-row flex-wrap gap-2 mb-4">
+                        {Array.from(selectedWeekdays).sort().map(dayIndex => {
+                          const dayName = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][dayIndex];
+                          const time = weeklyTimeSettings[dayIndex] || '10:00';
+                          return (
+                            <View key={dayIndex} className="bg-green-100 px-3 py-2 rounded-full flex-row items-center">
+                              <Text className="text-green-800 font-medium mr-2">{dayName}</Text>
+                              <Text className="text-green-600">{time}</Text>
+                            </View>
+                          );
+                        })}
+                      </View>
+                      <TouchableOpacity
+                        onPress={() => setIsEditingWeeklySchedule(true)}
+                        className="bg-blue-500 px-4 py-2 rounded-lg self-start"
+                      >
+                        <Text className="text-white font-medium">Edit Schedule</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <View className="bg-gray-50 rounded-lg p-4 mb-3">
+                      <Text className="text-gray-600 text-center">Please select days and set times</Text>
+                    </View>
+                  )}
+                </View>
+              ) : (
+                // Edit mode - allow setting times for each weekday
+                <View>
+                  <Text className="text-sm text-gray-600 mb-3">Select weekdays and set specific times:</Text>
+                  {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, index) => (
+                    <View key={index} className="flex-row items-center justify-between mb-3 p-3 bg-gray-50 rounded-lg">
+                      <View className="flex-row items-center">
+                        <TouchableOpacity
+                          onPress={() => {
+                            const newWeekdays = new Set(selectedWeekdays);
+                            if (newWeekdays.has(index)) {
+                              newWeekdays.delete(index);
+                              const newTimeSettings = { ...weeklyTimeSettings };
+                              delete newTimeSettings[index];
+                              setWeeklyTimeSettings(newTimeSettings);
+                            } else {
+                              newWeekdays.add(index);
+                              setWeeklyTimeSettings(prev => ({ ...prev, [index]: '10:00' }));
+                            }
+                            setSelectedWeekdays(newWeekdays);
+                          }}
+                          className={`w-6 h-6 rounded-full border-2 items-center justify-center mr-3 ${
+                            selectedWeekdays.has(index) ? 'bg-green-500 border-green-500' : 'border-gray-300'
+                          }`}
+                        >
+                          {selectedWeekdays.has(index) && (
+                            <Ionicons name="checkmark" size={16} color="white" />
+                          )}
+                        </TouchableOpacity>
+                        <Text className="text-gray-800 font-medium w-12">{day}</Text>
+                      </View>
+                      {selectedWeekdays.has(index) && (
+                        <TouchableOpacity
+                          onPress={() => {
+                            // Show time picker for this day
+                            const currentTime = weeklyTimeSettings[index] || '10:00';
+                            // For now, we'll use a simple time input
+                            // In a real app, you'd want a proper time picker
+                            const newTime = prompt(`Set time for ${day} (HH:MM):`, currentTime);
+                            if (newTime) {
+                              // Validate time format
+                              const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
+                              if (timeRegex.test(newTime)) {
+                                setWeeklyTimeSettings(prev => ({ ...prev, [index]: newTime }));
+                              } else {
+                                // Show error message
+                                alert('Please enter time in HH:MM format (e.g., 09:30, 14:00)');
+                              }
+                            }
+                          }}
+                          className="bg-blue-100 px-3 py-2 rounded-lg"
+                        >
+                          <Text className="text-blue-800 font-medium">
+                            {weeklyTimeSettings[index] || '10:00'}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  ))}
+                  <View className="flex-row gap-3 mt-4">
+                    <TouchableOpacity
+                      onPress={() => setIsEditingWeeklySchedule(false)}
+                      className="flex-1 bg-green-500 px-4 py-3 rounded-lg"
+                    >
+                      <Text className="text-white font-medium text-center">Confirm</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setIsEditingWeeklySchedule(false);
+                        setSelectedWeekdays(new Set());
+                        setWeeklyTimeSettings({});
+                      }}
+                      className="flex-1 bg-gray-500 px-4 py-3 rounded-lg"
+                    >
+                      <Text className="text-white font-medium text-center">Clear All</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+            </View>
+          )}
         </View>
 
-      {/* Simple Calendar */}
-      <View className="mb-4">
+      {/* Calendar with Duration-based Display */}
+      <View className="mb-6">
         {/* Month/Year Navigation */}
         <View className="flex-row items-center justify-between mb-3">
           <TouchableOpacity
@@ -264,14 +430,9 @@ export default function SimpleDatePicker({
             onPress={() => {
               const currentYear = currentMonth.getFullYear();
               const years = Array.from({ length: 10 }, (_, i) => currentYear - 5 + i);
-              Alert.alert(
-                'Select Year',
-                'Choose a year:',
-                years.map(year => ({
-                  text: year.toString(),
-                  onPress: () => goToYear(year)
-                }))
-              );
+              // Simple year selection - you can enhance this with a proper picker
+              const nextYear = currentYear + 1;
+              goToYear(nextYear);
             }}
             className="px-4 py-2"
           >
@@ -352,71 +513,41 @@ export default function SimpleDatePicker({
         </View>
       </View>
 
-      {/* Manual Date Input as Backup */}
-      <View className="mb-4 p-3 bg-gray-50 rounded-lg">
-        <Text className="text-gray-700 font-semibold mb-2">Or enter dates manually:</Text>
-        <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
-          <View style={{ flex: 1 }}>
-            <Text className="text-gray-600 text-sm mb-1">Start Date</Text>
-            <TextInput
-              className="bg-white border border-gray-300 rounded-lg px-3 py-2"
-              placeholder="YYYY-MM-DD"
-              value={startDate}
-              onChangeText={(text) => {
-                if (/^\d{0,4}-?\d{0,2}-?\d{0,2}$/.test(text)) {
-                  setStartDate(text);
-                }
-              }}
-              style={{ height: 48, lineHeight: 48, paddingVertical: 10 }}
-            />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text className="text-gray-600 text-sm mb-1">End Date</Text>
-            <Text className="text-gray-500 text-xs">Auto-calculated</Text>
-            <TextInput
-              className="bg-white border border-gray-300 rounded-lg px-3 py-2 bg-gray-100"
-              placeholder="YYYY-MM-DD"
-              value={endDate}
-              editable={false}
-              selectTextOnFocus={false}
-              style={{ height: 48, lineHeight: 48, paddingVertical: 10 }}
-            />
-          </View>
-        </View>
-      </View>
-
       {/* Selected Summary with validation */}
       {startDate && (
-        <View className="mb-4 p-3 bg-gray-50 rounded-lg">
-          <Text className="text-gray-700 font-semibold mb-1">Selected:</Text>
-          <Text className="text-gray-600 text-sm">
+        <View className="mb-6 p-4 bg-gray-50 rounded-lg">
+          <Text className="text-gray-700 font-semibold text-lg mb-2">Selected:</Text>
+          <Text className="text-gray-600 text-base">
             Start: {new Date(startDate).toLocaleDateString()}
           </Text>
           {endDate && (
-            <Text className="text-gray-600 text-sm">
+            <Text className="text-gray-600 text-base">
               End: {new Date(endDate).toLocaleDateString()}
             </Text>
           )}
           {startDate && endDate && endDate < startDate && (
-            <Text className="text-red-600 text-xs mt-1">End date must be after start date.</Text>
+            <Text className="text-red-600 text-sm mt-2">End date must be after start date.</Text>
           )}
         </View>
       )}
 
-      {/* Action Buttons */}
+      {/* Navigation Buttons */}
       <View className="flex-row space-x-3">
         <TouchableOpacity
-          className="flex-1 bg-gray-200 rounded-lg py-3"
-          onPress={onCancel}
+          onPress={() => onNavigateToStep && onNavigateToStep(0)}
+          className="flex-1 bg-gray-200 rounded-lg py-3 flex-row items-center justify-center"
         >
-          <Text className="text-gray-700 font-semibold text-center">Cancel</Text>
+          <Ionicons name="chevron-back" size={16} color="#6B7280" />
+          <Text className="text-gray-700 font-semibold ml-2">Back</Text>
         </TouchableOpacity>
+        
         <TouchableOpacity
-          className="flex-1 bg-blue-600 rounded-lg py-3"
-          onPress={handleConfirm}
+          onPress={() => onNavigateToStep && onNavigateToStep(2)}
+          className="flex-1 bg-blue-600 rounded-lg py-3 flex-row items-center justify-center"
           disabled={!startDate}
         >
-          <Text className="text-white font-semibold text-center">Confirm</Text>
+          <Text className="text-white font-semibold mr-2">Next</Text>
+          <Ionicons name="chevron-forward" size={16} color="white" />
         </TouchableOpacity>
       </View>
     </View>
