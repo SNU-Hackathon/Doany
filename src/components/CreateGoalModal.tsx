@@ -1,7 +1,6 @@
 // Modal component for creating new goals with optimistic UI and performance optimizations
 
 import { Ionicons } from '@expo/vector-icons';
-import { Picker } from '@react-native-picker/picker';
 import { useNavigation } from '@react-navigation/native';
 import * as Location from 'expo-location';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -867,12 +866,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         </View>
         
         <View className="bg-white rounded-lg p-4 border border-gray-200">
-          <Text className="text-gray-800 mb-2">
-            <Text className="font-medium">Duration:</Text> {formData.duration.value} {formData.duration.type}
-          </Text>
-          <Text className="text-gray-800 mb-2">
-            <Text className="font-medium">Frequency:</Text> {formData.frequency.count} {formData.frequency.unit}
-          </Text>
+          {/* Duration/Frequency removed per request */}
           {formData.startDate && (
             <Text className="text-gray-800">
               <Text className="font-medium">Start Date:</Text> {new Date(formData.startDate).toLocaleDateString()}
@@ -995,74 +989,16 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         </View>
       )}
 
-      {/* Frequency */}
-      <View className="mb-2">
-        <Text className="text-gray-700 font-semibold mb-2">Frequency</Text>
-        <View className="flex-row items-center space-x-2">
-          <TextInput
-            className="bg-white rounded-lg px-3 py-3 border border-gray-300 text-gray-900 w-20"
-            placeholder="1"
-            value={formData.frequency.count.toString()}
-            onChangeText={(text) => {
-              const count = parseInt(text) || 1;
-              setFormData(prev => ({
-                ...prev,
-                frequency: { ...prev.frequency, count }
-              }));
-            }}
-            keyboardType="numeric"
-          />
-          <View className="flex-1 bg-white rounded-lg border border-gray-300">
-            <Picker
-              selectedValue={formData.frequency.unit}
-              onValueChange={(value) => {
-                setFormData(prev => ({
-                  ...prev,
-                  frequency: { ...prev.frequency, unit: value }
-                }));
-              }}
-            >
-              <Picker.Item label="per day" value="per_day" />
-              <Picker.Item label="per week" value="per_week" />
-              <Picker.Item label="per month" value="per_month" />
-            </Picker>
-          </View>
-        </View>
-      </View>
-
-      {/* Duration */}
+      {/* Back button to go to previous step */}
       <View className="mb-6">
-        <Text className="text-gray-700 font-semibold mb-2">Duration</Text>
-        <View className="flex-row space-x-2">
-          <TextInput
-            className="bg-white rounded-lg px-3 py-3 border border-gray-300 text-gray-900 w-20"
-            placeholder="2"
-            value={formData.duration.value?.toString() || ''}
-            onChangeText={(text) => {
-              const value = parseInt(text) || 2;
-              setFormData(prev => ({
-                ...prev,
-                duration: { ...prev.duration, value }
-              }));
-            }}
-            keyboardType="numeric"
-          />
-          <View className="flex-1 bg-white rounded-lg border border-gray-300">
-            <Picker
-              selectedValue={formData.duration.type}
-              onValueChange={(value) => {
-                setFormData(prev => ({
-                  ...prev,
-                  duration: { ...prev.duration, type: value }
-                }));
-              }}
-            >
-              <Picker.Item label="days" value="days" />
-              <Picker.Item label="weeks" value="weeks" />
-              <Picker.Item label="months" value="months" />
-            </Picker>
-          </View>
-        </View>
+        <TouchableOpacity 
+          className="bg-gray-200 rounded-lg p-3 flex-row items-center justify-center"
+          onPress={() => actions.setStep(1)}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="chevron-back" size={16} color="#374151" />
+          <Text className="text-gray-800 font-semibold ml-2">Back</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
