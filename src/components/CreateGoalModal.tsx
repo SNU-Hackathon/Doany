@@ -80,6 +80,22 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
   const [pickerSelectedLocation, setPickerSelectedLocation] = useState<TargetLocation | null>(null);
   const [pickerLoading, setPickerLoading] = useState(false);
   const [pickerSearching, setPickerSearching] = useState(false);
+  const [pickerSessionToken] = useState(() => Math.random().toString(36).slice(2));
+  const [pickerCenter, setPickerCenter] = useState<{ latitude: number; longitude: number } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const init = async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') return;
+        const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        if (!cancelled) setPickerCenter({ latitude: pos.coords.latitude, longitude: pos.coords.longitude });
+      } catch {}
+    };
+    if (showLocationPicker) init();
+    return () => { cancelled = true; };
+  }, [showLocationPicker]);
 
   // Handle weekly schedule changes
   const handleWeeklyScheduleChange = useCallback((weekdays: Set<number>, timeSettings: { [key: string]: string[] }) => {
@@ -439,19 +455,24 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     }
     try {
       setPickerSearching(true);
-      const results = await searchPlaces(text.trim());
+      const results = await searchPlaces(text.trim(), {
+        latitude: pickerCenter?.latitude,
+        longitude: pickerCenter?.longitude,
+        radiusMeters: 20000,
+        sessionToken: pickerSessionToken,
+      });
       setPickerPredictions(results);
     } catch (e) {
       setPickerPredictions([]);
     } finally {
       setPickerSearching(false);
     }
-  }, []);
+  }, [pickerCenter, pickerSessionToken]);
 
   const handlePickerPredictionSelect = useCallback(async (placeId: string) => {
     try {
       setPickerLoading(true);
-      const details = await getPlaceDetails(placeId);
+      const details = await getPlaceDetails(placeId, pickerSessionToken);
       setPickerSelectedLocation(details);
       setPickerQuery(details.name);
       setPickerPredictions([]);
@@ -460,7 +481,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     } finally {
       setPickerLoading(false);
     }
-  }, []);
+  }, [pickerSessionToken]);
 
   const handlePickerUseCurrentLocation = useCallback(async () => {
     try {

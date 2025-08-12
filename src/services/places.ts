@@ -22,14 +22,36 @@ const getApiKey = (): string => {
 };
 
 // Search places using Google Places Autocomplete API
-export const searchPlaces = async (input: string): Promise<Array<{placeId: string; description: string}>> => {
+export const searchPlaces = async (
+  input: string,
+  opts?: { latitude?: number; longitude?: number; radiusMeters?: number; sessionToken?: string }
+): Promise<Array<{placeId: string; description: string}>> => {
   try {
     const apiKey = getApiKey();
     console.log('[Places] Searching for:', input);
-    
-    const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(input)}&key=${apiKey}&language=en&types=establishment|geocode`;
-    
-    const response = await fetch(url);
+    const params: Record<string, string> = {
+      input: input,
+      key: apiKey,
+      language: 'en',
+      // Prefer business/addresses
+      types: 'establishment',
+    };
+
+    const radius = opts?.radiusMeters ?? 20000; // 20km bias
+    if (typeof opts?.latitude === 'number' && typeof opts?.longitude === 'number') {
+      params.location = `${opts.latitude},${opts.longitude}`;
+      params.radius = String(radius);
+      // origin helps ranking when user is at origin
+      params.origin = `${opts.latitude},${opts.longitude}`;
+    }
+    if (opts?.sessionToken) {
+      params.sessiontoken = opts.sessionToken;
+    }
+
+    const url = new URL('https://maps.googleapis.com/maps/api/place/autocomplete/json');
+    Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+
+    const response = await fetch(url.toString());
     const data = await response.json();
     
     if (data.status === 'REQUEST_DENIED' || data.status === 'OVER_QUERY_LIMIT') {
@@ -60,14 +82,19 @@ export const searchPlaces = async (input: string): Promise<Array<{placeId: strin
 };
 
 // Get place details using Google Places Details API
-export const getPlaceDetails = async (placeId: string): Promise<TargetLocation> => {
+export const getPlaceDetails = async (placeId: string, sessionToken?: string): Promise<TargetLocation> => {
   try {
     const apiKey = getApiKey();
     console.log('[Places] Getting details for place:', placeId);
-    
-    const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=place_id,name,formatted_address,geometry&key=${apiKey}&language=en`;
-    
-    const response = await fetch(url);
+
+    const url = new URL('https://maps.googleapis.com/maps/api/place/details/json');
+    url.searchParams.set('place_id', placeId);
+    url.searchParams.set('fields', 'place_id,name,formatted_address,geometry');
+    url.searchParams.set('key', apiKey);
+    url.searchParams.set('language', 'en');
+    if (sessionToken) url.searchParams.set('sessiontoken', sessionToken);
+
+    const response = await fetch(url.toString());
     const data = await response.json();
     
     if (data.status === 'REQUEST_DENIED' || data.status === 'OVER_QUERY_LIMIT') {
