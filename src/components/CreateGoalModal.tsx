@@ -84,6 +84,22 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
   const [pickerCenter, setPickerCenter] = useState<{ latitude: number; longitude: number } | null>(null);
   const [pickerMarkers, setPickerMarkers] = useState<Array<{ lat: number; lng: number; title?: string }>>([]);
   const detailsFetchSeqRef = useRef(0);
+  const detailsCacheRef = useRef<Record<string, { lat: number; lng: number; title?: string }>>({});
+
+  // Helper: fetch details for a set of placeIds (caching to minimize quota)
+  const ensureDetailsFor = useCallback(async (placeIds: string[]) => {
+    const missing = placeIds.filter((id) => !detailsCacheRef.current[id]);
+    if (missing.length === 0) return;
+    const seq = ++detailsFetchSeqRef.current;
+    const promises = missing.map(async (id) => {
+      try {
+        const d = await getPlaceDetails(id, pickerSessionToken);
+        detailsCacheRef.current[id] = { lat: d.lat, lng: d.lng, title: d.name };
+      } catch {}
+    });
+    await Promise.all(promises);
+    if (seq !== detailsFetchSeqRef.current) return; // outdated
+  }, [pickerSessionToken]);
 
   useEffect(() => {
     let cancelled = false;
@@ -454,6 +470,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     if (!text.trim()) {
       setPickerPredictions([]);
       setPickerMarkers([]);
+      detailsCacheRef.current = {};
       return;
     }
     try {
@@ -465,24 +482,15 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         sessionToken: pickerSessionToken,
       });
       setPickerPredictions(results);
-      const seq = ++detailsFetchSeqRef.current;
-      const top = results.slice(0, 10);
-      const detailPromises = top.map(async (p) => {
-        try {
-          const d = await getPlaceDetails(p.placeId, pickerSessionToken);
-          return { lat: d.lat, lng: d.lng, title: d.name };
-        } catch {
-          return null;
-        }
-      });
-      const coords = (await Promise.all(detailPromises)).filter(Boolean) as Array<{ lat: number; lng: number; title?: string }>;
-      if (seq === detailsFetchSeqRef.current) {
-        const center = pickerCenter;
-        const sorted = center
-          ? coords.sort((a, b) => Math.hypot(a.lat - center.latitude, a.lng - center.longitude) - Math.hypot(b.lat - center.latitude, b.lng - center.longitude))
-          : coords;
-        setPickerMarkers(sorted);
-      }
+      // Prime markers for first viewport (~8 items)
+      const firstIds = results.slice(0, 8).map(r => r.placeId);
+      await ensureDetailsFor(firstIds);
+      const coords = firstIds.map(id => detailsCacheRef.current[id]).filter(Boolean) as Array<{ lat:number; lng:number; title?:string }>;
+      const center = pickerCenter;
+      const sorted = center
+        ? coords.sort((a, b) => Math.hypot(a.lat - center.latitude, a.lng - center.longitude) - Math.hypot(b.lat - center.latitude, b.lng - center.longitude))
+        : coords;
+      setPickerMarkers(sorted);
     } catch (e) {
       setPickerPredictions([]);
       setPickerMarkers([]);
@@ -1280,6 +1288,14 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
                 )}
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}
+                onViewableItemsChanged={useRef(({ viewableItems }: { viewableItems: Array<{ item: { placeId: string } }> }) => {
+                  const ids = viewableItems.map((v) => v.item.placeId);
+                  ensureDetailsFor(ids).then(() => {
+                    const points = ids.map((id: string) => detailsCacheRef.current[id]).filter(Boolean);
+                    if (points.length) setPickerMarkers(points as any);
+                  });
+                }).current}
+                viewabilityConfig={{ itemVisiblePercentThreshold: 25 }}
               />
             </View>
           )}
