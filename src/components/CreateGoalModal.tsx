@@ -1245,22 +1245,28 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
 
           {/* Predictions */}
           {pickerPredictions.length > 0 && (
-            <View className="bg-white border-b border-gray-200">
+            <View className="bg-white border-b border-gray-200" style={{ maxHeight: 200 }}>
               {pickerPredictions.map((p) => (
                 <TouchableOpacity
                   key={p.placeId}
                   className="px-4 py-3 border-b border-gray-100"
                   onPress={() => handlePickerPredictionSelect(p.placeId)}
                 >
-                  <Text className="text-gray-900">{p.description}</Text>
+                  <Text className="text-gray-900" numberOfLines={1}>{p.description}</Text>
                 </TouchableOpacity>
               ))}
             </View>
           )}
 
-          {/* Big Map Preview */}
+          {/* Big Map Preview with markers and interactions */}
           <View className="flex-1 m-4 rounded-xl overflow-hidden border border-gray-200">
-            <MapPreview location={pickerSelectedLocation || formData.targetLocation || null} onPress={() => {}} />
+            <MapPreview
+              location={pickerSelectedLocation || formData.targetLocation || null}
+              markers={pickerPredictions.map(p => ({ lat: 0, lng: 0 }))}
+              interactive
+              fitToMarkers
+              onPress={() => {}}
+            />
           </View>
 
           {/* Confirm */}
