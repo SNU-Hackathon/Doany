@@ -4,8 +4,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
 import { getApp, getApps, initializeApp } from 'firebase/app';
-import { Auth, getAuth, initializeAuth } from 'firebase/auth';
-import { getReactNativePersistence } from 'firebase/auth/react-native';
+import { getAuth, initializeAuth, type Auth } from 'firebase/auth';
 import {
   collection,
   doc,
@@ -54,6 +53,8 @@ export const auth: Auth = (() => {
   try {
     // IMPORTANT: In React Native/Expo, initializeAuth must be used with AsyncStorage persistence
     if (Platform.OS !== 'web') {
+      const getReactNativePersistence = (require('firebase/auth') as any)
+        .getReactNativePersistence as (storage: any) => any;
       return initializeAuth(app, {
         persistence: getReactNativePersistence(AsyncStorage),
       });
