@@ -11,13 +11,10 @@ export class AIService {
   static async generateGoalFromText(prompt: string): Promise<AIGoal> {
     console.time('[AI] Goal Generation Total');
     
-    const openaiApiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
     const proxyUrl = process.env.EXPO_PUBLIC_AI_PROXY_URL;
     
     try {
-      if (openaiApiKey && openaiApiKey !== 'your-openai-api-key-here') {
-        return await this.generateWithChatGPT(prompt);
-      } else if (proxyUrl) {
+      if (proxyUrl) {
         return await this.generateWithProxy(proxyUrl, prompt);
       } else {
         return this.generateWithLocalHeuristic(prompt);
@@ -33,11 +30,11 @@ export class AIService {
   static async continueGoalRefinement(context: AIContext, userAnswer: string): Promise<AIGoal> {
     console.time('[AI] Goal Refinement Total');
     
-    const openaiApiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
+    const proxyUrl = process.env.EXPO_PUBLIC_AI_PROXY_URL;
     
     try {
-      if (openaiApiKey && openaiApiKey !== 'your-openai-api-key-here') {
-        return await this.refineWithChatGPT(context, userAnswer);
+      if (proxyUrl) {
+        return await this.generateWithProxy(proxyUrl, userAnswer);
       } else {
         // Fallback to local heuristic with context
         return this.generateWithLocalHeuristic(userAnswer);
@@ -50,199 +47,17 @@ export class AIService {
   /**
    * Generate goal using OpenAI ChatGPT with timeout and retry
    */
-  private static async generateWithChatGPT(prompt: string): Promise<AIGoal> {
-    console.time('[AI] ChatGPT Generation');
-    
-    // First attempt
-    try {
-      return await this.performChatGPTRequest(prompt, null);
-    } catch (error) {
-      console.warn('[AI] ChatGPT first attempt failed, retrying...', error);
-      
-      // Second attempt with short backoff
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      try {
-        return await this.performChatGPTRequest(prompt, null);
-      } catch (retryError) {
-        console.error('[AI] ChatGPT retry failed, falling back to local heuristic:', retryError);
-        console.timeEnd('[AI] ChatGPT Generation');
-        
-        // Fallback to local heuristic on retry failure
-        return this.generateWithLocalHeuristic(prompt);
-      }
-    } finally {
-      console.timeEnd('[AI] ChatGPT Generation');
-    }
-  }
+  // Removed direct ChatGPT client calls from the app to prevent client-side key exposure.
 
   /**
    * Refine goal with ChatGPT using conversation context
    */
-  private static async refineWithChatGPT(context: AIContext, userAnswer: string): Promise<AIGoal> {
-    console.time('[AI] ChatGPT Refinement');
-    
-    try {
-      return await this.performChatGPTRequest(userAnswer, context);
-    } catch (error) {
-      console.error('[AI] ChatGPT refinement failed:', error);
-      console.timeEnd('[AI] ChatGPT Refinement');
-      
-      // Fallback to local heuristic
-      return this.generateWithLocalHeuristic(userAnswer);
-    }
-  }
+  // Removed direct ChatGPT refinement path for the same reason.
 
   /**
    * Perform ChatGPT API request with timeout and enhanced error handling
    */
-  private static async performChatGPTRequest(prompt: string, context: AIContext | null): Promise<AIGoal> {
-    const openaiApiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
-    const baseUrl = process.env.EXPO_PUBLIC_OPENAI_BASE_URL || 'https://api.openai.com/v1';
-
-    // Create AbortController for timeout
-    const abortController = new AbortController();
-    const timeoutId = setTimeout(() => {
-      console.warn('[AI] Request timeout after 15 seconds');
-      abortController.abort();
-    }, 15000); // 15 second timeout
-
-    try {
-      const systemPrompt = context 
-        ? `You are continuing a goal-setting conversation. Use the conversation history and user's latest answer to update the goal structure. Return ONLY a valid JSON object. Do not include any prose or explanations.
-
-CRITICAL: 
-- Update the partial goal with the new information
-- Keep asking follow-up questions until ALL required fields are complete
-- For gym/fitness goals: targetLocation is MANDATORY before completion
-- Validate that all required fields are present and complete
-- Auto-assign category from: Health, Fitness, Productivity, Education, Personal, Career, Spiritual, Other
-
-Return the same JSON format with updated information. Continue to populate missingFields and followUpQuestion until everything is complete.
-
-Current conversation context: ${JSON.stringify(context.partialGoal || {})}`
-        : `You are a goal-setting assistant. Parse the user's goal description and return ONLY a valid JSON object. Do not include any prose or explanations.
-
-CRITICAL REQUIREMENTS:
-1. RETURN ONLY VALID JSON - no additional text or markdown
-2. ALL fields must be populated or marked as missing
-3. If verificationMethods includes "location", targetLocation is REQUIRED
-4. For gym/fitness goals, "location" verification is mandatory
-5. Auto-assign category from: Health, Fitness, Productivity, Education, Personal, Career, Spiritual, Other
-6. startDate must be today or later
-7. duration must be specific with clear end conditions
-
-Required JSON format:
-{
-  "title": "Clear, concise goal title",
-  "category": "Health|Fitness|Productivity|Education|Personal|Career|Spiritual|Other",
-  "verificationMethods": ["location", "time", "screentime", "manual"] (multiple allowed),
-  "frequency": {"count": number, "unit": "per_day|per_week|per_month"},
-  "startDate": "ISO date string (today or later)",
-  "duration": {
-    "type": "days|weeks|months|range",
-    "value": number (if type is days/weeks/months),
-    "startDate": "ISO date string (if type is range)",
-    "endDate": "ISO date string (if type is range)"
-  },
-  "targetLocation": {"name": "string", "placeId": "optional", "lat": number, "lng": number} (REQUIRED if "location" in verificationMethods),
-  "notes": "Additional context",
-  "missingFields": ["field1", "field2"] (array of missing/ambiguous fields),
-  "followUpQuestion": "Natural language question to ask user for missing info"
-}
-
-VALIDATION RULES:
-- For "go to gym" type goals: MUST include "location" in verificationMethods and ask for specific gym
-- For "daily habits": frequency.unit should be "per_day"
-- For "workout routines": frequency.unit should be "per_week"
-- For time-based goals: include "time" verification method
-- For screen time limits: include "screentime" verification method
-- Always include "manual" for user check-ins
-
-MISSING FIELD DETECTION:
-If ANY of these are unclear, add to missingFields and ask followUpQuestion:
-- Specific location for gym/location-based goals
-- Exact frequency (how many times per day/week/month)
-- Duration (how long should this goal run)
-- Start date (when to begin)
-- Time of day (for time-based goals)`;
-
-      // Build messages array
-      const messages = context 
-        ? [
-            { role: 'system', content: systemPrompt },
-            ...context.conversationHistory,
-            { role: 'user', content: prompt }
-          ]
-        : [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: prompt }
-          ];
-
-      console.log(`[AI] Making ChatGPT request (${messages.length} messages)`);
-
-      const response = await fetch(`${baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${openaiApiKey}`,
-          'Content-Type': 'application/json',
-        },
-        signal: abortController.signal,
-        body: JSON.stringify({
-          model: 'gpt-3.5-turbo-1106', // Supports JSON mode
-          messages,
-          response_format: { type: "json_object" }, // Force JSON mode
-          temperature: 0.3,
-          max_tokens: 800,
-          stream: false // Disable streaming for reliability
-        })
-      });
-
-      // Enhanced error handling with detailed logging
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('[AI] OpenAI API Error Details:', {
-          status: response.status,
-          statusText: response.statusText,
-          contentType: response.headers.get('Content-Type'),
-          body: errorText.substring(0, 200)
-        });
-        throw new Error(`OpenAI API error: ${response.status} ${response.statusText} - ${errorText.substring(0, 100)}`);
-      }
-
-      const data = await response.json();
-      const aiResponse = data.choices?.[0]?.message?.content;
-
-      if (!aiResponse) {
-        console.error('[AI] No AI response in data:', data);
-        throw new Error('No response content from OpenAI');
-      }
-
-      // Safe JSON parsing with detailed error logging
-      let goalData;
-      try {
-        goalData = JSON.parse(aiResponse);
-      } catch (parseError) {
-        console.error('[AI] JSON Parse Error Details:', {
-          error: parseError,
-          response: aiResponse.substring(0, 200),
-          responseLength: aiResponse.length,
-          firstChar: aiResponse.charAt(0),
-          lastChar: aiResponse.charAt(aiResponse.length - 1)
-        });
-        throw new Error(`Invalid JSON response from AI: ${parseError instanceof Error ? parseError.message : 'Unknown parse error'}`);
-      }
-
-      return this.validateAndNormalizeAIGoal(goalData);
-
-    } catch (error: any) {
-      if (error.name === 'AbortError') {
-        throw new Error('AI request timed out after 15 seconds');
-      }
-      throw error;
-    } finally {
-      clearTimeout(timeoutId);
-    }
-  }
+  // Removed performChatGPTRequest: network calls must go through a server proxy.
 
   /**
    * Generate goal using proxy endpoint

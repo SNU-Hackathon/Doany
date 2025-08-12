@@ -1,9 +1,11 @@
 // Firebase configuration and service layer for React Native (Expo) project
 // Implements Cloud Firestore with proper React Native optimizations
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
 import { getApp, getApps, initializeApp } from 'firebase/app';
-import { Auth, getAuth } from 'firebase/auth';
+import { Auth, getAuth, initializeAuth } from 'firebase/auth';
+import { getReactNativePersistence } from 'firebase/auth/react-native';
 import {
   collection,
   doc,
@@ -20,6 +22,7 @@ import {
   Timestamp
 } from 'firebase/firestore';
 import { FirebaseStorage, getStorage } from 'firebase/storage';
+import { Platform } from 'react-native';
 
 // Firebase configuration using environment variables
 const firebaseConfig = {
@@ -49,10 +52,17 @@ const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 // Initialize Firebase Auth with React Native optimizations (single instance)
 export const auth: Auth = (() => {
   try {
-    // For React Native/Expo, getAuth() automatically handles persistence
+    // IMPORTANT: In React Native/Expo, initializeAuth must be used with AsyncStorage persistence
+    if (Platform.OS !== 'web') {
+      return initializeAuth(app, {
+        persistence: getReactNativePersistence(AsyncStorage),
+      });
+    }
+    // Web fallback
     return getAuth(app);
   } catch (error) {
-    console.warn('🔥 Auth initialization error:', error);
+    if (__DEV__) console.warn('🔥 Auth initialization error:', error);
+    // As a last resort, return default instance
     return getAuth(app);
   }
 })();
@@ -74,14 +84,16 @@ export const db: Firestore = (() => {
 export const storage: FirebaseStorage = getStorage(app);
 
 // Startup diagnostics with environment validation
-console.log('[FB] cfg', {
-  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
-  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  apiKeyPrefix: String(process.env.EXPO_PUBLIC_FIREBASE_API_KEY).slice(0, 6) + '***'
-});
+if (__DEV__) {
+  console.log('[FB] cfg', {
+    projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
+    authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
+    apiKeyPrefix: String(process.env.EXPO_PUBLIC_FIREBASE_API_KEY).slice(0, 6) + '***'
+  });
+}
 
 // Environment validation check
-if (!process.env.EXPO_PUBLIC_FIREBASE_API_KEY || !process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID) {
+if (__DEV__ && (!process.env.EXPO_PUBLIC_FIREBASE_API_KEY || !process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID)) {
   console.error('[FB] Missing env. Did you set .env and restart with `expo start --clear`?');
   console.error('[FB] Required EXPO_PUBLIC_ environment variables:');
   console.error('  - EXPO_PUBLIC_FIREBASE_API_KEY');
@@ -91,9 +103,11 @@ if (!process.env.EXPO_PUBLIC_FIREBASE_API_KEY || !process.env.EXPO_PUBLIC_FIREBA
 }
 
 // Log successful initialization
-console.log('🔥 Firebase initialized successfully');
-console.log(`📱 Project: ${firebaseConfig.projectId}`);
-console.log(`🔐 Auth Domain: ${firebaseConfig.authDomain}`);
+if (__DEV__) {
+  console.log('🔥 Firebase initialized successfully');
+  console.log(`📱 Project: ${firebaseConfig.projectId}`);
+  console.log(`🔐 Auth Domain: ${firebaseConfig.authDomain}`);
+}
 
 /**
  * Ensures the device is online and Firestore network is enabled
@@ -389,4 +403,4 @@ export const createUserDocument = async (uid: string, userData: Omit<User, 'uid'
 export { app };
 
 // Log initialization status
-console.log('✅ Firebase services exported successfully');
+if (__DEV__) console.log('✅ Firebase services exported successfully');
