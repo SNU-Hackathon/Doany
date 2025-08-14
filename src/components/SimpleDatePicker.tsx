@@ -31,6 +31,9 @@ interface SimpleDatePickerProps {
   onWeeklyScheduleChange?: (weekdays: Set<number>, timeSettings: { [key: string]: string[] }) => void;
   verificationMethods?: VerificationType[];
   onVerificationMethodsChange?: (methods: VerificationType[]) => void;
+  includeDates?: string[];
+  excludeDates?: string[];
+  onIncludeExcludeChange?: (includeDates: string[], excludeDates: string[]) => void;
 }
 
 export default function SimpleDatePicker({
@@ -41,7 +44,10 @@ export default function SimpleDatePicker({
   onNavigateToStep,
   onWeeklyScheduleChange,
   verificationMethods = [],
-  onVerificationMethodsChange
+  onVerificationMethodsChange,
+  includeDates: initialIncludeDates = [],
+  excludeDates: initialExcludeDates = [],
+  onIncludeExcludeChange
 }: SimpleDatePickerProps) {
   const today = new Date().toISOString().split('T')[0];
 
@@ -57,6 +63,9 @@ export default function SimpleDatePicker({
   const [selectedWeekdays, setSelectedWeekdays] = useState<Set<number>>(new Set());
   const [weeklyTimeSettings, setWeeklyTimeSettings] = useState<{ [key: string]: string[] }>({});
   const [isEditingWeeklySchedule, setIsEditingWeeklySchedule] = useState(true);
+  const [editingMode, setEditingMode] = useState<'period' | 'schedule'>('period');
+  const [includeDates, setIncludeDates] = useState<string[]>(initialIncludeDates);
+  const [excludeDates, setExcludeDates] = useState<string[]>(initialExcludeDates);
 
   // Time picker modal state
   const [showTimePicker, setShowTimePicker] = useState(false);
@@ -80,7 +89,27 @@ export default function SimpleDatePicker({
 
   useEffect(() => {
     notifyParent(selectedWeekdays, weeklyTimeSettings);
-  }, [selectedWeekdays, weeklyTimeSettings, notifyParent]);
+  }, [selectedWeekdays, weeklyTimeSettings]);
+
+  // Keep include/exclude in sync with parent-provided props on first render or when they change externally
+  const arraysEqual = (a?: string[], b?: string[]) => {
+    const aa = a || [];
+    const bb = b || [];
+    if (aa.length !== bb.length) return false;
+    for (let i = 0; i < aa.length; i++) {
+      if (aa[i] !== bb[i]) return false;
+    }
+    return true;
+  };
+
+  useEffect(() => {
+    const next = initialIncludeDates || [];
+    setIncludeDates(prev => (arraysEqual(prev, next) ? prev : next));
+  }, [initialIncludeDates]);
+  useEffect(() => {
+    const next = initialExcludeDates || [];
+    setExcludeDates(prev => (arraysEqual(prev, next) ? prev : next));
+  }, [initialExcludeDates]);
 
   // Calendar navigation functions
   const goToPreviousMonth = () => {
@@ -126,6 +155,9 @@ export default function SimpleDatePicker({
     // Add days of the month
     for (let day = 1; day <= lastDay.getDate(); day++) {
       const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      const inRange = !!(endDate && dateStr >= (startDate || today) && dateStr <= endDate);
+      const baseIncluded = inRange && selectedWeekdays.has(new Date(dateStr).getDay());
+      const isScheduled = inRange && ((baseIncluded && !excludeDates.includes(dateStr)) || includeDates.includes(dateStr));
       days.push({
         day,
         dateStr,
@@ -133,7 +165,10 @@ export default function SimpleDatePicker({
         isPast: dateStr < today,
         isSelected: dateStr === startDate || (endDate && dateStr === endDate),
         isInRange: endDate && dateStr > startDate && dateStr < endDate,
-        isWeekdayGoal: endDate && dateStr >= startDate && dateStr <= endDate && selectedWeekdays.has(new Date(dateStr).getDay())
+        isWeekdayGoal: endDate && dateStr >= startDate && dateStr <= endDate && selectedWeekdays.has(new Date(dateStr).getDay()),
+        isScheduled,
+        baseIncluded,
+        isWithinRange: inRange
       });
     }
 
@@ -143,14 +178,64 @@ export default function SimpleDatePicker({
   const handleDateSelect = (dateStr: string) => {
     if (dateStr < today) return; // Don't allow past dates
 
+    if (editingMode === 'schedule') {
+      // Toggle include/exclude based on base weekly schedule
+      const baseIncluded = selectedWeekdays.has(new Date(dateStr).getDay()) && (!!endDate ? (dateStr >= (startDate || today) && dateStr <= endDate) : true);
+      const currentlyScheduled = ((baseIncluded && !excludeDates.includes(dateStr)) || includeDates.includes(dateStr));
+
+      let nextInclude = [...includeDates];
+      let nextExclude = [...excludeDates];
+
+      if (currentlyScheduled) {
+        if (baseIncluded) {
+          // Was scheduled by base; turning off -> add to exclude
+          if (!nextExclude.includes(dateStr)) nextExclude.push(dateStr);
+          // Ensure not in include
+          nextInclude = nextInclude.filter(d => d !== dateStr);
+        } else {
+          // Was scheduled only due to include; turning off -> remove from include
+          nextInclude = nextInclude.filter(d => d !== dateStr);
+        }
+      } else {
+        if (baseIncluded) {
+          // Base includes but currently off due to exclude; turning on -> remove from exclude
+          nextExclude = nextExclude.filter(d => d !== dateStr);
+        } else {
+          // Base excludes; turning on -> add to include
+          if (!nextInclude.includes(dateStr)) nextInclude.push(dateStr);
+        }
+      }
+
+      // Keep within current range if defined
+      const clampToRange = (dates: string[]) => {
+        if (!startDate || !endDate) return dates;
+        return dates.filter(d => d >= startDate && d <= endDate);
+      };
+      nextInclude = clampToRange(nextInclude).sort();
+      nextExclude = clampToRange(nextExclude).sort();
+
+      setIncludeDates(nextInclude);
+      setExcludeDates(nextExclude);
+      onIncludeExcludeChange?.(nextInclude, nextExclude);
+      return;
+    }
+
+    // Period edit mode
     setStartDate(dateStr);
     onStartDateChange(dateStr);
 
-    // Always calculate end date based on duration
     const value = parseInt(durationValue) || 1;
     const range = convertDurationToRange(dateStr, durationType, value);
     setEndDate(range.endDate);
     onEndDateChange(range.endDate);
+
+    // Clean include/exclude now that range updated
+    const clampToRange = (dates: string[]) => dates.filter(d => d >= dateStr && d <= range.endDate);
+    const nextInclude = clampToRange(includeDates).sort();
+    const nextExclude = clampToRange(excludeDates).sort();
+    setIncludeDates(nextInclude);
+    setExcludeDates(nextExclude);
+    onIncludeExcludeChange?.(nextInclude, nextExclude);
   };
 
   const handleDurationChange = (value: string) => {
@@ -160,6 +245,14 @@ export default function SimpleDatePicker({
       const range = convertDurationToRange(startDate, durationType, numValue);
       setEndDate(range.endDate);
       onEndDateChange(range.endDate);
+
+      // Clean include/exclude to new range
+      const clampToRange = (dates: string[]) => dates.filter(d => d >= startDate && d <= range.endDate);
+      const nextInclude = clampToRange(includeDates).sort();
+      const nextExclude = clampToRange(excludeDates).sort();
+      setIncludeDates(nextInclude);
+      setExcludeDates(nextExclude);
+      onIncludeExcludeChange?.(nextInclude, nextExclude);
     }
   };
 
@@ -170,6 +263,14 @@ export default function SimpleDatePicker({
       const range = convertDurationToRange(startDate, type, numValue);
       setEndDate(range.endDate);
       onEndDateChange(range.endDate);
+
+      // Clean include/exclude to new range
+      const clampToRange = (dates: string[]) => dates.filter(d => d >= startDate && d <= range.endDate);
+      const nextInclude = clampToRange(includeDates).sort();
+      const nextExclude = clampToRange(excludeDates).sort();
+      setIncludeDates(nextInclude);
+      setExcludeDates(nextExclude);
+      onIncludeExcludeChange?.(nextInclude, nextExclude);
     }
   };
 
@@ -441,6 +542,7 @@ export default function SimpleDatePicker({
                 <TouchableOpacity
                   className={`flex-1 justify-center items-center rounded relative ${
                     dayData.isPast ? 'bg-gray-100' :
+                    editingMode === 'schedule' && dayData.isScheduled ? 'bg-green-200' :
                     dayData.isSelected ? 'bg-blue-600' :
                     dayData.isInRange ? 'bg-blue-100' :
                     dayData.isToday ? 'bg-blue-50 border border-blue-300' :
@@ -451,13 +553,14 @@ export default function SimpleDatePicker({
                 >
                   <Text className={`text-sm font-semibold ${
                     dayData.isPast ? 'text-gray-400' :
+                    editingMode === 'schedule' && dayData.isScheduled ? 'text-green-900' :
                     dayData.isSelected ? 'text-white' :
                     dayData.isInRange ? 'text-blue-600' :
                     dayData.isToday ? 'text-blue-600' :
                     'text-gray-800'
                   }`}>{dayData.day}</Text>
-                  {/* Weekday goal indicator */}
-                  {dayData.isWeekdayGoal && (
+                  {/* Scheduled indicator (shows overrides too) */}
+                  {editingMode !== 'schedule' && dayData.isScheduled && (
                     <View className="absolute -bottom-1 w-2 h-2 bg-green-500 rounded-full" />
                   )}
                 </TouchableOpacity>
@@ -478,6 +581,23 @@ export default function SimpleDatePicker({
             <View className="w-2 h-2 bg-green-500 rounded-full mr-2" />
             <Text className="text-xs text-gray-600">Scheduled weekdays</Text>
           </View>
+        </View>
+
+        {/* Mode toggles under calendar */}
+        <View className="flex-row gap-3 mt-4">
+          <TouchableOpacity
+            onPress={() => setEditingMode('period')}
+            className={`flex-1 rounded-lg py-3 ${editingMode === 'period' ? 'bg-blue-600' : 'bg-blue-100'}`}
+          >
+            <Text className={`text-center font-semibold ${editingMode === 'period' ? 'text-white' : 'text-blue-700'}`}>Edit Period</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setEditingMode('schedule')}
+            disabled={selectedWeekdays.size === 0}
+            className={`flex-1 rounded-lg py-3 ${selectedWeekdays.size === 0 ? 'bg-gray-200' : (editingMode === 'schedule' ? 'bg-green-600' : 'bg-green-100')}`}
+          >
+            <Text className={`text-center font-semibold ${editingMode === 'schedule' ? 'text-white' : 'text-green-700'}`}>Edit Schedule</Text>
+          </TouchableOpacity>
         </View>
       </View>
 

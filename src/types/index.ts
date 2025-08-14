@@ -83,6 +83,13 @@ export interface Goal {
   timeFrame?: TimeFrame;
   startDate?: Date;
   endDate?: Date;
+  
+  // Weekly schedule and per-date overrides
+  needsWeeklySchedule?: boolean;
+  weeklySchedule?: { [key: string]: string[] };
+  weeklyWeekdays?: number[];
+  includeDates?: string[]; // YYYY-MM-DD within duration
+  excludeDates?: string[]; // YYYY-MM-DD within duration
 }
 
 export interface Verification {
@@ -184,5 +191,8 @@ export interface CreateGoalForm {
   
   // Weekly schedule support
   needsWeeklySchedule?: boolean;
-  weeklySchedule?: { [key: string]: string };
+  weeklySchedule?: { [key: string]: string[] };
+  weeklyWeekdays?: number[];
+  includeDates?: string[];
+  excludeDates?: string[];
 }

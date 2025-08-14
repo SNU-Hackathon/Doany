@@ -15,13 +15,14 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { LocationSearch } from '../components';
 import { Categories } from '../constants';
 import { CreateGoalProvider, useCreateGoal } from '../features/createGoal/state';
 import { AIGoalDraft, mergeAIGoal, updateDraftWithDates, validateAIGoal } from '../features/goals/aiDraft';
 import { useAuth } from '../hooks/useAuth';
 import { AIService } from '../services/ai';
 import { GoalService } from '../services/goalService';
-import { getPlaceDetails, searchPlaces, textSearchPlaces } from '../services/places';
+import { getPlaceDetails } from '../services/places';
 import { CreateGoalForm, GoalDuration, GoalFrequency, TargetLocation } from '../types';
 import MapPreview from './MapPreview';
 import SimpleDatePicker, { DateSelection } from './SimpleDatePicker';
@@ -73,19 +74,12 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     timeSettings: { [key: string]: string[] };
   }>({ weekdays: new Set(), timeSettings: {} });
 
-  // Location picker overlay state
+  // State for location picker
   const [showLocationPicker, setShowLocationPicker] = useState(false);
-  const [pickerQuery, setPickerQuery] = useState('');
-  const [pickerPredictions, setPickerPredictions] = useState<{ placeId: string; description: string }[]>([]);
   const [pickerSelectedLocation, setPickerSelectedLocation] = useState<TargetLocation | null>(null);
-  const [pickerLoading, setPickerLoading] = useState(false);
-  const [pickerSearching, setPickerSearching] = useState(false);
-  const [pickerSessionToken] = useState(() => Math.random().toString(36).slice(2));
-  const [pickerCenter, setPickerCenter] = useState<{ latitude: number; longitude: number } | null>(null);
   const [pickerMarkers, setPickerMarkers] = useState<Array<{ lat: number; lng: number; title?: string }>>([]);
   const detailsFetchSeqRef = useRef(0);
   const detailsCacheRef = useRef<Record<string, { lat: number; lng: number; title?: string }>>({});
-  const [pickerCenterOverride, setPickerCenterOverride] = useState<{ latitude: number; longitude: number } | null>(null);
 
   // Helper: fetch details for a set of placeIds (caching to minimize quota)
   const ensureDetailsFor = useCallback(async (placeIds: string[]) => {
@@ -94,13 +88,13 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     const seq = ++detailsFetchSeqRef.current;
     const promises = missing.map(async (id) => {
       try {
-        const d = await getPlaceDetails(id, pickerSessionToken);
+        const d = await getPlaceDetails(id, ''); // Removed pickerSessionToken
         detailsCacheRef.current[id] = { lat: d.lat, lng: d.lng, title: d.name };
       } catch {}
     });
     await Promise.all(promises);
     if (seq !== detailsFetchSeqRef.current) return; // outdated
-  }, [pickerSessionToken]);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -109,7 +103,9 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== 'granted') return;
         const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        if (!cancelled) setPickerCenter({ latitude: pos.coords.latitude, longitude: pos.coords.longitude });
+        if (!cancelled) {
+          // setPickerCenter({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }); // Removed pickerCenter
+        }
       } catch {}
     };
     if (showLocationPicker) init();
@@ -121,7 +117,12 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     console.log('[CreateGoalModal] Weekly schedule change received:', { weekdays: Array.from(weekdays), timeSettings });
     setWeeklyScheduleData({ weekdays, timeSettings });
     // Keep a simple flag on form data; detailed schedule will be saved later alongside this state
-    setFormData(prev => ({ ...prev, needsWeeklySchedule: weekdays.size > 0 }));
+    setFormData(prev => ({ 
+      ...prev, 
+      needsWeeklySchedule: weekdays.size > 0,
+      weeklyWeekdays: Array.from(weekdays),
+      weeklySchedule: timeSettings
+    }));
     if (aiDraft.title) {
       setAiDraft(prev => ({ ...prev, needsWeeklySchedule: weekdays.size > 0 }));
     }
@@ -148,6 +149,8 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     timeFrame: 'daily',
     startDate: new Date(),
     endDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+    includeDates: [],
+    excludeDates: [],
   });
 
   // Cleanup on unmount
@@ -458,100 +461,12 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
   // Robust navigation to LocationPicker at root level
   const openLocationPicker = useCallback(() => {
     // Open in-app overlay modal instead of navigating (ensures it appears above RN Modal)
-    setPickerQuery('');
-    setPickerPredictions([]);
+    console.log('[CreateGoalModal] Opening location picker with LocationSearch component');
     setPickerSelectedLocation(formData.targetLocation || null);
     setShowLocationPicker(true);
   }, [formData.targetLocation]);
 
   const closeLocationPicker = useCallback(() => setShowLocationPicker(false), []);
-
-  const handlePickerSearchChange = useCallback(async (text: string) => {
-    setPickerQuery(text);
-    if (!text.trim()) {
-      setPickerPredictions([]);
-      setPickerMarkers([]);
-      detailsCacheRef.current = {};
-      return;
-    }
-    try {
-      setPickerSearching(true);
-      const center = pickerCenterOverride || pickerCenter;
-      const autoCompleteResults = await searchPlaces(text.trim(), {
-        latitude: center?.latitude,
-        longitude: center?.longitude,
-        radiusMeters: 20000,
-        sessionToken: pickerSessionToken,
-      });
-      // 보강: Text Search로 더 많은 결과 확보
-      const textResults = await textSearchPlaces(text.trim(), {
-        latitude: center?.latitude,
-        longitude: center?.longitude,
-        radiusMeters: 25000,
-      });
-      const merged: { placeId: string; description: string }[] = [];
-      const seen = new Set<string>();
-      for (const r of autoCompleteResults) { if (!seen.has(r.placeId)) { merged.push(r); seen.add(r.placeId); } }
-      for (const r of textResults.results) { if (!seen.has(r.placeId)) { merged.push({ placeId: r.placeId, description: r.description }); seen.add(r.placeId); } }
-      setPickerPredictions(merged);
-      // Prime markers for first viewport (~8 items)
-      const firstIds = merged.slice(0, 15).map(r => r.placeId);
-      await ensureDetailsFor(firstIds);
-      const coords = firstIds.map(id => detailsCacheRef.current[id]).filter(Boolean) as Array<{ lat:number; lng:number; title?:string }>;
-      const sorted = center
-        ? coords.sort((a, b) => Math.hypot(a.lat - center!.latitude, a.lng - center!.longitude) - Math.hypot(b.lat - center!.latitude, b.lng - center!.longitude))
-        : coords;
-      setPickerMarkers(sorted);
-    } catch (e) {
-      setPickerPredictions([]);
-      setPickerMarkers([]);
-    } finally {
-      setPickerSearching(false);
-    }
-  }, [pickerCenter, pickerCenterOverride, pickerSessionToken]);
-
-  // Stable handler for viewable items change in predictions list
-  const handlePredictionsViewableItemsChanged = useCallback(({ viewableItems }: { viewableItems: Array<{ item: { placeId: string } }> }) => {
-    const ids = viewableItems.map((v) => v.item.placeId);
-    ensureDetailsFor(ids).then(() => {
-      const points = ids.map((id: string) => detailsCacheRef.current[id]).filter(Boolean) as Array<{ lat: number; lng: number; title?: string }>;
-      if (points.length) setPickerMarkers(points);
-    });
-  }, [ensureDetailsFor]);
-
-  const handlePickerPredictionSelect = useCallback(async (placeId: string) => {
-    try {
-      setPickerLoading(true);
-      const details = await getPlaceDetails(placeId, pickerSessionToken);
-      setPickerSelectedLocation(details);
-      setPickerQuery(details.name);
-      setPickerPredictions([]);
-      setPickerMarkers([{ lat: details.lat, lng: details.lng, title: details.name }]);
-    } catch (e) {
-      Alert.alert('Error', 'Failed to get place details.');
-    } finally {
-      setPickerLoading(false);
-    }
-  }, [pickerSessionToken]);
-
-  const handlePickerUseCurrentLocation = useCallback(async () => {
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Location Permission Required', 'Please allow location access.');
-        return;
-      }
-      setPickerLoading(true);
-      const current = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-      setPickerSelectedLocation({ name: 'Current Location', lat: current.coords.latitude, lng: current.coords.longitude });
-      setPickerQuery('Current Location');
-      setPickerPredictions([]);
-    } catch (e) {
-      Alert.alert('Error', 'Failed to get current location.');
-    } finally {
-      setPickerLoading(false);
-    }
-  }, []);
 
   const handlePickerConfirm = useCallback(() => {
     if (!pickerSelectedLocation) {
@@ -670,6 +585,12 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         userId: user.id,
         createdAt: new Date(),
         updatedAt: new Date(),
+        // Ensure schedule-related fields are present
+        needsWeeklySchedule: formData.needsWeeklySchedule,
+        weeklySchedule: formData.weeklySchedule,
+        weeklyWeekdays: formData.weeklyWeekdays,
+        includeDates: formData.includeDates,
+        excludeDates: formData.excludeDates,
       };
 
       console.log('[CreateGoalModal] Saving goal (single phase):', goalData);
@@ -737,23 +658,23 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         </View>
       )}
 
-      <TextInput
-        className="bg-white rounded-lg px-3 py-3 border border-blue-200 text-gray-900"
-        placeholder={
-          appState === 'NEEDS_INFO' ? "Answer the question above..." :
-          appState === 'IDLE' ? "Describe your goal (e.g., 'Go to the gym 3 times a week')" :
-          "Continue describing your goal..."
-        }
-        placeholderTextColor="#9CA3AF"
-        value={aiPrompt}
-        onChangeText={setAiPrompt}
-        multiline
-        textAlignVertical="top"
-        style={{ minHeight: 80 }}
-        editable={!loading}
-      />
+        <TextInput
+          className="bg-white rounded-lg px-3 py-3 border border-blue-200 text-gray-900"
+          placeholder={
+            appState === 'NEEDS_INFO' ? "Answer the question above..." :
+            appState === 'IDLE' ? "Describe your goal (e.g., 'Go to the gym 3 times a week')" :
+            "Continue describing your goal..."
+          }
+          placeholderTextColor="#9CA3AF"
+          value={aiPrompt}
+          onChangeText={setAiPrompt}
+          multiline
+          textAlignVertical="top"
+          style={{ minHeight: 80 }}
+          editable={!loading}
+        />
 
-      <View style={{ flexDirection: 'row', marginTop: 12, gap: 8 }}>
+        <View style={{ flexDirection: 'row', marginTop: 12, gap: 8 }}>
         <TouchableOpacity
           onPress={handleAiGeneration}
           disabled={loading || !aiPrompt.trim()}
@@ -885,6 +806,8 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         onStartDateChange={(date) => {
           // Update AI draft with new start date
           setAiDraft(prev => ({ ...prev, startDate: date }));
+          // Also mirror to formData duration.startDate
+          setFormData(prev => ({ ...prev, duration: { ...prev.duration, startDate: date } }));
         }}
         onEndDateChange={(date) => {
           // Update AI draft with new end date
@@ -892,11 +815,15 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
             ...prev, 
             duration: { ...prev.duration, endDate: date } 
           }));
+          setFormData(prev => ({ ...prev, duration: { ...prev.duration, endDate: date } }));
         }}
         onNavigateToStep={goToStep}
         onWeeklyScheduleChange={handleWeeklyScheduleChange}
         verificationMethods={formData.verificationMethods}
         onVerificationMethodsChange={(methods) => setFormData(prev => ({ ...prev, verificationMethods: methods }))}
+        includeDates={formData.includeDates}
+        excludeDates={formData.excludeDates}
+        onIncludeExcludeChange={(inc, exc) => setFormData(prev => ({ ...prev, includeDates: inc, excludeDates: exc }))}
       />
     </View>
   );
@@ -1106,6 +1033,9 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
             onWeeklyScheduleChange={handleWeeklyScheduleChange}
             verificationMethods={formData.verificationMethods}
             onVerificationMethodsChange={(methods) => setFormData(prev => ({ ...prev, verificationMethods: methods }))}
+            includeDates={formData.includeDates}
+            excludeDates={formData.excludeDates}
+            onIncludeExcludeChange={(inc, exc) => setFormData(prev => ({ ...prev, includeDates: inc, excludeDates: exc }))}
           />
         );
       case 'location':
@@ -1265,65 +1195,31 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
             <Text className="text-white font-semibold text-lg mt-2">Select Location</Text>
           </View>
 
-          {/* Search */}
-          <View className="p-4 border-b border-gray-200 bg-white">
-            <View className="flex-row items-center bg-gray-50 rounded-lg px-3 h-11 border border-gray-200">
-              <Ionicons name="search" size={20} color="#6B7280" />
-              <TextInput
-                className="flex-1 ml-2 text-gray-900"
-                placeholder="Search places (e.g., GymBox, Starbucks)"
-                placeholderTextColor="#9CA3AF"
-                value={pickerQuery}
-                onChangeText={handlePickerSearchChange}
-                autoCorrect={false}
-                autoCapitalize="none"
-                style={{ paddingVertical: 0 }}
-              />
-              {pickerSearching && <ActivityIndicator size="small" color="#3B82F6" />}
-            </View>
-
-            <TouchableOpacity
-              className="mt-3 bg-green-600 rounded-lg py-3 flex-row items-center justify-center"
-              onPress={handlePickerUseCurrentLocation}
-              disabled={pickerLoading}
-            >
-              <Ionicons name="location" size={20} color="#FFFFFF" />
-              <Text className="text-white font-semibold ml-2">Use Current Location</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Predictions (scrollable) */}
-          {pickerPredictions.length > 0 && (
-            <View className="bg-white border-b border-gray-200" style={{ maxHeight: 280 }}>
-              <FlatList
-                data={pickerPredictions}
-                keyExtractor={(item) => item.placeId}
-                renderItem={({ item }) => (
-                  <TouchableOpacity
-                    className="px-4 py-3 border-b border-gray-100"
-                    onPress={() => handlePickerPredictionSelect(item.placeId)}
-                  >
-                    <Text className="text-gray-900" numberOfLines={1}>{item.description}</Text>
-                  </TouchableOpacity>
-                )}
-                keyboardShouldPersistTaps="handled"
-                showsVerticalScrollIndicator={false}
-                onViewableItemsChanged={handlePredictionsViewableItemsChanged}
-                viewabilityConfig={{ itemVisiblePercentThreshold: 25 }}
-              />
-            </View>
-          )}
-
-          {/* Big Map Preview with markers and interactions */}
-          <View className="flex-1 m-4 rounded-xl overflow-hidden border border-gray-200">
-            <MapPreview
-              location={pickerSelectedLocation || formData.targetLocation || null}
-              markers={pickerMarkers}
-              interactive
-              fitToMarkers
-              onPress={() => {}}
-            />
-          </View>
+          {/* Use LocationSearch component instead of custom implementation */}
+          <LocationSearch
+            onLocationSelect={(location) => {
+              console.log('[CreateGoalModal] LocationSearch selected location:', location);
+              // Convert Location type to TargetLocation type
+              const targetLocation: TargetLocation = {
+                name: location.name,
+                lat: location.latitude,
+                lng: location.longitude,
+                address: location.address,
+                placeId: location.placeId
+              };
+              console.log('[CreateGoalModal] Converted to TargetLocation:', targetLocation);
+              setPickerSelectedLocation(targetLocation);
+              setPickerMarkers([{ lat: targetLocation.lat, lng: targetLocation.lng, title: targetLocation.name }]);
+            }}
+            placeholder="Search places (e.g., GymBox, Starbucks)"
+            currentLocation={pickerSelectedLocation ? {
+              name: pickerSelectedLocation.name,
+              latitude: pickerSelectedLocation.lat,
+              longitude: pickerSelectedLocation.lng,
+              address: pickerSelectedLocation.address,
+              placeId: pickerSelectedLocation.placeId
+            } : null}
+          />
 
           {/* Confirm */}
           <View className="p-4">

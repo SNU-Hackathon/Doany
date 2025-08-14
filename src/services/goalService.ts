@@ -50,6 +50,12 @@ export class GoalService {
           endDate: goalData.endDate?.toISOString()
         },
         notes: goalData.notes || '',
+        // Weekly schedule and overrides
+        needsWeeklySchedule: goalData.needsWeeklySchedule || false,
+        weeklySchedule: goalData.weeklySchedule || {},
+        weeklyWeekdays: goalData.weeklyWeekdays || [],
+        includeDates: goalData.includeDates || [],
+        excludeDates: goalData.excludeDates || [],
         // Dual timestamps: server authoritative + client for instant UI sort
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -342,6 +348,11 @@ export class GoalService {
       },
       notes: data.notes || '',
       targetLocation: data.targetLocation || undefined,
+      needsWeeklySchedule: data.needsWeeklySchedule || false,
+      weeklySchedule: data.weeklySchedule || {},
+      weeklyWeekdays: Array.isArray(data.weeklyWeekdays) ? data.weeklyWeekdays : [],
+      includeDates: Array.isArray(data.includeDates) ? data.includeDates : [],
+      excludeDates: Array.isArray(data.excludeDates) ? data.excludeDates : [],
       createdAt: data.createdAt instanceof Timestamp 
         ? data.createdAt.toDate() 
         : new Date(data.createdAt || Date.now()),
