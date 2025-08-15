@@ -43,6 +43,7 @@ export default function MapPreview({ location, markers = [], interactive = false
   const [center, setCenter] = useState<{ latitude: number; longitude: number } | null>(null);
   const [webZoom, setWebZoom] = useState(14);
   const mapRef = React.useRef<any>(null);
+  const debugMaps = (process.env.EXPO_PUBLIC_DEBUG_MAPS || '').toLowerCase() === 'true';
 
   useEffect(() => {
     let cancelled = false;
@@ -61,6 +62,14 @@ export default function MapPreview({ location, markers = [], interactive = false
     init();
     return () => { cancelled = true; };
   }, [location?.lat, location?.lng]);
+
+  useEffect(() => {
+    if (!debugMaps) return;
+    if (Platform.OS === 'android') {
+      console.log('[MapPreview] Android maps debug enabled');
+      console.log('[MapPreview] Ensure android.config.googleMaps.apiKey is set in app.json/app.config.*');
+    }
+  }, [debugMaps]);
 
   const mapRegion = useMemo(() => ({
     latitude: center?.latitude ?? 37.5665,

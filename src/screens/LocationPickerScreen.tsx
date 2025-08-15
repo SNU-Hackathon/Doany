@@ -5,15 +5,15 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import * as Location from 'expo-location';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    FlatList, Linking, Platform,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Alert,
+  FlatList, Linking, Platform,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from 'react-native';
-import { getPlaceDetails, reverseGeocode, searchPlaces } from '../services/places';
+import { getPlaceDetails, PlaceTextResult, reverseGeocode, textSearchPlaces } from '../services/places';
 import { PlacePrediction, TargetLocation } from '../types';
 
 // Platform-specific map imports
@@ -63,7 +63,8 @@ export default function LocationPickerScreen() {
   
   // State
   const [searchQuery, setSearchQuery] = useState('');
-  const [predictions, setPredictions] = useState<PlacePrediction[]>([]);
+  const [predictions, setPredictions] = useState<PlacePrediction[]>([]); // legacy (no longer used for list)
+  const [results, setResults] = useState<PlaceTextResult[]>([]);
   const [selectedLocation, setSelectedLocation] = useState<any>(null);
   const [mapRegion, setMapRegion] = useState<any>({
     latitude: 37.5665, // Seoul default
@@ -73,6 +74,8 @@ export default function LocationPickerScreen() {
   });
   const [loading, setLoading] = useState(false);
   const [searching, setSearching] = useState(false);
+  const [nextPageToken, setNextPageToken] = useState<string | undefined>(undefined);
+  const allowEnterSearch = (process.env.EXPO_PUBLIC_ALLOW_ENTER_SEARCH || '').toLowerCase() === 'true';
   
   // Refs
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -105,6 +108,8 @@ export default function LocationPickerScreen() {
   const performSearch = useCallback(async (query: string) => {
     if (!query.trim()) {
       setPredictions([]);
+      setResults([]);
+      setNextPageToken(undefined);
       return;
     }
 
@@ -117,12 +122,16 @@ export default function LocationPickerScreen() {
     setSearching(true);
 
     try {
-      console.log('[Places] Searching for:', query);
-      const results = await searchPlaces(query);
+      console.log('[Places] Text search for:', query);
+      const { results: r, nextPageToken: npt } = await textSearchPlaces(query, {
+        latitude: mapRegion.latitude,
+        longitude: mapRegion.longitude,
+        radiusMeters: 50000,
+      });
       if (abortControllerRef.current?.signal.aborted) return;
-      
-      console.log('[Places] Found', results.length, 'predictions');
-      setPredictions(results);
+      console.log('[Places] Found', r.length, 'results');
+      setResults(r);
+      setNextPageToken(npt);
     } catch (error) {
       if (abortControllerRef.current?.signal.aborted) return;
       
@@ -181,6 +190,21 @@ export default function LocationPickerScreen() {
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  // Handle result selection (text search)
+  const handleResultSelect = useCallback(async (item: PlaceTextResult) => {
+    setSelectedLocation({
+      name: item.description,
+      lat: item.lat,
+      lng: item.lng,
+    });
+    setMapRegion({
+      latitude: item.lat,
+      longitude: item.lng,
+      latitudeDelta: 0.01,
+      longitudeDelta: 0.01,
+    });
   }, []);
 
   // Handle current location
@@ -268,6 +292,15 @@ export default function LocationPickerScreen() {
       <Text style={{ color: '#1F2937', fontWeight: '500' }} numberOfLines={1}>{item.description}</Text>
     </TouchableOpacity>
   ), [handlePredictionSelect]);
+
+  const renderResult = useCallback(({ item }: { item: PlaceTextResult }) => (
+    <TouchableOpacity
+      style={{ backgroundColor: 'white', padding: 12, borderBottomWidth: 1, borderBottomColor: '#E5E7EB' }}
+      onPress={() => handleResultSelect(item)}
+    >
+      <Text style={{ color: '#1F2937', fontWeight: '600' }} numberOfLines={1}>{item.description}</Text>
+    </TouchableOpacity>
+  ), [handleResultSelect]);
 
   // Memoized map component
   const MapComponent = useMemo(() => {
@@ -372,6 +405,11 @@ export default function LocationPickerScreen() {
             value={searchQuery}
             onChangeText={handleSearchChange}
             autoFocus
+            blurOnSubmit={false}
+            onSubmitEditing={() => {
+              if (!allowEnterSearch) return;
+              performSearch(searchQuery);
+            }}
           />
           {searching && <ActivityIndicator size="small" color="#3B82F6" />}
         </View>
@@ -402,17 +440,33 @@ export default function LocationPickerScreen() {
         <Text style={{ color: 'white', fontWeight: '600', marginLeft: 8 }}>Open in Google Maps</Text>
       </TouchableOpacity>
 
-      {/* Search Results */}
-      {predictions.length > 0 && (
-        <View style={{ backgroundColor: 'white', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' }}>
-          <FlatList
-            data={predictions}
-            renderItem={renderPrediction}
-            keyExtractor={(item) => item.placeId}
-            keyboardShouldPersistTaps="handled"
-            nestedScrollEnabled={false}
-          />
-        </View>
+      {/* Search Results (paginated) pinned below header, map remains fixed */}
+      {results.length > 0 && (
+        <FlatList
+          data={results}
+          renderItem={renderResult}
+          keyExtractor={(item) => item.placeId}
+          keyboardShouldPersistTaps="always"
+          removeClippedSubviews={false}
+          style={{ backgroundColor: 'white', maxHeight: 320 }}
+          onEndReachedThreshold={0.5}
+          onEndReached={() => {
+            if (nextPageToken) {
+              setSearching(true);
+              textSearchPlaces('', { pageToken: nextPageToken })
+                .then(({ results: more, nextPageToken: npt }) => {
+                  setResults((prev) => {
+                    const ids = new Set(prev.map(p => p.placeId));
+                    const merged = [...prev];
+                    for (const m of more) if (!ids.has(m.placeId)) merged.push(m);
+                    return merged;
+                  });
+                  setNextPageToken(npt);
+                })
+                .finally(() => setSearching(false));
+            }
+          }}
+        />
       )}
 
       {/* Map View */}
