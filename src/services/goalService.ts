@@ -42,6 +42,7 @@ export class GoalService {
         description: goalData.description,
         category: goalData.category,
         verificationMethods: goalData.verificationMethods || [goalData.verificationType || 'manual'],
+        lockedVerificationMethods: goalData.lockedVerificationMethods || [],
         targetLocation: cleanTargetLocation,
         frequency: goalData.frequency || { count: 1, unit: 'per_day' },
         duration: goalData.duration || {
@@ -336,6 +337,7 @@ export class GoalService {
       verificationMethods: Array.isArray(data.verificationMethods) 
         ? data.verificationMethods 
         : [data.verificationType || 'manual'],
+      lockedVerificationMethods: Array.isArray(data.lockedVerificationMethods) ? data.lockedVerificationMethods : [],
       frequency: data.frequency || { count: 1, unit: 'per_day' },
       duration: data.duration || {
         type: 'range',

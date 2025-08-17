@@ -1,5 +1,6 @@
 // Verification automation service for handling automatic goal verification
 
+import * as ImagePicker from 'expo-image-picker';
 import { Alert } from 'react-native';
 import { Goal, Location as LocationType, VerificationStatus } from '../types';
 import { LocationService } from './locationService';
@@ -166,6 +167,36 @@ export class VerificationAutomationService {
     } catch (error) {
       console.error('Error performing manual verification:', error);
       Alert.alert('Error', 'Failed to record verification');
+    }
+  }
+
+  // Photo-based verification using camera
+  static async performPhotoVerification(goal: Goal): Promise<void> {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Camera Permission', 'Camera permission is required for photo verification.');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({ quality: 0.6 });
+      if (result.canceled || !result.assets || result.assets.length === 0) return;
+      const asset = result.assets[0];
+      const resp = await fetch(asset.uri);
+      const blob = await resp.blob();
+
+      await VerificationService.createVerification(
+        goal.id,
+        goal.userId,
+        'success',
+        undefined,
+        blob
+      );
+
+      Alert.alert('Uploaded', 'Photo verification uploaded.');
+    } catch (error) {
+      console.error('[VerificationAutomationService] Photo verification failed', error);
+      Alert.alert('Error', 'Photo verification failed.');
     }
   }
 

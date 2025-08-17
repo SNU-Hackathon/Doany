@@ -67,12 +67,16 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
   const [rememberedPrompt, setRememberedPrompt] = useState(''); // Remember the original AI prompt
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [backgroundTaskProgress, setBackgroundTaskProgress] = useState<string>('');
+  const [aiVerificationLoading, setAiVerificationLoading] = useState<boolean>(false);
   const [selectedCategory, setSelectedCategory] = useState(0); // 0 for all
   const [filteredExamples, setFilteredExamples] = useState<string[]>(AIService.getExamplePrompts());
   const [weeklyScheduleData, setWeeklyScheduleData] = useState<{
     weekdays: Set<number>;
     timeSettings: { [key: string]: string[] };
   }>({ weekdays: new Set(), timeSettings: {} });
+
+  // Prevent duplicate AI verification application
+  const aiVerificationAppliedRef = useRef(false);
 
   // State for location picker
   const [showLocationPicker, setShowLocationPicker] = useState(false);
@@ -123,6 +127,43 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       weeklyWeekdays: Array.from(weekdays),
       weeklySchedule: timeSettings
     }));
+    // Enforce mandatory method based on weekly schedule selection
+    setFormData(prev => {
+      const selectedDays = Array.from(weekdays);
+      const hasAnyTimes = selectedDays.some(d => (timeSettings?.[d] || []).length > 0);
+      const hasDayWithoutTimes = selectedDays.some(d => !(timeSettings?.[d]) || (timeSettings?.[d] || []).length === 0);
+
+      const nextLocked = new Set([...(prev.lockedVerificationMethods || [])]);
+      const nextSelected = new Set([...(prev.verificationMethods || [])]);
+
+      if (weekdays.size === 0) {
+        // No weekly schedule -> remove forced time/manual locks
+        nextLocked.delete('time' as any);
+        nextLocked.delete('manual' as any);
+      } else if (hasAnyTimes && hasDayWithoutTimes) {
+        // Mixed: some days have times, some don't -> lock both
+        nextLocked.add('time' as any);
+        nextLocked.add('manual' as any);
+        nextSelected.add('time' as any);
+        nextSelected.add('manual' as any);
+      } else if (hasAnyTimes && !hasDayWithoutTimes) {
+        // All selected days have times -> lock time only
+        nextLocked.add('time' as any);
+        nextLocked.delete('manual' as any);
+        nextSelected.add('time' as any);
+      } else {
+        // No times but weekdays selected -> lock manual only
+        nextLocked.add('manual' as any);
+        nextLocked.delete('time' as any);
+        nextSelected.add('manual' as any);
+      }
+
+      return {
+        ...prev,
+        lockedVerificationMethods: Array.from(nextLocked) as any,
+        verificationMethods: Array.from(nextSelected) as any
+      };
+    });
     if (aiDraft.title) {
       setAiDraft(prev => ({ ...prev, needsWeeklySchedule: weekdays.size > 0 }));
     }
@@ -153,6 +194,44 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     excludeDates: [],
   });
 
+  // Ensure AI mandatory verification methods are selected and locked
+  const ensureAIMandatoryVerifications = useCallback(async () => {
+    try {
+      setAiVerificationLoading(true);
+      const promptSource = rememberedPrompt || aiPrompt || aiDraft.title || formData.title || '';
+      if (!promptSource) return;
+      const { methods, mandatory } = await AIService.analyzeVerificationMethods(promptSource);
+      setFormData(prev => {
+        const merged = new Set([...(prev.verificationMethods || []), ...(methods || []), ...(mandatory || [])]);
+        const locked = new Set([...(prev.lockedVerificationMethods || []), ...(mandatory || [])]);
+        // If we already have a place, ensure 'location' is selected (locking already handled by mandatory)
+        const hasPlaceInfo = !!prev.targetLocation || !!aiDraft.targetLocation;
+        if (hasPlaceInfo) {
+          merged.add('location' as any);
+          locked.add('location' as any);
+        }
+        return { 
+          ...prev, 
+          verificationMethods: Array.from(merged) as any, 
+          lockedVerificationMethods: Array.from(locked) as any 
+        };
+      });
+      aiVerificationAppliedRef.current = true;
+    } catch (e) {
+      // Ignore AI failure, keep current
+      console.warn('[CreateGoalModal] analyzeVerificationMethods failed, skipping lock');
+    } finally {
+      setAiVerificationLoading(false);
+    }
+  }, [rememberedPrompt, aiPrompt, aiDraft.title, aiDraft.verificationMethods, aiDraft.targetLocation, formData.title]);
+
+  // Ensure AI methods are applied whenever we land on Schedule step
+  useEffect(() => {
+    if (state.step === 1 && !aiVerificationAppliedRef.current) {
+      ensureAIMandatoryVerifications();
+    }
+  }, [state.step, ensureAIMandatoryVerifications]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -162,6 +241,33 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
   }, []);
 
   // Step navigation functions using context
+  const resetScheduleState = useCallback(() => {
+    // Clear schedule-related form fields
+    setFormData(prev => ({
+      ...prev,
+      duration: { type: 'weeks', value: 2 },
+      startDate: undefined,
+      endDate: undefined,
+      needsWeeklySchedule: false,
+      weeklyWeekdays: [],
+      weeklySchedule: {},
+      includeDates: [],
+      excludeDates: [],
+      // Remove schedule-derived locks (time/manual) while keeping other methods intact
+      lockedVerificationMethods: (prev.lockedVerificationMethods || []).filter(m => m !== 'time' && m !== 'manual') as any,
+    }));
+    // Clear AI draft schedule hints
+    setAiDraft(prev => ({
+      ...prev,
+      startDate: undefined,
+      duration: undefined,
+      needsWeeklySchedule: false,
+      weeklySchedule: undefined,
+    }));
+    // Clear local weekly schedule UI cache
+    setWeeklyScheduleData({ weekdays: new Set(), timeSettings: {} });
+  }, []);
+
   const goToStep = (stepIndex: number) => {
     if (stepIndex >= 0 && stepIndex < STEPS.length) {
       console.log('[Stepper] Moving to step:', stepIndex, STEPS[stepIndex].title);
@@ -179,10 +285,15 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
           if (rememberedPrompt) {
             setAiPrompt(rememberedPrompt);
           }
+          // Reset schedule when returning to AI for regeneration
+          resetScheduleState();
           break;
         case 1: // Schedule
           setAppState('NEEDS_DATES');
           setShowDatePicker(true);
+          // Auto-select and lock AI-mandatory verification methods when entering Schedule
+          aiVerificationAppliedRef.current = false; // allow re-apply on entering step
+          ensureAIMandatoryVerifications();
           break;
         case 2: // Review
           setAppState('READY_TO_REVIEW');
@@ -202,6 +313,8 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         case 1: // Schedule
           setAppState('NEEDS_DATES');
           setShowDatePicker(true);
+          aiVerificationAppliedRef.current = false; // allow re-apply on entering step
+          ensureAIMandatoryVerifications();
           break;
         case 2: // Review
           setAppState('READY_TO_REVIEW');
@@ -404,6 +517,23 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       } : formData.targetLocation,
     };
 
+    // If any place info exists, ensure 'location' is selected and locked
+    const hasPlaceInfo = !!(draft.targetLocation || formData.targetLocation);
+    if (hasPlaceInfo) {
+      const vm = new Set([...(updatedForm.verificationMethods || []), 'location' as any]);
+      const locked = new Set([...(updatedForm.lockedVerificationMethods || []), 'location' as any]);
+      (updatedForm as any).verificationMethods = Array.from(vm);
+      (updatedForm as any).lockedVerificationMethods = Array.from(locked);
+    }
+
+    // Apply AI mandatoryVerificationMethods generally
+    if ((draft as any).mandatoryVerificationMethods?.length) {
+      const mandatorySet = new Set([...(updatedForm.lockedVerificationMethods || []), ...((draft as any).mandatoryVerificationMethods || [])]);
+      const vmSet = new Set([...(updatedForm.verificationMethods || []), ...((draft as any).mandatoryVerificationMethods || [])]);
+      (updatedForm as any).lockedVerificationMethods = Array.from(mandatorySet);
+      (updatedForm as any).verificationMethods = Array.from(vmSet);
+    }
+
     // Update legacy fields for backward compatibility
     if (draft.verificationMethods && draft.verificationMethods.length > 0) {
       updatedForm.verificationType = draft.verificationMethods[0];
@@ -432,10 +562,16 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
   const handleLocationSelected = (location: TargetLocation) => {
     console.time('[CreateGoalModal] Location Selection');
     
-    setFormData(prev => ({
-      ...prev,
-      targetLocation: location
-    }));
+    setFormData(prev => {
+      const nextSelected = new Set([...(prev.verificationMethods || []), 'location' as any]);
+      const nextLocked = new Set([...(prev.lockedVerificationMethods || []), 'location' as any]);
+      return {
+        ...prev,
+        targetLocation: location,
+        verificationMethods: Array.from(nextSelected) as any,
+        lockedVerificationMethods: Array.from(nextLocked) as any
+      };
+    });
 
     // Update AI draft as well
     const updatedDraft = mergeAIGoal(aiDraft, {
@@ -506,10 +642,16 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       };
 
       // Update form data
-      setFormData(prev => ({
-        ...prev,
-        targetLocation: currentLocation
-      }));
+      setFormData(prev => {
+        const nextSelected = new Set([...(prev.verificationMethods || []), 'location' as any]);
+        const nextLocked = new Set([...(prev.lockedVerificationMethods || []), 'location' as any]);
+        return {
+          ...prev,
+          targetLocation: currentLocation,
+          verificationMethods: Array.from(nextSelected) as any,
+          lockedVerificationMethods: Array.from(nextLocked) as any
+        };
+      });
 
       console.log('[CreateGoalModal] Current location set:', currentLocation);
     } catch (error) {
@@ -800,6 +942,11 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
 
   const renderDatePickerSection = () => (
     <View style={{ marginBottom: 24 }}>
+      {aiVerificationLoading && (
+        <View className="mb-3 bg-blue-50 border border-blue-200 rounded-lg p-3">
+          <Text className="text-blue-700 text-sm">Analyzing verification methods with AI...</Text>
+        </View>
+      )}
       <SimpleDatePicker
         startDate={aiDraft.startDate || null}
         endDate={aiDraft.duration?.endDate || null}
@@ -821,6 +968,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         onWeeklyScheduleChange={handleWeeklyScheduleChange}
         verificationMethods={formData.verificationMethods}
         onVerificationMethodsChange={(methods) => setFormData(prev => ({ ...prev, verificationMethods: methods }))}
+        lockedVerificationMethods={formData.lockedVerificationMethods || []}
         includeDates={formData.includeDates}
         excludeDates={formData.excludeDates}
         onIncludeExcludeChange={(inc, exc) => setFormData(prev => ({ ...prev, includeDates: inc, excludeDates: exc }))}
@@ -1033,6 +1181,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
             onWeeklyScheduleChange={handleWeeklyScheduleChange}
             verificationMethods={formData.verificationMethods}
             onVerificationMethodsChange={(methods) => setFormData(prev => ({ ...prev, verificationMethods: methods }))}
+            lockedVerificationMethods={formData.lockedVerificationMethods || []}
             includeDates={formData.includeDates}
             excludeDates={formData.excludeDates}
             onIncludeExcludeChange={(inc, exc) => setFormData(prev => ({ ...prev, includeDates: inc, excludeDates: exc }))}
@@ -1167,6 +1316,11 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
             <Text className="text-blue-700 text-sm text-center">{backgroundTaskProgress}</Text>
           </View>
         )}
+        {state.step === 1 && aiVerificationLoading && (
+          <View className="bg-blue-50 border-b border-blue-200 px-4 py-2">
+            <Text className="text-blue-700 text-sm text-center">Analyzing verification methods with AI...</Text>
+          </View>
+        )}
 
         {/* Main content using FlatList to avoid VirtualizedList nesting */}
         <FlatList
@@ -1179,6 +1333,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
           initialNumToRender={3}
           windowSize={3}
           removeClippedSubviews={true}
+          extraData={{ formData, aiVerificationLoading, stateStep: state.step }}
         />
 
       {/* Location Picker Overlay Modal */}

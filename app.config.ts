@@ -1,4 +1,5 @@
 import type { ConfigContext, ExpoConfig } from '@expo/config';
+import 'dotenv/config';
 // Programmatic Expo config to inject Android Google Maps API key from env
 // This ensures react-native-maps tiles load on Android.
 
@@ -14,6 +15,10 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ||
     base?.android?.config?.googleMaps?.apiKey ||
     'YOUR_ANDROID_MAPS_API_KEY';
+  const androidPackage =
+    process.env.EXPO_ANDROID_PACKAGE ||
+    (base?.android as any)?.package ||
+    'com.anonymous.doany_app';
 
   return {
     ...base,
@@ -22,6 +27,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     slug: base.slug || config.slug,
     android: {
       ...(base.android || {}),
+      package: androidPackage,
       config: {
         ...((base.android && (base.android as any).config) || {}),
         googleMaps: {

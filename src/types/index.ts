@@ -48,7 +48,7 @@ export interface PlaceDetails {
   };
 }
 
-export type VerificationType = 'location' | 'time' | 'screentime' | 'manual';
+export type VerificationType = 'location' | 'time' | 'screentime' | 'photo' | 'manual';
 export type TimeFrame = 'daily' | 'weekly' | 'monthly';
 export type VerificationStatus = 'success' | 'fail';
 
@@ -71,6 +71,8 @@ export interface Goal {
   description: string;
   category: string;
   verificationMethods: VerificationType[]; // Multiple verification methods allowed
+  // AI-selected mandatory methods (locked in UI); optional field on stored goals
+  lockedVerificationMethods?: VerificationType[];
   targetLocation?: TargetLocation;
   frequency: GoalFrequency;
   duration: GoalDuration;
@@ -141,6 +143,8 @@ export interface AIGoal {
   title: string;
   category?: string;
   verificationMethods: VerificationType[];
+  // Subset of verificationMethods that are required and cannot be deselected by the user
+  mandatoryVerificationMethods?: VerificationType[];
   frequency: {
     count: number;
     unit: 'per_day' | 'per_week' | 'per_month';
@@ -178,6 +182,8 @@ export interface CreateGoalForm {
   description: string;
   category: string;
   verificationMethods: VerificationType[];
+  // Methods selected by AI as mandatory and locked in the UI
+  lockedVerificationMethods?: VerificationType[];
   targetLocation?: TargetLocation;
   frequency: GoalFrequency;
   duration: GoalDuration;

@@ -31,6 +31,7 @@ interface SimpleDatePickerProps {
   onWeeklyScheduleChange?: (weekdays: Set<number>, timeSettings: { [key: string]: string[] }) => void;
   verificationMethods?: VerificationType[];
   onVerificationMethodsChange?: (methods: VerificationType[]) => void;
+  lockedVerificationMethods?: VerificationType[];
   includeDates?: string[];
   excludeDates?: string[];
   onIncludeExcludeChange?: (includeDates: string[], excludeDates: string[]) => void;
@@ -45,6 +46,7 @@ export default function SimpleDatePicker({
   onWeeklyScheduleChange,
   verificationMethods = [],
   onVerificationMethodsChange,
+  lockedVerificationMethods = [],
   includeDates: initialIncludeDates = [],
   excludeDates: initialExcludeDates = [],
   onIncludeExcludeChange
@@ -76,6 +78,8 @@ export default function SimpleDatePicker({
 
   // Change-detection to avoid loops
   const prevWeeklyDataRef = useRef<string>('');
+  const prevExcludeSigRef = useRef<string>('');
+  const didMountRef = useRef<boolean>(false);
 
   // Notify parent when weekly schedule changes
   const notifyParent = useCallback((weekdays: Set<number>, timeSettings: { [key: string]: string[] }) => {
@@ -88,8 +92,14 @@ export default function SimpleDatePicker({
   }, [onWeeklyScheduleChange]);
 
   useEffect(() => {
+    if (!didMountRef.current) {
+      didMountRef.current = true;
+      return;
+    }
     notifyParent(selectedWeekdays, weeklyTimeSettings);
   }, [selectedWeekdays, weeklyTimeSettings]);
+
+  // Removed 'weekly overrides calendar excludes' effect to allow per-day overrides to persist
 
   // Keep include/exclude in sync with parent-provided props on first render or when they change externally
   const arraysEqual = (a?: string[], b?: string[]) => {
@@ -217,6 +227,45 @@ export default function SimpleDatePicker({
       setIncludeDates(nextInclude);
       setExcludeDates(nextExclude);
       onIncludeExcludeChange?.(nextInclude, nextExclude);
+
+      // Reflect this single-day change into Weekly Schedule by checking if any occurrences
+      // of this weekday remain scheduled across the current range
+      const dayIdx = new Date(dateStr).getDay();
+      let anyScheduledForWeekday = false;
+      if (startDate && endDate) {
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+          if (d.getDay() !== dayIdx) continue;
+          const ds = d.toISOString().split('T')[0];
+          const baseInc = selectedWeekdays.has(dayIdx);
+          const sched = (baseInc && !nextExclude.includes(ds)) || nextInclude.includes(ds);
+          if (sched) { anyScheduledForWeekday = true; break; }
+        }
+      } else {
+        const baseInc = selectedWeekdays.has(dayIdx);
+        anyScheduledForWeekday = baseInc || nextInclude.includes(dateStr);
+      }
+
+      if (anyScheduledForWeekday) {
+        setSelectedWeekdays(prev => {
+          const next = new Set(prev);
+          next.add(dayIdx);
+          return next;
+        });
+      } else {
+        setSelectedWeekdays(prev => {
+          const next = new Set(prev);
+          next.delete(dayIdx);
+          return next;
+        });
+        // If the weekday has no scheduled dates left, remove its time settings as well
+        setWeeklyTimeSettings(prev => {
+          const copy: any = { ...prev };
+          delete copy[dayIdx];
+          return copy;
+        });
+      }
       return;
     }
 
@@ -236,6 +285,13 @@ export default function SimpleDatePicker({
     setIncludeDates(nextInclude);
     setExcludeDates(nextExclude);
     onIncludeExcludeChange?.(nextInclude, nextExclude);
+
+    // Add weekdays from newly included dates to weekly schedule selection (non-destructive)
+    setSelectedWeekdays(prev => {
+      const next = new Set(prev);
+      nextInclude.forEach(d => next.add(new Date(d).getDay()));
+      return next;
+    });
   };
 
   const handleDurationChange = (value: string) => {
@@ -253,6 +309,25 @@ export default function SimpleDatePicker({
       setIncludeDates(nextInclude);
       setExcludeDates(nextExclude);
       onIncludeExcludeChange?.(nextInclude, nextExclude);
+
+      // Reflect include dates back to weekly schedule selection (non-destructive)
+      setSelectedWeekdays(prev => {
+        const next = new Set<number>();
+        // Only keep weekdays that have at least one included date still in range
+        nextInclude.forEach(d => next.add(new Date(d).getDay()));
+        return next;
+      });
+      // Clear times for weekdays no longer selected
+      setWeeklyTimeSettings(prev => {
+        const keepDays = new Set<number>();
+        nextInclude.forEach(d => keepDays.add(new Date(d).getDay()));
+        const copy: any = {};
+        Object.keys(prev).forEach(k => {
+          const di = parseInt(k, 10);
+          if (keepDays.has(di)) copy[di] = prev[di];
+        });
+        return copy;
+      });
     }
   };
 
@@ -271,27 +346,76 @@ export default function SimpleDatePicker({
       setIncludeDates(nextInclude);
       setExcludeDates(nextExclude);
       onIncludeExcludeChange?.(nextInclude, nextExclude);
+
+      // Reflect include dates back to weekly schedule selection (non-destructive)
+      setSelectedWeekdays(prev => {
+        const next = new Set<number>();
+        nextInclude.forEach(d => next.add(new Date(d).getDay()));
+        return next;
+      });
+      setWeeklyTimeSettings(prev => {
+        const keepDays = new Set<number>();
+        nextInclude.forEach(d => keepDays.add(new Date(d).getDay()));
+        const copy: any = {};
+        Object.keys(prev).forEach(k => {
+          const di = parseInt(k, 10);
+          if (keepDays.has(di)) copy[di] = prev[di];
+        });
+        return copy;
+      });
     }
   };
 
   // Weekly Schedule functions (always visible)
   const toggleWeekday = useCallback((dayIndex: number) => {
-    setSelectedWeekdays(prev => {
-      const next = new Set(prev);
-      if (next.has(dayIndex)) {
-        next.delete(dayIndex);
-        setWeeklyTimeSettings(prevTimes => {
-          const copy = { ...prevTimes } as any;
-          delete copy[dayIndex];
-          return copy;
-        });
-      } else {
-        next.add(dayIndex);
-        // Do not auto-add default time; user will add manually
-      }
-      return next;
-    });
-  }, []);
+    // Defer state updates to avoid setState during render warnings
+    setTimeout(() => {
+      setSelectedWeekdays(prev => {
+        const next = new Set(prev);
+        const wasSelected = next.has(dayIndex);
+        if (wasSelected) {
+          next.delete(dayIndex);
+          setWeeklyTimeSettings(prevTimes => {
+            const copy = { ...prevTimes } as any;
+            delete copy[dayIndex];
+            return copy;
+          });
+          // Remove all calendar schedules for this weekday within the range
+          if (startDate && endDate) {
+            const start = new Date(startDate);
+            const end = new Date(endDate);
+            const nextInclude = includeDates.filter(ds => new Date(ds).getDay() !== dayIndex || new Date(ds) < start || new Date(ds) > end);
+            // Exclude every in-range date of that weekday explicitly to clear schedule
+            const explicitExcludes: string[] = [];
+            for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+              if (d.getDay() !== dayIndex) continue;
+              const ds = d.toISOString().split('T')[0];
+              if (!explicitExcludes.includes(ds)) explicitExcludes.push(ds);
+            }
+            const nextExclude = excludeDates
+              .filter(ds => new Date(ds).getDay() !== dayIndex || new Date(ds) < start || new Date(ds) > end)
+              .concat(explicitExcludes)
+              .filter((v, i, a) => a.indexOf(v) === i)
+              .sort();
+            setIncludeDates(nextInclude);
+            setExcludeDates(nextExclude);
+            onIncludeExcludeChange?.(nextInclude, nextExclude);
+          }
+        } else {
+          next.add(dayIndex);
+          // Add all in-range occurrences of this weekday as scheduled by removing excludes
+          if (startDate && endDate) {
+            const start = new Date(startDate);
+            const end = new Date(endDate);
+            const nextExclude = excludeDates.filter(ds => new Date(ds).getDay() !== dayIndex || new Date(ds) < start || new Date(ds) > end);
+            setExcludeDates(nextExclude);
+            onIncludeExcludeChange?.(includeDates, nextExclude);
+          }
+        }
+        return next;
+      });
+    }, 0);
+  }, [startDate, endDate, includeDates, excludeDates, onIncludeExcludeChange]);
 
   const openAddTimeModal = useCallback((dayIndex: number) => {
     setEditingDayIndex(dayIndex);
@@ -362,8 +486,11 @@ export default function SimpleDatePicker({
   const dayShort = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
   // Verification Methods (bottom section)
-  const allMethods: VerificationType[] = ['location', 'time', 'screentime', 'manual'];
+  const allMethods: VerificationType[] = ['location', 'time', 'screentime', 'photo', 'manual'];
   const toggleMethod = (method: VerificationType) => {
+    if (lockedVerificationMethods?.includes(method)) {
+      return; // locked methods cannot be toggled off
+    }
     const set = new Set(verificationMethods);
     if (set.has(method)) set.delete(method); else set.add(method);
     onVerificationMethodsChange?.(Array.from(set));
@@ -618,19 +745,90 @@ export default function SimpleDatePicker({
         <View className="flex-row flex-wrap gap-2">
           {allMethods.map((m) => {
             const selected = verificationMethods?.includes(m);
+            const locked = lockedVerificationMethods?.includes(m);
             return (
               <TouchableOpacity
                 key={m}
                 onPress={() => toggleMethod(m)}
-                className={`px-3 py-2 rounded-full border ${selected ? 'bg-blue-600 border-blue-600' : 'bg-white border-gray-300'}`}
+                disabled={locked}
+                className={`px-3 py-2 rounded-full border flex-row items-center ${
+                  locked ? 'bg-blue-800 border-blue-800' : (selected ? 'bg-blue-600 border-blue-600' : 'bg-white border-gray-300')
+                }`}
                 activeOpacity={0.8}
               >
-                <Text className={`${selected ? 'text-white' : 'text-gray-700'} font-medium`}>{m.charAt(0).toUpperCase() + m.slice(1)}</Text>
+                {locked && (
+                  <Ionicons name="lock-closed" size={14} color="#FFFFFF" />
+                )}
+                <Text className={`${selected || locked ? 'text-white' : 'text-gray-700'} font-medium ${locked ? 'ml-1' : ''}`}>
+                  {m.charAt(0).toUpperCase() + m.slice(1)}
+                </Text>
               </TouchableOpacity>
             );
           })}
         </View>
-        <Text className="text-xs text-gray-500 mt-2">Select one or more methods to verify your progress.</Text>
+        <Text className="text-xs text-gray-500 mt-2">Select one or more methods to verify your progress. AI-selected methods are locked.</Text>
+
+        {/* Dynamic automation summary based on weekly schedule and selected methods */}
+        {selectedWeekdays.size > 0 && (
+          <View className="mt-3 bg-gray-50 border border-gray-200 rounded-lg p-3">
+            {(() => {
+              const selected = new Set(verificationMethods || []);
+              const hasTimeMethod = selected.has('time' as any);
+              const hasManualMethod = selected.has('manual' as any);
+              const hasLocationMethod = selected.has('location' as any);
+              const hasPhotoMethod = selected.has('photo' as any);
+              const hasScreenTimeMethod = selected.has('screentime' as any);
+
+              const selectedDays = Array.from(selectedWeekdays).sort();
+              const daysWithTimes = selectedDays.filter(d => (weeklyTimeSettings?.[d] || []).length > 0);
+              const daysWithoutTimes = selectedDays.filter(d => !(weeklyTimeSettings?.[d]) || (weeklyTimeSettings?.[d] || []).length === 0);
+              const hasAnyTimes = daysWithTimes.length > 0;
+              const hasDayWithoutTimes = daysWithoutTimes.length > 0;
+
+              const formatDay = (idx: number) => dayShort[idx];
+              const sampleSlots: string[] = [];
+              daysWithTimes.forEach(d => {
+                (weeklyTimeSettings?.[d] || []).forEach(t => {
+                  if (sampleSlots.length < 6) sampleSlots.push(`${formatDay(d)} ${t}`);
+                });
+              });
+
+              const bullets: string[] = [];
+              if (hasAnyTimes && hasTimeMethod) {
+                const slotPreview = sampleSlots.length > 0 ? ` (e.g., ${sampleSlots.join(', ')}${sampleSlots.length >= 6 ? '…' : ''})` : '';
+                const extras: string[] = [];
+                if (hasLocationMethod) extras.push('Location');
+                if (hasPhotoMethod) extras.push('Photo');
+                if (hasScreenTimeMethod) extras.push('Screen Time');
+                // Do not include Manual here; manual is covered for days without times below
+                if (extras.length > 0) {
+                  bullets.push(`At scheduled times${slotPreview}: ${extras.join(' + ')} verification will run automatically.`);
+                } else {
+                  bullets.push(`At scheduled times${slotPreview}: Time-based verification will run.`);
+                }
+              }
+
+              if (hasDayWithoutTimes && hasManualMethod) {
+                const dayList = daysWithoutTimes.map(formatDay).join(', ');
+                bullets.push(`On selected days without times (${dayList}): Manual check-in is required.`);
+              }
+
+              if (bullets.length === 0) {
+                // Generic fallback when no clear automation applies
+                return (
+                  <Text className="text-gray-600 text-xs">Configure times to enable automatic verifications on those slots.</Text>
+                );
+              }
+
+              return bullets.map((line, idx) => (
+                <View key={idx} className="flex-row items-start mb-1">
+                  <Text className="text-gray-500 text-xs mr-1">•</Text>
+                  <Text className="text-gray-700 text-xs flex-1">{line}</Text>
+                </View>
+              ));
+            })()}
+          </View>
+        )}
       </View>
 
       {/* Navigation Buttons */}

@@ -3,6 +3,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
+import * as ImagePicker from 'expo-image-picker';
 import { getAuth } from 'firebase/auth';
 import { deleteDoc, doc } from 'firebase/firestore';
 import React, { useEffect, useLayoutEffect, useState } from 'react';
@@ -229,6 +230,45 @@ export default function GoalDetailScreen() {
     );
   };
 
+  const handlePhotoVerification = async () => {
+    if (!goal) return;
+
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Camera Permission', 'Camera permission is required to take a verification photo.');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        quality: 0.6,
+        allowsEditing: false,
+      });
+
+      if (result.canceled || !result.assets || result.assets.length === 0) {
+        return;
+      }
+
+      const asset = result.assets[0];
+      const resp = await fetch(asset.uri);
+      const blob = await resp.blob();
+
+      await VerificationService.createVerification(
+        goal.id,
+        goal.userId,
+        'success',
+        undefined,
+        blob
+      );
+
+      await loadGoalData();
+      Alert.alert('Uploaded', 'Photo verification uploaded successfully.');
+    } catch (error) {
+      console.error('[PhotoVerification] error', error);
+      Alert.alert('Error', 'Failed to upload photo verification.');
+    }
+  };
+
   const getVerificationIcon = (status: string) => {
     return status === 'success' ? 'checkmark-circle' : 'close-circle';
   };
@@ -395,6 +435,19 @@ export default function GoalDetailScreen() {
             <Ionicons name="checkmark-circle" size={24} color="white" />
             <Text className="text-white font-bold text-lg ml-2">
               Record Progress
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Photo Verification Button (if photo method selected) */}
+        {goal.verificationMethods?.includes('photo' as any) && (
+          <TouchableOpacity
+            className="bg-purple-600 rounded-lg p-4 mb-6 flex-row items-center justify-center"
+            onPress={handlePhotoVerification}
+          >
+            <Ionicons name="camera" size={24} color="white" />
+            <Text className="text-white font-bold text-lg ml-2">
+              Take Verification Photo
             </Text>
           </TouchableOpacity>
         )}

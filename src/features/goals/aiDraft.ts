@@ -1,11 +1,13 @@
 // AI Goal Draft State Management
 
-export type VerificationMethod = "location" | "time" | "screentime" | "manual";
+export type VerificationMethod = "location" | "time" | "screentime" | "photo" | "manual";
 
 export interface AIGoalDraft {
   title?: string;
   category?: string;
   verificationMethods?: VerificationMethod[];
+  // Methods that AI determined are mandatory and should be locked in UI
+  mandatoryVerificationMethods?: VerificationMethod[];
   frequency?: { 
     count?: number; 
     unit?: "per_day" | "per_week" | "per_month" 
@@ -42,6 +44,7 @@ export function mergeAIGoal(draft: AIGoalDraft, incoming: Partial<AIGoalDraft>):
   if (incoming.title?.trim()) merged.title = incoming.title.trim();
   if (incoming.category?.trim()) merged.category = incoming.category.trim();
   if (incoming.verificationMethods?.length) merged.verificationMethods = incoming.verificationMethods;
+  if (incoming.mandatoryVerificationMethods) merged.mandatoryVerificationMethods = incoming.mandatoryVerificationMethods;
   if (incoming.frequency) merged.frequency = { ...merged.frequency, ...incoming.frequency };
   if (incoming.startDate?.trim()) merged.startDate = incoming.startDate.trim();
   if (incoming.duration) merged.duration = { ...merged.duration, ...incoming.duration };

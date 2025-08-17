@@ -1,7 +1,7 @@
 // AI service for goal generation and assistance with timeout, retry, and performance optimization
 
 import { Categories } from '../constants';
-import { AIContext, AIGoal } from '../types';
+import { AIContext, AIGoal, VerificationType } from '../types';
 
 export class AIService {
   /**
@@ -16,9 +16,16 @@ export class AIService {
     try {
       if (proxyUrl) {
         return await this.generateWithProxy(proxyUrl, prompt);
-      } else {
-        return this.generateWithLocalHeuristic(prompt);
       }
+
+      const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
+      if (apiKey) {
+        // Use OpenAI directly when key provided
+        const aiGoal = await this.generateWithOpenAI(apiKey, prompt);
+        return this.validateAndNormalizeAIGoal(aiGoal);
+      }
+
+      return this.generateWithLocalHeuristic(prompt);
     } finally {
       console.timeEnd('[AI] Goal Generation Total');
     }
@@ -35,10 +42,16 @@ export class AIService {
     try {
       if (proxyUrl) {
         return await this.generateWithProxy(proxyUrl, userAnswer);
-      } else {
-        // Fallback to local heuristic with context
-        return this.generateWithLocalHeuristic(userAnswer);
       }
+
+      const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
+      if (apiKey) {
+        const aiGoal = await this.generateWithOpenAI(apiKey, userAnswer);
+        return this.validateAndNormalizeAIGoal(aiGoal);
+      }
+
+      // Fallback to local heuristic with context
+      return this.generateWithLocalHeuristic(userAnswer);
     } finally {
       console.timeEnd('[AI] Goal Refinement Total');
     }
@@ -47,7 +60,40 @@ export class AIService {
   /**
    * Generate goal using OpenAI ChatGPT with timeout and retry
    */
-  // Removed direct ChatGPT client calls from the app to prevent client-side key exposure.
+  private static async generateWithOpenAI(apiKey: string, prompt: string): Promise<any> {
+    console.time('[AI] OpenAI Generation');
+    try {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          temperature: 0.2,
+          messages: [
+            { role: 'system', content: 'You are an assistant that converts a user\'s goal into a concise JSON with fields: title, category, verificationMethods, mandatoryVerificationMethods (subset of verificationMethods), frequency {count, unit}, duration {type, value, startDate?, endDate?}, notes, and optionally targetLocation {name}. verificationMethods must be any of ["location","time","screentime","photo","manual"]. If the task likely requires going to or being at a place (e.g., gym, pool, library, office, cafe, studio, court, field, track, park, trail) or is an outdoor/venue activity (run, jog, walk, hike, cycle, bike, swim, climb), include "location" in verificationMethods. Only include it in mandatoryVerificationMethods if the place is explicitly specified or clearly required. Respond with JSON only.' },
+            { role: 'user', content: prompt }
+          ]
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`OpenAI API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const content = data.choices?.[0]?.message?.content || '{}';
+      const parsed = JSON.parse(content);
+      return parsed;
+    } catch (error) {
+      console.error('[AI] OpenAI generation failed, falling back to heuristic:', error);
+      return this.generateWithLocalHeuristic(prompt);
+    } finally {
+      console.timeEnd('[AI] OpenAI Generation');
+    }
+  }
 
   /**
    * Refine goal with ChatGPT using conversation context
@@ -106,18 +152,28 @@ export class AIService {
       let title = prompt.charAt(0).toUpperCase() + prompt.slice(1);
       let category = this.autoAssignCategory(title, []);
       let verificationMethods: string[] = ['manual'];
+      let mandatoryVerificationMethods: string[] = [];
       let frequency: { count: number; unit: 'per_day' | 'per_week' | 'per_month' } = { count: 1, unit: 'per_day' };
       let missingFields: string[] = [];
       let followUpQuestion = '';
 
       // Detect verification methods
-      if (lowerPrompt.includes('gym') || lowerPrompt.includes('location') || 
-          lowerPrompt.includes('place') || lowerPrompt.includes('office') || 
-          lowerPrompt.includes('cafe') || lowerPrompt.includes('park') || 
-          lowerPrompt.includes('library') || lowerPrompt.includes('studio') ||
-          lowerPrompt.includes('home')) {
+      // Strong signals for location-required goals
+      const locationKeywords = [
+        'gym','pool','swim','track','stadium','field','court','park','library','studio','dojo','office','workplace','store','market','supermarket','cafe','coffee','coffeeshop','restaurant','campus','school','classroom','church','mosque','temple','clinic','hospital','lab','coworking','beach','mountain','trail','museum','theater','cinema','range']
+      const movementVerbs = ['go to','visit','attend','at the','to the','head to','commute','drive to','walk to'];
+      const outdoorActivities = ['run','jog','walk','hike','cycle','bike','swim','climb','skate','row','paddle'];
+
+      const hasLocationKeyword = locationKeywords.some(k => lowerPrompt.includes(k));
+      const hasMovementVerb = movementVerbs.some(k => lowerPrompt.includes(k));
+      const hasOutdoorActivity = outdoorActivities.some(k => new RegExp(`\\b${k}\\b`).test(lowerPrompt));
+      if (hasLocationKeyword || hasMovementVerb || hasOutdoorActivity) {
         verificationMethods.push('location');
-        missingFields.push('targetLocation');
+        if (!missingFields.includes('targetLocation')) missingFields.push('targetLocation');
+        // Location is suggested; mandatory only if clear place requirement is explicit
+        if (hasLocationKeyword) {
+          mandatoryVerificationMethods.push('location');
+        }
       }
 
       if (lowerPrompt.includes('time') || lowerPrompt.includes('am') || 
@@ -132,6 +188,16 @@ export class AIService {
       if (lowerPrompt.includes('screen') || lowerPrompt.includes('app') || 
           lowerPrompt.includes('computer') || lowerPrompt.includes('phone')) {
         verificationMethods.push('screentime');
+      }
+
+      // Photo-based proof detection
+      if (lowerPrompt.includes('photo') || lowerPrompt.includes('picture') || lowerPrompt.includes('selfie') ||
+          lowerPrompt.includes('image') || lowerPrompt.includes('snapshot') || lowerPrompt.includes('upload') ||
+          lowerPrompt.includes('before and after') || lowerPrompt.includes('before/after') ||
+          lowerPrompt.includes('receipt') || lowerPrompt.includes('meal') ||
+          lowerPrompt.includes('인증') || lowerPrompt.includes('인증샷') || lowerPrompt.includes('사진') || lowerPrompt.includes('찍')) {
+        verificationMethods.push('photo');
+        mandatoryVerificationMethods.push('photo');
       }
 
       // Extract frequency
@@ -253,6 +319,7 @@ export class AIService {
         title: title.length > 50 ? title.substring(0, 47) + '...' : title,
         category,
         verificationMethods: verificationMethods as any,
+        mandatoryVerificationMethods: Array.from(new Set(mandatoryVerificationMethods)) as any,
         frequency,
         duration: {
           type: 'weeks',
@@ -294,9 +361,14 @@ export class AIService {
         category,
         verificationMethods: Array.isArray(goalData.verificationMethods) 
           ? goalData.verificationMethods.filter((vm: string) => 
-              ['location', 'time', 'screentime', 'manual'].includes(vm)
+              ['location', 'time', 'screentime', 'photo', 'manual'].includes(vm)
             )
           : ['manual'],
+        mandatoryVerificationMethods: Array.isArray(goalData.mandatoryVerificationMethods)
+          ? goalData.mandatoryVerificationMethods.filter((vm: string) =>
+              ['location', 'time', 'screentime', 'photo', 'manual'].includes(vm)
+            )
+          : undefined,
         frequency: this.validateFrequency(goalData.frequency),
         duration: this.validateDuration(goalData.duration),
         notes: (goalData.notes || goalData.description || '').trim(),
@@ -335,6 +407,65 @@ export class AIService {
 
     } finally {
       console.timeEnd('[AI] Goal Validation');
+    }
+  }
+
+  /**
+   * Analyze verification methods using OpenAI (or heuristic) and return both selected and mandatory sets
+   */
+  static async analyzeVerificationMethods(prompt: string): Promise<{ methods: VerificationType[]; mandatory: VerificationType[] }> {
+    const proxyUrl = process.env.EXPO_PUBLIC_AI_PROXY_URL;
+    const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
+    const allowed: VerificationType[] = ['location','time','screentime','photo','manual'];
+    try {
+      if (proxyUrl) {
+        const response = await fetch(proxyUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt, type: 'verification_analysis' })
+        });
+        const data = await response.json();
+        const methods = (Array.isArray(data.methods) ? data.methods.filter((m: string) => (allowed as string[]).includes(m)) : []) as VerificationType[];
+        const mandatory = (Array.isArray(data.mandatory) ? data.mandatory.filter((m: string) => (allowed as string[]).includes(m)) : []) as VerificationType[];
+        return { methods, mandatory };
+      }
+
+      if (apiKey) {
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          },
+          body: JSON.stringify({
+            model: 'gpt-4o-mini',
+            temperature: 0,
+            messages: [
+              { role: 'system', content: 'Return ONLY JSON with shape {"methods": string[], "mandatory": string[]}. Allowed values: ["location","time","screentime","photo","manual"]. Choose the minimal set required to verify the user truly did the task. Mark truly required ones under "mandatory". If the goal likely involves going to/being at a place (gym, pool, library, office, cafe, studio, court, field, track, park, trail) or outdoor/venue activities (run, walk, jog, hike, cycle, bike, swim, climb), include "location" in methods; include it in mandatory only when the place is explicit/required.' },
+              { role: 'user', content: prompt }
+            ]
+          })
+        });
+        const data = await response.json();
+        const content = data.choices?.[0]?.message?.content || '{}';
+        const parsed = JSON.parse(content);
+        const methods = (Array.isArray(parsed.methods) ? parsed.methods.filter((m: string) => (allowed as string[]).includes(m)) : []) as VerificationType[];
+        const mandatory = (Array.isArray(parsed.mandatory) ? parsed.mandatory.filter((m: string) => (allowed as string[]).includes(m)) : []) as VerificationType[];
+        return { methods, mandatory };
+      }
+
+      // Heuristic fallback
+      const heuristic = this.generateWithLocalHeuristic(prompt);
+      const methods = heuristic.verificationMethods as VerificationType[];
+      const mandatory = (heuristic as any).mandatoryVerificationMethods || [];
+      return { methods, mandatory };
+    } catch (error) {
+      console.error('[AI] analyzeVerificationMethods failed:', error);
+      // Fallback to heuristic
+      const heuristic = this.generateWithLocalHeuristic(prompt);
+      const methods = heuristic.verificationMethods as VerificationType[];
+      const mandatory = (heuristic as any).mandatoryVerificationMethods || [];
+      return { methods, mandatory };
     }
   }
 

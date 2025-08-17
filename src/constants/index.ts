@@ -45,7 +45,7 @@ export const Categories = [
   'Other'
 ] as const;
 
-export const VerificationTypes = ['location', 'time', 'screentime', 'manual'] as const;
+export const VerificationTypes = ['location', 'time', 'screentime', 'photo', 'manual'] as const;
 
 export const VerificationTypeDetails = {
   location: {
@@ -62,6 +62,11 @@ export const VerificationTypeDetails = {
     label: 'Screen Time',
     description: 'Track app usage and screen time limits',
     icon: 'phone-portrait'
+  },
+  photo: {
+    label: 'Photo Proof',
+    description: 'Take a photo as proof of completion',
+    icon: 'camera'
   },
   manual: {
     label: 'Manual Check-in',

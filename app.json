@@ -11,7 +11,9 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "We use your location to verify attendance at your goal locations."
+        "NSLocationWhenInUseUsageDescription": "We use your location to verify attendance at your goal locations.",
+        "NSCameraUsageDescription": "We use the camera to capture photo verification for your goals.",
+        "NSPhotoLibraryAddUsageDescription": "We need access to save your verification photos."
       }
     },
     "android": {
@@ -22,7 +24,8 @@
       "edgeToEdgeEnabled": true,
       "permissions": [
         "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION"
+        "ACCESS_COARSE_LOCATION",
+        "CAMERA"
       ],
       "config": {
         "googleMaps": {
@@ -50,7 +53,8 @@
         {
           "locationAlwaysAndWhenInUsePermission": "We use your location to verify attendance at your goal locations."
         }
-      ]
+      ],
+      "expo-image-picker"
     ]
   }
 }
