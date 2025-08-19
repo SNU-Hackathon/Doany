@@ -48,6 +48,8 @@ export function mergeAIGoal(draft: AIGoalDraft, incoming: Partial<AIGoalDraft>):
   if (incoming.frequency) merged.frequency = { ...merged.frequency, ...incoming.frequency };
   if (incoming.startDate?.trim()) merged.startDate = incoming.startDate.trim();
   if (incoming.duration) merged.duration = { ...merged.duration, ...incoming.duration };
+  // If duration contains startDate and top-level startDate is missing, mirror it for validation compatibility
+  if (!merged.startDate && merged.duration?.startDate) merged.startDate = merged.duration.startDate;
   if (incoming.targetLocation) merged.targetLocation = { ...merged.targetLocation, ...incoming.targetLocation };
   if (incoming.notes?.trim()) merged.notes = incoming.notes.trim();
   if (incoming.lastAskedField) merged.lastAskedField = incoming.lastAskedField;
@@ -80,7 +82,8 @@ export function validateAIGoal(draft: AIGoalDraft): {
   if (!draft.frequency?.count || draft.frequency.count < 1) missing.push('frequency');
 
   // Date validation - trigger picker instead of AI questions
-  const needsStartDate = !draft.startDate?.trim();
+  const hasDurationStart = !!draft.duration?.startDate;
+  const needsStartDate = !draft.startDate?.trim() && !hasDurationStart;
   const needsDuration = !draft.duration || (!draft.duration.value && draft.duration.type !== 'range');
   const needsDateRange = draft.duration?.type === 'range' && (!draft.duration.startDate || !draft.duration.endDate);
 
@@ -99,11 +102,17 @@ export function validateAIGoal(draft: AIGoalDraft): {
     }
   }
 
-  // Generate follow-up question for non-date fields only
+  // Generate a single, targeted follow-up question (one-by-one)
   if (!needsDatePicker && missing.length > 0 && !followUpQuestion) {
-    const nonDateFields = missing.filter(f => !['startDate', 'duration'].includes(f));
-    if (nonDateFields.length > 0) {
-      followUpQuestion = `Please provide: ${nonDateFields.join(', ')}`;
+    const firstMissing = missing.find(f => !['startDate', 'duration'].includes(f)) || missing[0];
+    if (firstMissing === 'targetLocation') {
+      followUpQuestion = 'Which location should we use? (e.g., GymBox Gangnam)';
+    } else if (firstMissing === 'frequency') {
+      followUpQuestion = 'How often should we repeat this? (e.g., 3 per week, or 1 per day)';
+    } else if (firstMissing === 'verificationMethods') {
+      followUpQuestion = 'Which verification methods should we use? (e.g., manual, time, location, photo)';
+    } else {
+      followUpQuestion = `Please provide ${firstMissing}.`;
     }
   }
 

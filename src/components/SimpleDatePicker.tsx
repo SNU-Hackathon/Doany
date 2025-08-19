@@ -2,17 +2,19 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Modal,
+  ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
   View
 } from 'react-native';
 import { convertDurationToRange } from '../features/goals/aiDraft';
-import { VerificationType } from '../types';
+import { TargetLocation, VerificationType } from '../types';
+import MapPreview from './MapPreview';
 
 export interface DateSelection {
   mode: 'duration';
@@ -35,6 +37,17 @@ interface SimpleDatePickerProps {
   includeDates?: string[];
   excludeDates?: string[];
   onIncludeExcludeChange?: (includeDates: string[], excludeDates: string[]) => void;
+  goalTitle?: string;
+  goalRawText?: string;
+  aiSuccessCriteria?: string;
+  blockingReasons?: string[];
+  onRequestNext?: () => void;
+  initialSelectedWeekdays?: number[];
+  initialWeeklyTimeSettings?: { [key: string]: string[] };
+  // Location selection in Schedule
+  targetLocation?: TargetLocation;
+  onOpenLocationPicker?: () => void;
+  onUseCurrentLocation?: () => void;
 }
 
 export default function SimpleDatePicker({
@@ -49,9 +62,23 @@ export default function SimpleDatePicker({
   lockedVerificationMethods = [],
   includeDates: initialIncludeDates = [],
   excludeDates: initialExcludeDates = [],
-  onIncludeExcludeChange
+  onIncludeExcludeChange,
+  goalTitle,
+  goalRawText,
+  aiSuccessCriteria,
+  blockingReasons = [],
+  onRequestNext,
+  initialSelectedWeekdays,
+  initialWeeklyTimeSettings
+  , targetLocation, onOpenLocationPicker, onUseCurrentLocation
 }: SimpleDatePickerProps) {
-  const today = new Date().toISOString().split('T')[0];
+  const getLocalYMD = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${dd}`;
+  };
+  const today = getLocalYMD(new Date());
 
   const [startDate, setStartDate] = useState(initialStartDate || today);
   const [endDate, setEndDate] = useState(initialEndDate || '');
@@ -68,6 +95,30 @@ export default function SimpleDatePicker({
   const [editingMode, setEditingMode] = useState<'period' | 'schedule'>('period');
   const [includeDates, setIncludeDates] = useState<string[]>(initialIncludeDates);
   const [excludeDates, setExcludeDates] = useState<string[]>(initialExcludeDates);
+
+  // Ensure an initial endDate exists so that the current period is active
+  useEffect(() => {
+    if (!endDate && startDate) {
+      const numValue = parseInt(durationValue) || 1;
+      const range = convertDurationToRange(startDate, durationType, numValue);
+      setEndDate(range.endDate);
+      // Defer parent updates to the next tick to avoid render-phase warnings
+      setTimeout(() => {
+        onEndDateChange(range.endDate);
+        // Clamp existing include/exclude to the initialized range
+        const clampToRange = (dates: string[]) => dates.filter(d => d >= startDate && d <= range.endDate);
+        const nextInclude = clampToRange(includeDates).sort();
+        const nextExclude = clampToRange(excludeDates).sort();
+        const includeChanged = nextInclude.length !== includeDates.length || nextInclude.some((v, i) => v !== includeDates[i]);
+        const excludeChanged = nextExclude.length !== excludeDates.length || nextExclude.some((v, i) => v !== excludeDates[i]);
+        if (includeChanged || excludeChanged) {
+          setIncludeDates(nextInclude);
+          setExcludeDates(nextExclude);
+          onIncludeExcludeChange?.(nextInclude, nextExclude);
+        }
+      }, 0);
+    }
+  }, [endDate, startDate, durationType, durationValue]);
 
   // Time picker modal state
   const [showTimePicker, setShowTimePicker] = useState(false);
@@ -98,6 +149,24 @@ export default function SimpleDatePicker({
     }
     notifyParent(selectedWeekdays, weeklyTimeSettings);
   }, [selectedWeekdays, weeklyTimeSettings]);
+  // Initialize weekly schedule from props or includeDates on first mount
+  useEffect(() => {
+    if (!didMountRef.current) {
+      // Seed from explicit props first
+      if ((initialSelectedWeekdays && initialSelectedWeekdays.length > 0) || initialWeeklyTimeSettings) {
+        setSelectedWeekdays(new Set(initialSelectedWeekdays || []));
+        setWeeklyTimeSettings(initialWeeklyTimeSettings || {});
+        return;
+      }
+      // Otherwise derive from includeDates if provided
+      const inc = initialIncludeDates || [];
+      if (inc.length > 0) {
+        const setDays = new Set<number>();
+        inc.forEach(d => setDays.add(new Date(d).getDay()));
+        setSelectedWeekdays(setDays);
+      }
+    }
+  }, []);
 
   // Removed 'weekly overrides calendar excludes' effect to allow per-day overrides to persist
 
@@ -121,30 +190,10 @@ export default function SimpleDatePicker({
     setExcludeDates(prev => (arraysEqual(prev, next) ? prev : next));
   }, [initialExcludeDates]);
 
-  // Calendar navigation functions
-  const goToPreviousMonth = () => {
-    setCurrentMonth(prev => {
-      const newMonth = new Date(prev);
-      newMonth.setMonth(prev.getMonth() - 1);
-      return newMonth;
-    });
-  };
-
-  const goToNextMonth = () => {
-    setCurrentMonth(prev => {
-      const newMonth = new Date(prev);
-      newMonth.setMonth(prev.getMonth() + 1);
-      return newMonth;
-    });
-  };
-
-  const goToYear = (year: number) => {
-    setCurrentMonth(prev => {
-      const newMonth = new Date(prev);
-      newMonth.setFullYear(year);
-      return newMonth;
-    });
-  };
+  // Calendar navigation functions (unused in vertical scroll mode, kept for compatibility)
+  const goToPreviousMonth = () => {};
+  const goToNextMonth = () => {};
+  const goToYear = (_year: number) => {};
 
   // Generate calendar days for current month
   const generateCalendarDays = () => {
@@ -157,14 +206,10 @@ export default function SimpleDatePicker({
 
     const days: any[] = [];
 
-    // Add empty cells for days before month starts
-    for (let i = 0; i < startingDay; i++) {
-      days.push(null);
-    }
+    for (let i = 0; i < startingDay; i++) days.push(null);
 
-    // Add days of the month
     for (let day = 1; day <= lastDay.getDate(); day++) {
-      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      const dateStr = getLocalYMD(new Date(year, month, day));
       const inRange = !!(endDate && dateStr >= (startDate || today) && dateStr <= endDate);
       const baseIncluded = inRange && selectedWeekdays.has(new Date(dateStr).getDay());
       const isScheduled = inRange && ((baseIncluded && !excludeDates.includes(dateStr)) || includeDates.includes(dateStr));
@@ -184,6 +229,104 @@ export default function SimpleDatePicker({
 
     return days;
   };
+
+  // Generate calendar days for a given month (for vertical rendering)
+  const generateCalendarDaysFor = (monthDate: Date) => {
+    const y = monthDate.getFullYear();
+    const m = monthDate.getMonth();
+    const firstDay = new Date(y, m, 1);
+    const lastDay = new Date(y, m + 1, 0);
+    const startingDay = firstDay.getDay();
+    const days: any[] = [];
+    for (let i = 0; i < startingDay; i++) days.push(null);
+    for (let d = 1; d <= lastDay.getDate(); d++) {
+      const dateStr = getLocalYMD(new Date(y, m, d));
+      const inRange = !!(endDate && dateStr >= (startDate || today) && dateStr <= endDate);
+      const baseIncluded = inRange && selectedWeekdays.has(new Date(dateStr).getDay());
+      const isScheduled = inRange && ((baseIncluded && !excludeDates.includes(dateStr)) || includeDates.includes(dateStr));
+      days.push({
+        day: d,
+        dateStr,
+        isToday: dateStr === today,
+        isPast: dateStr < today,
+        isSelected: dateStr === startDate || (endDate && dateStr === endDate),
+        isInRange: endDate && dateStr > startDate && dateStr < endDate,
+        isWeekdayGoal: endDate && dateStr >= startDate && dateStr <= endDate && selectedWeekdays.has(new Date(dateStr).getDay()),
+        isScheduled,
+        baseIncluded,
+        isWithinRange: inRange
+      });
+    }
+    return days;
+  };
+
+  const monthsInView = useMemo(() => {
+    const list: Date[] = [];
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      const cur = new Date(start.getFullYear(), start.getMonth(), 1);
+      const endMonth = new Date(end.getFullYear(), end.getMonth(), 1);
+      while (cur <= endMonth) {
+        list.push(new Date(cur));
+        cur.setMonth(cur.getMonth() + 1);
+      }
+    } else {
+      const anchor = currentMonth || new Date();
+      const start = new Date(anchor);
+      start.setMonth(anchor.getMonth() - 5);
+      for (let i = 0; i < 12; i++) {
+        const m = new Date(start);
+        m.setMonth(start.getMonth() + i);
+        list.push(m);
+      }
+    }
+    return list;
+  }, [startDate, endDate, currentMonth]);
+
+  // Fixed header month tracking and measurements
+  const calendarScrollRef = useRef<ScrollView | null>(null);
+  const monthsLayoutRef = useRef<Array<{ y: number; h: number }>>([]);
+  const VIEWPORT_HEIGHT = 420;
+  const [headerMonth, setHeaderMonth] = useState<Date | null>(null);
+
+  useEffect(() => {
+    monthsLayoutRef.current = [];
+    // Initialize header with first month
+    if (monthsInView.length > 0) setHeaderMonth(monthsInView[0]);
+  }, [monthsInView]);
+
+  const onMonthLayout = (index: number, y: number, h: number) => {
+    const arr = monthsLayoutRef.current.slice();
+    arr[index] = { y, h };
+    monthsLayoutRef.current = arr;
+    // Height is fixed; no need to set from layout
+  };
+
+  const updateHeaderForScroll = (scrollY: number) => {
+    const layouts = monthsLayoutRef.current;
+    if (!layouts || layouts.length === 0) return;
+    const viewStart = scrollY;
+    const viewEnd = scrollY + VIEWPORT_HEIGHT;
+    let bestIdx = 0;
+    let bestOverlap = -1;
+    layouts.forEach((ly, idx) => {
+      if (!ly) return;
+      const lyStart = ly.y;
+      const lyEnd = ly.y + ly.h;
+      const overlap = Math.max(0, Math.min(viewEnd, lyEnd) - Math.max(viewStart, lyStart));
+      if (overlap > bestOverlap) {
+        bestOverlap = overlap;
+        bestIdx = idx;
+      }
+    });
+    const m = monthsInView[bestIdx];
+    if (m && (!headerMonth || headerMonth.getMonth() !== m.getMonth() || headerMonth.getFullYear() !== m.getFullYear())) {
+      setHeaderMonth(m);
+    }
+  };
+
+  // Removed snapping block (we only update header dynamically)
 
   const handleDateSelect = (dateStr: string) => {
     if (dateStr < today) return; // Don't allow past dates
@@ -498,6 +641,21 @@ export default function SimpleDatePicker({
 
   return (
     <View className="bg-white rounded-lg p-4 mx-0 my-4">
+      {/* Goal Title (from AI Assistant) */}
+      {(!!goalTitle || !!goalRawText) && (
+        <View className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-3">
+          <Text className="text-blue-800 text-sm font-semibold">Goal</Text>
+          {!!goalTitle && (
+            <Text className="text-blue-900 text-base mt-1">{goalTitle}</Text>
+          )}
+          {!!goalRawText && (
+            <Text className="text-blue-800 text-xs mt-2">Original Input</Text>
+          )}
+          {!!goalRawText && (
+            <Text className="text-blue-900 text-sm mt-1">{goalRawText}</Text>
+          )}
+        </View>
+      )}
       {/* Header */}
       <View className="mb-6">
         <Text className="text-2xl font-bold text-gray-800 text-center">Schedule</Text>
@@ -627,78 +785,81 @@ export default function SimpleDatePicker({
       </View>
 
       {/* Calendar */}
-      <View className="mb-6">
-        {/* Month/Year Navigation */}
-          <View className="flex-row items-center justify-between mb-3">
-          <TouchableOpacity onPress={goToPreviousMonth} className="p-2">
-            <Ionicons name="chevron-back" size={24} color="#3B82F6" />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => {
-              const currentYear = currentMonth.getFullYear();
-              const nextYear = currentYear + 1;
-              goToYear(nextYear);
-            }}
-            className="px-4 py-2"
-          >
-            <Text className="text-center text-lg font-bold text-gray-800">
-              {currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity onPress={goToNextMonth} className="p-2">
-            <Ionicons name="chevron-forward" size={24} color="#3B82F6" />
-          </TouchableOpacity>
+      <View className="mb-6" style={{ height: VIEWPORT_HEIGHT }}>
+        {/* Fixed month/year header and single day-of-week row */}
+        <View className="mb-2">
+          <Text className="text-center text-lg font-bold text-gray-800">
+            {(headerMonth || monthsInView[0] || new Date()).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+          </Text>
+          <View className="flex-row mt-2">
+            {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((day) => (
+              <View key={day} className="flex-1">
+                <Text className="text-center text-sm font-semibold text-gray-600">{day}</Text>
+              </View>
+            ))}
+          </View>
         </View>
-
-        {/* Day headers */}
-        <View className="flex-row mb-2">
-          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
-            <View key={day} className="flex-1">
-              <Text className="text-center text-sm font-semibold text-gray-600">{day}</Text>
+        <ScrollView
+          ref={calendarScrollRef}
+          onScroll={(e) => updateHeaderForScroll(e.nativeEvent.contentOffset.y)}
+          scrollEventThrottle={16}
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+          alwaysBounceVertical={false}
+          overScrollMode="never"
+        >
+        {monthsInView.map((m, idx) => {
+          const monthKey = `${m.getFullYear()}-${m.getMonth()}`;
+          const days = generateCalendarDaysFor(m);
+          return (
+            <View
+              key={monthKey}
+              onLayout={(e) => onMonthLayout(idx, e.nativeEvent.layout.y, e.nativeEvent.layout.height)}
+            >
+              <View className="flex-row flex-wrap">
+                {days.map((dayData: any, index: number) => (
+                  <View key={index} className="w-[14.28%] p-1" style={{ aspectRatio: 1 }}>
+                    {dayData ? (
+                      <TouchableOpacity
+                        className={`flex-1 justify-center items-center rounded relative ${
+                          dayData.isPast ? 'bg-gray-100' :
+                          editingMode === 'schedule' && dayData.isScheduled ? 'bg-green-200' :
+                          dayData.isSelected ? 'bg-blue-600' :
+                          dayData.isInRange ? 'bg-blue-100' :
+                          dayData.isToday ? 'bg-blue-50' :
+                          'bg-gray-50'
+                        }`}
+                        onPress={() => handleDateSelect(dayData.dateStr)}
+                        disabled={dayData.isPast}
+                      >
+                        <Text className={`text-sm font-semibold ${
+                          dayData.isPast ? 'text-gray-400' :
+                          editingMode === 'schedule' && dayData.isScheduled ? 'text-green-900' :
+                          dayData.isSelected ? 'text-white' :
+                          dayData.isInRange ? 'text-blue-600' :
+                          dayData.isToday ? 'text-blue-800' :
+                          'text-gray-800'
+                        }`}>{dayData.day}</Text>
+                        {editingMode !== 'schedule' && dayData.isScheduled && (
+                          <View className="absolute -bottom-1 w-2 h-2 bg-green-500 rounded-full" />
+                        )}
+                        {dayData.isToday && (
+                          <View pointerEvents="none" className="absolute inset-0 rounded border-2 border-blue-600" />
+                        )}
+                      </TouchableOpacity>
+                    ) : (
+                      <View className="flex-1" />
+                    )}
+                  </View>
+                ))}
+              </View>
             </View>
-          ))}
-        </View>
+          );
+        })}
+        </ScrollView>
+      </View>
 
-        {/* Calendar grid */}
-          <View className="flex-row flex-wrap">
-          {calendarDays.map((dayData, index) => (
-            <View key={index} className="w-[14.28%] p-1" style={{ aspectRatio: 1 }}>
-              {dayData ? (
-                <TouchableOpacity
-                  className={`flex-1 justify-center items-center rounded relative ${
-                    dayData.isPast ? 'bg-gray-100' :
-                    editingMode === 'schedule' && dayData.isScheduled ? 'bg-green-200' :
-                    dayData.isSelected ? 'bg-blue-600' :
-                    dayData.isInRange ? 'bg-blue-100' :
-                    dayData.isToday ? 'bg-blue-50 border border-blue-300' :
-                    'bg-gray-50'
-                  }`}
-                  onPress={() => handleDateSelect(dayData.dateStr)}
-                  disabled={dayData.isPast}
-                >
-                  <Text className={`text-sm font-semibold ${
-                    dayData.isPast ? 'text-gray-400' :
-                    editingMode === 'schedule' && dayData.isScheduled ? 'text-green-900' :
-                    dayData.isSelected ? 'text-white' :
-                    dayData.isInRange ? 'text-blue-600' :
-                    dayData.isToday ? 'text-blue-600' :
-                    'text-gray-800'
-                  }`}>{dayData.day}</Text>
-                  {/* Scheduled indicator (shows overrides too) */}
-                  {editingMode !== 'schedule' && dayData.isScheduled && (
-                    <View className="absolute -bottom-1 w-2 h-2 bg-green-500 rounded-full" />
-                  )}
-                </TouchableOpacity>
-              ) : (
-                <View className="flex-1" />
-              )}
-            </View>
-          ))}
-        </View>
-
-        {/* Calendar Legend */}
+      {/* Calendar Legend */}
           <View className="flex-row justify-center space-x-6 mt-3">
           <View className="flex-row items-center">
             <View className="w-3 h-3 bg-blue-600 rounded mr-2" />
@@ -726,7 +887,6 @@ export default function SimpleDatePicker({
             <Text className={`text-center font-semibold ${editingMode === 'schedule' ? 'text-white' : 'text-green-700'}`}>Edit Schedule</Text>
           </TouchableOpacity>
         </View>
-      </View>
 
       {/* Selected Summary */}
       {startDate && (
@@ -829,6 +989,54 @@ export default function SimpleDatePicker({
             })()}
           </View>
         )}
+
+        {/* AI Success Criteria */}
+        {!!aiSuccessCriteria && (
+          <View className="mt-3 bg-blue-50 border border-blue-200 rounded-lg p-3">
+            <Text className="text-blue-800 text-xs">{aiSuccessCriteria}</Text>
+          </View>
+        )}
+
+        {/* Blocking reasons banner */}
+        {blockingReasons.length > 0 && (
+          <View className="mt-3 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+            {blockingReasons.map((r, i) => (
+              <Text key={i} className="text-yellow-800 text-xs">• {r}</Text>
+            ))}
+          </View>
+        )}
+
+        {/* Target Location selection (when Location method selected) */}
+        {(verificationMethods || []).includes('location' as any) && (
+          <View className="mt-3 p-3 bg-white rounded-lg border border-gray-200">
+            <Text className="text-gray-800 font-semibold mb-2">Target Location</Text>
+            {targetLocation ? (
+              <View>
+                <Text className="text-gray-800 text-sm">{targetLocation.name}</Text>
+                {!!targetLocation.address && (
+                  <Text className="text-gray-600 text-xs mt-1">{targetLocation.address}</Text>
+                )}
+                {/* Mini map preview */}
+                <View className="h-32 bg-gray-100 rounded-lg overflow-hidden mt-2">
+                  <MapPreview location={targetLocation as any} onPress={onOpenLocationPicker || (() => {})} />
+                </View>
+              </View>
+            ) : (
+              <Text className="text-gray-500 text-xs mb-2">Not set</Text>
+            )}
+            <View className="flex-row space-x-3 mt-2">
+              <TouchableOpacity onPress={onOpenLocationPicker} className="flex-1 bg-blue-600 rounded-lg py-2">
+                <Text className="text-white text-center text-sm font-semibold">Select Location</Text>
+              </TouchableOpacity>
+              {!!onUseCurrentLocation && (
+                <TouchableOpacity onPress={onUseCurrentLocation} className="flex-1 bg-green-600 rounded-lg py-2">
+                  <Text className="text-white text-center text-sm font-semibold">Use Current</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        )}
+
       </View>
 
       {/* Navigation Buttons */}
@@ -838,7 +1046,7 @@ export default function SimpleDatePicker({
           <Text className="text-gray-700 font-semibold ml-2">Back</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => onNavigateToStep(2)} className="flex-1 bg-blue-600 rounded-lg py-3 flex-row items-center justify-center" disabled={!startDate}>
+        <TouchableOpacity onPress={() => (onRequestNext ? onRequestNext() : onNavigateToStep(2))} className="flex-1 bg-blue-600 rounded-lg py-3 flex-row items-center justify-center" disabled={!startDate}>
           <Text className="text-white font-semibold mr-2">Next</Text>
           <Ionicons name="chevron-forward" size={16} color="white" />
         </TouchableOpacity>

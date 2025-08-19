@@ -15,6 +15,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import GoalScheduleCalendar from '../components/GoalScheduleCalendar';
 import { db } from '../services/firebase';
 import { GoalService } from '../services/goalService';
 import { VerificationService } from '../services/verificationService';
@@ -451,6 +452,20 @@ export default function GoalDetailScreen() {
             </Text>
           </TouchableOpacity>
         )}
+
+        {/* Schedule & Progress Calendar */}
+        <View className="bg-white rounded-lg p-6 mb-6 shadow-sm">
+          <Text className="text-xl font-bold text-gray-800 mb-4">Schedule & Progress</Text>
+          <GoalScheduleCalendar
+            startDateISO={goal.duration?.startDate || goal.startDate?.toISOString()}
+            endDateISO={goal.duration?.endDate || goal.endDate?.toISOString()}
+            weeklyWeekdays={goal.weeklyWeekdays || []}
+            weeklyTimeSettings={goal.weeklySchedule || {}}
+            includeDates={goal.includeDates || []}
+            excludeDates={goal.excludeDates || []}
+            verifications={verifications}
+          />
+        </View>
 
         {/* Verification History */}
         <View className="bg-white rounded-lg p-6 mb-6 shadow-sm">

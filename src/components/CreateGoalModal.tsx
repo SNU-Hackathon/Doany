@@ -23,7 +23,7 @@ import { useAuth } from '../hooks/useAuth';
 import { AIService } from '../services/ai';
 import { GoalService } from '../services/goalService';
 import { getPlaceDetails } from '../services/places';
-import { CreateGoalForm, GoalDuration, GoalFrequency, TargetLocation } from '../types';
+import { CreateGoalForm, GoalDuration, GoalFrequency, TargetLocation, VerificationType } from '../types';
 import MapPreview from './MapPreview';
 import SimpleDatePicker, { DateSelection } from './SimpleDatePicker';
 
@@ -68,12 +68,66 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [backgroundTaskProgress, setBackgroundTaskProgress] = useState<string>('');
   const [aiVerificationLoading, setAiVerificationLoading] = useState<boolean>(false);
+  const [aiSuccessCriteria, setAiSuccessCriteria] = useState<string>('');
+  const [scheduleReady, setScheduleReady] = useState<boolean>(true);
+  const [blockingReasons, setBlockingReasons] = useState<string[]>([]);
+  // Pre-schedule verification confirmation
+  const [showVerificationConfirm, setShowVerificationConfirm] = useState(false);
+  const [aiAnalyzedMethods, setAiAnalyzedMethods] = useState<VerificationType[]>([] as any);
+  const [aiMandatoryMethods, setAiMandatoryMethods] = useState<VerificationType[]>([] as any);
+  const [aiVerificationSummary, setAiVerificationSummary] = useState('');
+
+  // Utility: check if verification methods provide objective proof beyond manual
+  const isVerificationSufficient = (methods: VerificationType[]) => {
+    const objective: VerificationType[] = ['location', 'time', 'photo', 'screentime'] as any;
+    return (methods || []).some((m) => (objective as any).includes(m));
+  };
+
+  // Reusable: analyze and open verification plan modal
+  const analyzeAndOpenVerificationPlan = async () => {
+    try {
+      const promptSource = rememberedPrompt || aiPrompt || aiDraft.title || formData.title || '';
+      const { methods, mandatory, usedFallback } = await AIService.analyzeVerificationMethods({
+        prompt: promptSource,
+        targetLocationName: formData.targetLocation?.name || (aiDraft as any).targetLocation?.name,
+        placeId: (aiDraft as any).targetLocation?.placeId,
+        locale: 'ko-KR',
+        timezone: 'Asia/Seoul'
+      });
+      const allowed: VerificationType[] = ['location','time','screentime','photo','manual'] as any;
+      const cleanMethods = (methods || []).filter((m: any) => (allowed as any).includes(m)) as VerificationType[];
+      const cleanMandatory = (mandatory || []).filter((m: any) => (allowed as any).includes(m)) as VerificationType[];
+      if (!cleanMethods.length || !isVerificationSufficient(cleanMethods)) {
+        Alert.alert('Unsupported Goal', 'This goal cannot be created because it cannot be sufficiently verified with the available methods.');
+        return;
+      }
+      if (usedFallback) {
+        Alert.alert('AI Notice', 'AI 분석 실패 → heuristic fallback 사용됨. 개발 로그를 확인하세요.');
+        console.warn('[AI] analyzeVerificationMethods used heuristic fallback');
+      }
+      setAiAnalyzedMethods(cleanMethods as any);
+      setAiMandatoryMethods(cleanMandatory as any);
+      const summaryResp = await AIService.explainSuccessCriteria({
+        title: aiDraft.title || formData.title,
+        verificationMethods: cleanMethods as any,
+        weeklyWeekdays: [], weeklyTimeSettings: {}, includeDates: [], excludeDates: [],
+        targetLocationName: formData.targetLocation?.name || (aiDraft as any).targetLocation?.name
+      } as any);
+      setAiVerificationSummary(summaryResp.summary);
+      setShowVerificationConfirm(true);
+    } catch {
+      Alert.alert('AI Error', 'Failed to analyze verification methods. Please try again.');
+    }
+  };
   const [selectedCategory, setSelectedCategory] = useState(0); // 0 for all
   const [filteredExamples, setFilteredExamples] = useState<string[]>(AIService.getExamplePrompts());
   const [weeklyScheduleData, setWeeklyScheduleData] = useState<{
     weekdays: Set<number>;
     timeSettings: { [key: string]: string[] };
   }>({ weekdays: new Set(), timeSettings: {} });
+  
+
+  
 
   // Prevent duplicate AI verification application
   const aiVerificationAppliedRef = useRef(false);
@@ -169,6 +223,8 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     }
   }, [aiDraft.title]);
 
+  
+
   // Refs for cleanup
   const mountedRef = useRef(true);
   const optimisticGoalId = useRef<string | null>(null);
@@ -194,6 +250,71 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     excludeDates: [],
   });
 
+  // Defer AI evaluation until after initial mount so formData is defined
+  useEffect(() => {
+    let cancelled = false;
+    const evalNow = async () => {
+      const ctx = {
+        title: formData.title || aiDraft.title,
+        verificationMethods: formData.verificationMethods as any,
+        weeklyWeekdays: formData.weeklyWeekdays,
+        weeklyTimeSettings: formData.weeklySchedule,
+        includeDates: formData.includeDates,
+        excludeDates: formData.excludeDates,
+        targetLocationName: formData.targetLocation?.name,
+      };
+      try {
+        const res = await AIService.explainSuccessCriteria(ctx as any);
+        if (!cancelled) setAiSuccessCriteria(res.summary);
+      } catch {}
+      const readyEval = AIService.evaluateScheduleReadiness({
+        startDateISO: formData.duration?.startDate || aiDraft.startDate || undefined,
+        endDateISO: formData.duration?.endDate || aiDraft.duration?.endDate || undefined,
+        weeklyWeekdays: formData.weeklyWeekdays || [],
+        includeDates: formData.includeDates || [],
+        excludeDates: formData.excludeDates || [],
+        verificationMethods: formData.verificationMethods as any,
+        targetLocationName: formData.targetLocation?.name,
+      });
+      if (!cancelled) {
+        setScheduleReady(readyEval.ready);
+        setBlockingReasons(readyEval.reasons);
+      }
+    };
+    evalNow();
+    return () => { cancelled = true; };
+  }, [formData, aiDraft]);
+
+  // Safety navigation effect: only auto-jump from AI (step 0) to Schedule (step 1)
+  useEffect(() => {
+    if ((appState === 'READY_TO_REVIEW' || appState === 'NEEDS_DATES') && state.step === 0) {
+      goToStep(1);
+    }
+  }, [appState, state.step]);
+
+  // Confirm verification plan: apply locks and proceed
+  const handleConfirmVerificationPlan = () => {
+    // Merge selected + lock mandatory
+    setFormData(prev => {
+      const merged = new Set([...(prev.verificationMethods || []), ...aiAnalyzedMethods as any, ...aiMandatoryMethods as any]);
+      const locked = new Set([...(prev.lockedVerificationMethods || []), ...aiMandatoryMethods as any]);
+      // Client-side guard: if targetLocation exists, force-add and lock location
+      const hasTargetLoc = !!(prev.targetLocation && (prev.targetLocation.placeId || prev.targetLocation.name));
+      if (hasTargetLoc) {
+        merged.add('location' as any);
+        locked.add('location' as any);
+      }
+      return {
+        ...prev,
+        verificationMethods: Array.from(merged) as any,
+        lockedVerificationMethods: Array.from(locked) as any,
+      };
+    });
+    setShowVerificationConfirm(false);
+    setAppState('READY_TO_REVIEW');
+    goToStep(1);
+  };
+
   // Ensure AI mandatory verification methods are selected and locked
   const ensureAIMandatoryVerifications = useCallback(async () => {
     try {
@@ -205,7 +326,8 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         const merged = new Set([...(prev.verificationMethods || []), ...(methods || []), ...(mandatory || [])]);
         const locked = new Set([...(prev.lockedVerificationMethods || []), ...(mandatory || [])]);
         // If we already have a place, ensure 'location' is selected (locking already handled by mandatory)
-        const hasPlaceInfo = !!prev.targetLocation || !!aiDraft.targetLocation;
+        const loc = prev.targetLocation || aiDraft.targetLocation;
+        const hasPlaceInfo = !!(loc && ((loc as any).placeId || (loc as any).name));
         if (hasPlaceInfo) {
           merged.add('location' as any);
           locked.add('location' as any);
@@ -324,6 +446,15 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     }
   };
 
+  // Next request from Schedule with AI gating
+  const handleRequestNextFromSchedule = () => {
+    if (!scheduleReady) {
+      Alert.alert('Schedule Needed', (blockingReasons && blockingReasons.length) ? blockingReasons.join('\n') : 'Please add schedule days on the calendar.');
+      return;
+    }
+    goToStep(2);
+  };
+
   const prevStep = () => {
     if (state.step > 0) {
       const prevStepIndex = state.step - 1;
@@ -429,6 +560,8 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
           ],
           partialGoal: aiResult
         });
+        // Prefill any available schedule/method hints into form even before full validation
+        applyAIToFormPartial(mergeAIGoal(aiDraft, aiResult));
       } else {
         // Follow-up refinement
         console.log('[CreateGoalModal] AI refinement');
@@ -442,6 +575,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
           ],
           partialGoal: aiResult
         }));
+        applyAIToFormPartial(mergeAIGoal(aiDraft, aiResult));
       }
 
       console.log('[CreateGoalModal] AI result:', aiResult);
@@ -455,25 +589,49 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       console.log('[CreateGoalModal] Validation result:', validation);
 
       if (validation.needsDatePicker) {
-        setFollowUpQuestion(validation.followUpQuestion || 'Please select your start date and duration using the calendar below.');
-        setAppState('NEEDS_DATES');
-        setShowDatePicker(true);
-        // Automatically move to Schedule step
-        actions.setStep(1);
-        // Clear the follow-up question since we're moving to the next step
+        // Proceed by confirming verification plan first; schedule will be set in step 2
         setFollowUpQuestion('');
+        try {
+          const promptSource = rememberedPrompt || aiPrompt || updatedDraft.title || aiDraft.title || formData.title || '';
+          const { methods, mandatory } = await AIService.analyzeVerificationMethods(promptSource);
+          const allowed: VerificationType[] = ['location','time','screentime','photo','manual'] as any;
+          const cleanMethods = (methods || []).filter((m: any) => (allowed as any).includes(m));
+          const cleanMandatory = (mandatory || []).filter((m: any) => (allowed as any).includes(m));
+          if (!cleanMethods.length) {
+            Alert.alert('Unsupported Goal', 'This goal cannot be verified with the available methods. Please refine your goal.');
+            setLoading(false);
+            setAppState('IDLE');
+            console.timeEnd('[CreateGoalModal] AI Generation');
+            return;
+          }
+          setAiAnalyzedMethods(cleanMethods as any);
+          setAiMandatoryMethods(cleanMandatory as any);
+          const summaryResp = await AIService.explainSuccessCriteria({
+            title: updatedDraft.title || formData.title,
+            verificationMethods: cleanMethods as any,
+            weeklyWeekdays: [], weeklyTimeSettings: {}, includeDates: [], excludeDates: [],
+            targetLocationName: formData.targetLocation?.name || (aiDraft as any).targetLocation?.name
+          } as any);
+          setAiVerificationSummary(summaryResp.summary);
+          setShowVerificationConfirm(true);
+        } catch {
+          setAiAnalyzedMethods([] as any);
+          setAiMandatoryMethods([] as any);
+          setAiVerificationSummary('');
+          setShowVerificationConfirm(true);
+        }
       } else if (validation.missingFields && validation.missingFields.length > 0) {
         if (validation.missingFields.includes('targetLocation')) {
           setFollowUpQuestion(validation.followUpQuestion || 'Please select a location for your goal.');
           setAppState('NEEDS_LOCATION');
         } else {
-          setFollowUpQuestion(validation.followUpQuestion || 'Please provide additional information.');
-          setAppState('NEEDS_INFO');
+          setFollowUpQuestion('');
+          setAppState('READY_TO_REVIEW');
+          goToStep(1);
         }
       } else {
-        // All fields complete, update form and move to review
-        updateFormFromAI(updatedDraft);
-        setAppState('READY_TO_REVIEW');
+        // All fields complete: analyze verification and confirm before proceeding
+        await analyzeAndOpenVerificationPlan();
       }
 
       // Clear AI prompt after processing
@@ -554,8 +712,92 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       }
     }
 
+    // Map AI weekly schedule representations into form fields for prefill
+    if ((draft as any).weeklySchedule && Object.keys((draft as any).weeklySchedule).length > 0) {
+      const nameToIndex: Record<string, number> = {
+        sunday: 0, sun: 0,
+        monday: 1, mon: 1,
+        tuesday: 2, tue: 2, tues: 2,
+        wednesday: 3, wed: 3,
+        thursday: 4, thu: 4, thurs: 4,
+        friday: 5, fri: 5,
+        saturday: 6, sat: 6
+      };
+      const weekly = (draft as any).weeklySchedule as Record<string, string>;
+      const dayIndices = new Set<number>();
+      const timeMap: any = {};
+      Object.entries(weekly).forEach(([dayName, timeStr]) => {
+        const idx = nameToIndex[(dayName || '').toLowerCase()];
+        if (idx !== undefined) {
+          dayIndices.add(idx);
+          const t = (timeStr || '').trim();
+          if (t) {
+            timeMap[idx] = Array.isArray(timeMap[idx]) ? timeMap[idx] : [];
+            if (!timeMap[idx].includes(t)) timeMap[idx].push(t);
+          }
+        }
+      });
+      (updatedForm as any).weeklyWeekdays = Array.from(dayIndices);
+      (updatedForm as any).weeklySchedule = timeMap;
+    }
+    if ((draft as any).weeklyWeekdays && (draft as any).weeklyTimeSettings) {
+      (updatedForm as any).weeklyWeekdays = (draft as any).weeklyWeekdays;
+      (updatedForm as any).weeklySchedule = (draft as any).weeklyTimeSettings;
+    }
+
     setFormData(updatedForm);
     console.timeEnd('[CreateGoalModal] Form Update from AI');
+  };
+
+  // Apply partial AI info even when validation is not complete (prefill methods, duration, weekly)
+  const applyAIToFormPartial = (draft: AIGoalDraft) => {
+    setFormData(prev => {
+      const next: any = { ...prev };
+      if (draft.title && !next.title) next.title = draft.title;
+      if (draft.duration && draft.duration.startDate && draft.duration.endDate) {
+        next.duration = draft.duration as any;
+      }
+      if (draft.verificationMethods && draft.verificationMethods.length) {
+        const merged = new Set([...(next.verificationMethods || []), ...draft.verificationMethods as any]);
+        next.verificationMethods = Array.from(merged);
+      }
+      if ((draft as any).mandatoryVerificationMethods?.length) {
+        const locked = new Set([...(next.lockedVerificationMethods || []), ...((draft as any).mandatoryVerificationMethods as any)]);
+        next.lockedVerificationMethods = Array.from(locked);
+      }
+      if ((draft as any).weeklySchedule && Object.keys((draft as any).weeklySchedule).length > 0) {
+        const nameToIndex: Record<string, number> = {
+          sunday: 0, sun: 0,
+          monday: 1, mon: 1,
+          tuesday: 2, tue: 2, tues: 2,
+          wednesday: 3, wed: 3,
+          thursday: 4, thu: 4, thurs: 4,
+          friday: 5, fri: 5,
+          saturday: 6, sat: 6
+        };
+        const weekly = (draft as any).weeklySchedule as Record<string, string>;
+        const dayIndices = new Set<number>();
+        const timeMap: any = {};
+        Object.entries(weekly).forEach(([dayName, timeStr]) => {
+          const idx = nameToIndex[(dayName || '').toLowerCase()];
+          if (idx !== undefined) {
+            dayIndices.add(idx);
+            const t = (timeStr || '').trim();
+            if (t) {
+              timeMap[idx] = Array.isArray(timeMap[idx]) ? timeMap[idx] : [];
+              if (!timeMap[idx].includes(t)) timeMap[idx].push(t);
+            }
+          }
+        });
+        next.weeklyWeekdays = Array.from(dayIndices);
+        next.weeklySchedule = timeMap;
+      }
+      if ((draft as any).weeklyWeekdays && (draft as any).weeklyTimeSettings) {
+        next.weeklyWeekdays = (draft as any).weeklyWeekdays;
+        next.weeklySchedule = (draft as any).weeklyTimeSettings;
+      }
+      return next;
+    });
   };
 
   // Handle location selection
@@ -673,16 +915,17 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     console.log('[CreateGoalModal] After date selection validation:', validation);
 
     if (validation.needsDatePicker) {
-      // Still need more date info, keep showing picker
-      setFollowUpQuestion(validation.followUpQuestion || 'Please complete your date selection.');
+      // Still need more date info, keep showing picker (handled in Schedule)
+      setFollowUpQuestion('');
     } else if (validation.missingFields && validation.missingFields.length > 0) {
       setShowDatePicker(false);
       if (validation.missingFields.includes('targetLocation')) {
-        setFollowUpQuestion(validation.followUpQuestion || 'Please select a location for your goal.');
+        setFollowUpQuestion('Please select a location for your goal.');
         setAppState('NEEDS_LOCATION');
       } else {
-        setFollowUpQuestion(validation.followUpQuestion || 'Please provide additional information.');
-        setAppState('NEEDS_INFO');
+        setFollowUpQuestion('');
+        setAppState('READY_TO_REVIEW');
+        goToStep(1);
       }
     } else {
       // All fields complete
@@ -706,6 +949,21 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
 
   // Optimistic goal submission with two-phase creation
   const handleSubmit = async () => {
+    // Block save if schedule is not ready per AI evaluation
+    const readyEval = AIService.evaluateScheduleReadiness({
+      startDateISO: formData.duration?.startDate || aiDraft.startDate || undefined,
+      endDateISO: formData.duration?.endDate || aiDraft.duration?.endDate || undefined,
+      weeklyWeekdays: formData.weeklyWeekdays || [],
+      includeDates: formData.includeDates || [],
+      excludeDates: formData.excludeDates || [],
+      verificationMethods: formData.verificationMethods as any,
+      targetLocationName: formData.targetLocation?.name,
+    });
+    if (!readyEval.ready) {
+      Alert.alert('Schedule Needed', (readyEval.reasons && readyEval.reasons.length) ? readyEval.reasons.join('\n') : 'Please add schedule days on the calendar.');
+      actions.setStep(1);
+      return;
+    }
     if (!user) {
       Alert.alert('Error', 'You must be signed in to create goals.');
       return;
@@ -736,7 +994,16 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       };
 
       console.log('[CreateGoalModal] Saving goal (single phase):', goalData);
-      await GoalService.createGoal(goalData);
+      // Fire-and-forget save to avoid blocking the UI
+      GoalService.createGoal(goalData)
+        .then(() => console.log('[CreateGoalModal] Goal saved successfully'))
+        .catch((err) => {
+          console.error('[CreateGoalModal] Goal creation failed (background):', err);
+          Alert.alert('Error', 'Failed to create goal in background. Please check your connection.');
+        })
+        .finally(() => {
+          console.timeEnd('[CreateGoalModal] Goal Creation - Single Phase');
+        });
 
       if (mountedRef.current) {
         setAppState('SAVED_OPTIMISTIC');
@@ -752,7 +1019,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         setAppState('READY_TO_REVIEW');
       }
     } finally {
-      console.timeEnd('[CreateGoalModal] Goal Creation - Single Phase');
+      // timing ended in the background finally for accuracy
     }
   };
  
@@ -763,12 +1030,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     <View style={{ marginBottom: 24, backgroundColor: '#EFF6FF', borderRadius: 8, padding: 16, borderWidth: 1, borderColor: '#BFDBFE' }}>
       <Text style={{ color: '#1D4ED8', fontWeight: '600', marginBottom: 12 }}>🤖 AI Goal Assistant</Text>
       
-      {/* Only show follow-up question when not in AI Assistant step */}
-      {followUpQuestion && state.step !== 0 && (
-        <View className="mb-3 bg-blue-100 rounded-lg p-3">
-          <Text className="text-blue-800 text-sm">{followUpQuestion}</Text>
-        </View>
-      )}
+      {/* Follow-up UI removed per request: scheduling handled in 2. Schedule */}
 
       {/* Only show selected dates when not in AI Assistant step */}
       {state.step !== 0 && (aiDraft.startDate || aiDraft.duration) && (
@@ -802,11 +1064,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
 
         <TextInput
           className="bg-white rounded-lg px-3 py-3 border border-blue-200 text-gray-900"
-          placeholder={
-            appState === 'NEEDS_INFO' ? "Answer the question above..." :
-            appState === 'IDLE' ? "Describe your goal (e.g., 'Go to the gym 3 times a week')" :
-            "Continue describing your goal..."
-          }
+          placeholder={"Describe your goal (e.g., 'Go to the gym 3 times a week')"}
           placeholderTextColor="#9CA3AF"
           value={aiPrompt}
           onChangeText={setAiPrompt}
@@ -818,22 +1076,32 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
 
         <View style={{ flexDirection: 'row', marginTop: 12, gap: 8 }}>
         <TouchableOpacity
-          onPress={handleAiGeneration}
-          disabled={loading || !aiPrompt.trim()}
+          onPress={() => {
+            if (loading) return;
+            if (appState === 'IDLE') {
+              handleAiGeneration();
+            } else {
+              goToStep(1);
+            }
+          }}
+          disabled={loading || (appState === 'IDLE' && !aiPrompt.trim())}
           style={{
             flex: 1,
             paddingVertical: 12,
             borderRadius: 8,
-            backgroundColor: loading || !aiPrompt.trim() ? '#9CA3AF' : '#2563eb'
+            backgroundColor: loading || (appState === 'IDLE' && !aiPrompt.trim()) ? '#9CA3AF' : '#2563eb'
           }}
         >
           <Text style={{ color: 'white', textAlign: 'center', fontWeight: '600' }}>
-            {loading ? 'Generating...' : appState === 'IDLE' ? 'Generate with AI' : 'Continue'}
+            {loading ? 'Generating...' : (appState === 'IDLE' ? 'Generate with AI' : 'Next: Schedule')}
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          onPress={() => setAppState('READY_TO_REVIEW')}
+          onPress={() => {
+            setAppState('READY_TO_REVIEW');
+            goToStep(1);
+          }}
           style={{
             paddingHorizontal: 16,
             paddingVertical: 12,
@@ -1097,6 +1365,163 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         </View>
       </View>
 
+      {/* Verification Plan Summary */}
+      <View className="mb-6">
+        <Text className="text-gray-700 font-semibold text-lg mb-3">Verification Plan Summary</Text>
+        <View className="bg-white rounded-lg p-4 border border-gray-200">
+          {/* One-line AI summary if available */}
+          {aiSuccessCriteria ? (
+            <Text className="text-gray-800 mb-3">{aiSuccessCriteria}</Text>
+          ) : (
+            <Text className="text-gray-500 mb-3">Summary will appear based on your configured methods and schedule.</Text>
+          )}
+
+          {/* Methods with lock indicators */}
+          <View className="mb-3">
+            <Text className="text-gray-700 font-semibold mb-2">Methods</Text>
+            <View className="flex-row flex-wrap gap-2">
+              {(formData.verificationMethods || []).map((m) => {
+                const locked = (formData.lockedVerificationMethods || []).includes(m as any);
+                return (
+                  <View key={m} className={`px-3 py-1 rounded-full flex-row items-center ${locked ? 'bg-blue-800' : 'bg-blue-100'}`}>
+                    {locked && <Ionicons name="lock-closed" size={12} color="#FFFFFF" style={{ marginRight: 4 }} />}
+                    <Text className={`${locked ? 'text-white' : 'text-blue-800'} text-xs font-semibold`}>{m.charAt(0).toUpperCase() + m.slice(1)}</Text>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+
+          {/* Schedule overview */}
+          <View>
+            <Text className="text-gray-700 font-semibold mb-2">Schedule</Text>
+            {formData.duration?.startDate || formData.duration?.endDate ? (
+              <Text className="text-gray-700 text-sm mb-1">
+                {formData.duration?.startDate ? `Start: ${new Date(formData.duration.startDate).toLocaleDateString()}` : ''}
+                {formData.duration?.endDate ? `  End: ${new Date(formData.duration.endDate).toLocaleDateString()}` : ''}
+              </Text>
+            ) : (
+              <Text className="text-gray-500 text-sm mb-1">Duration not set</Text>
+            )}
+            {(formData.weeklyWeekdays && formData.weeklyWeekdays.length > 0) ? (
+              <View>
+                {(formData.weeklyWeekdays || []).sort().map((d) => {
+                  const dayShort = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+                  const times = (formData.weeklySchedule as any)?.[d] || [];
+                  const timeText = Array.isArray(times) && times.length > 0 ? (times as string[]).join(', ') : 'No time set';
+                  return (
+                    <Text key={d} className="text-gray-700 text-sm">{dayShort[d]}: {timeText}</Text>
+                  );
+                })}
+              </View>
+            ) : (
+              <Text className="text-gray-500 text-sm">Weekly schedule not set</Text>
+            )}
+          </View>
+        </View>
+      </View>
+
+      {/* Full Plan Overview - consolidate every relevant detail */}
+      <View className="mb-6">
+        <Text className="text-gray-700 font-semibold text-lg mb-3">Full Plan Overview</Text>
+        <View className="bg-white rounded-lg p-4 border border-gray-200">
+          {/* Goal info */}
+          <Text className="text-gray-800 text-sm mb-1"><Text className="font-semibold">Goal:</Text> {formData.title || 'Not set'}</Text>
+          {!!formData.description && (
+            <Text className="text-gray-600 text-xs mb-2">{formData.description}</Text>
+          )}
+
+          {/* Verification methods and mandatory */}
+          <View className="mt-2">
+            <Text className="text-gray-800 text-sm font-semibold mb-1">Verification Methods</Text>
+            <View className="flex-row flex-wrap gap-2">
+              {(formData.verificationMethods || []).map((m) => (
+                <View key={m} className="px-2 py-1 rounded-full bg-blue-100">
+                  <Text className="text-blue-800 text-xs font-semibold">{m.charAt(0).toUpperCase() + m.slice(1)}</Text>
+                </View>
+              ))}
+              {(formData.verificationMethods || []).length === 0 && (
+                <Text className="text-gray-500 text-xs">None</Text>
+              )}
+            </View>
+            <Text className="text-gray-700 text-xs mt-2"><Text className="font-semibold">Mandatory (Locked):</Text> {(formData.lockedVerificationMethods || []).length > 0 ? (formData.lockedVerificationMethods as any).map((m: string) => m.charAt(0).toUpperCase() + m.slice(1)).join(', ') : 'None'}</Text>
+          </View>
+
+          {/* Target Location */}
+          <View className="mt-3">
+            <Text className="text-gray-800 text-sm font-semibold mb-1">Target Location</Text>
+            {formData.targetLocation ? (
+              <View>
+                <Text className="text-gray-800 text-sm">{formData.targetLocation.name}</Text>
+                {!!formData.targetLocation.address && (
+                  <Text className="text-gray-600 text-xs">{formData.targetLocation.address}</Text>
+                )}
+                <Text className="text-gray-500 text-xs">{formData.targetLocation.lat?.toFixed(6)}, {formData.targetLocation.lng?.toFixed(6)}</Text>
+              </View>
+            ) : (
+              <Text className="text-gray-500 text-xs">Not set</Text>
+            )}
+          </View>
+
+          {/* Frequency */}
+          <View className="mt-3">
+            <Text className="text-gray-800 text-sm font-semibold mb-1">Frequency</Text>
+            <Text className="text-gray-700 text-sm">{formData.frequency?.count || 0} per {formData.frequency?.unit?.replace('per_', '') || 'day'}</Text>
+          </View>
+
+          {/* Duration */}
+          <View className="mt-3">
+            <Text className="text-gray-800 text-sm font-semibold mb-1">Duration</Text>
+            {formData.duration?.startDate || formData.duration?.endDate ? (
+              <Text className="text-gray-700 text-sm">
+                {formData.duration?.startDate ? `Start: ${new Date(formData.duration.startDate).toLocaleDateString()}` : ''}
+                {formData.duration?.endDate ? `  End: ${new Date(formData.duration.endDate).toLocaleDateString()}` : ''}
+              </Text>
+            ) : (
+              <Text className="text-gray-500 text-sm">Not set</Text>
+            )}
+          </View>
+
+          {/* Weekly Schedule */}
+          <View className="mt-3">
+            <Text className="text-gray-800 text-sm font-semibold mb-1">Weekly Schedule</Text>
+            {(formData.weeklyWeekdays && formData.weeklyWeekdays.length > 0) ? (
+              <View>
+                {(formData.weeklyWeekdays || []).sort().map((d) => {
+                  const dayShort = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+                  const times = (formData.weeklySchedule as any)?.[d] || [];
+                  const timeText = Array.isArray(times) && times.length > 0 ? (times as string[]).join(', ') : 'No time set';
+                  return (
+                    <Text key={d} className="text-gray-700 text-sm">{dayShort[d]}: {timeText}</Text>
+                  );
+                })}
+              </View>
+            ) : (
+              <Text className="text-gray-500 text-sm">Not set</Text>
+            )}
+          </View>
+
+          {/* Per-day overrides */}
+          <View className="mt-3">
+            <Text className="text-gray-800 text-sm font-semibold mb-1">Per-day Overrides</Text>
+            <Text className="text-gray-700 text-xs">Included dates: {(formData.includeDates || []).length}</Text>
+            {(formData.includeDates || []).slice(0, 8).map((ds, i) => (
+              <Text key={`inc-${i}`} className="text-gray-600 text-xs">• {ds}</Text>
+            ))}
+            {(formData.includeDates || []).length > 8 && (
+              <Text className="text-gray-500 text-xs">…and {(formData.includeDates || []).length - 8} more</Text>
+            )}
+            <Text className="text-gray-700 text-xs mt-2">Excluded dates: {(formData.excludeDates || []).length}</Text>
+            {(formData.excludeDates || []).slice(0, 8).map((ds, i) => (
+              <Text key={`exc-${i}`} className="text-gray-600 text-xs">• {ds}</Text>
+            ))}
+            {(formData.excludeDates || []).length > 8 && (
+              <Text className="text-gray-500 text-xs">…and {(formData.excludeDates || []).length - 8} more</Text>
+            )}
+          </View>
+        </View>
+      </View>
+
       {/* Target Location */}
       {formData.verificationMethods.includes('location') && (
         <View className="mb-6">
@@ -1185,6 +1610,16 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
             includeDates={formData.includeDates}
             excludeDates={formData.excludeDates}
             onIncludeExcludeChange={(inc, exc) => setFormData(prev => ({ ...prev, includeDates: inc, excludeDates: exc }))}
+            goalTitle={formData.title || aiDraft.title}
+            goalRawText={rememberedPrompt || aiPrompt}
+            aiSuccessCriteria={aiSuccessCriteria}
+            blockingReasons={blockingReasons}
+            onRequestNext={handleRequestNextFromSchedule}
+            initialSelectedWeekdays={formData.weeklyWeekdays}
+            initialWeeklyTimeSettings={formData.weeklySchedule}
+            targetLocation={formData.targetLocation}
+            onOpenLocationPicker={openLocationPicker}
+            onUseCurrentLocation={handleUseCurrentLocation}
           />
         );
       case 'location':
@@ -1236,6 +1671,36 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       onRequestClose={handleClose}
     >
       <View className="flex-1 bg-gray-50">
+        {/* Pre-schedule verification confirmation modal */}
+        <Modal visible={showVerificationConfirm} transparent animationType="fade" onRequestClose={() => setShowVerificationConfirm(false)}>
+          <View className="flex-1 justify-center items-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
+            <View className="bg-white mx-6 rounded-2xl p-4 shadow-lg border border-gray-200" style={{ minWidth: 300 }}>
+              <Text className="text-center text-lg font-semibold text-gray-800 mb-3">Verification Plan</Text>
+              {!!aiVerificationSummary && (
+                <Text className="text-gray-700 text-sm mb-3 text-center">{aiVerificationSummary}</Text>
+              )}
+              <Text className="text-gray-800 text-sm font-semibold mb-2">Methods:</Text>
+              <View className="flex-row flex-wrap gap-2 mb-3">
+                {aiAnalyzedMethods.map((m) => (
+                  <View key={m as any} className="px-3 py-1 rounded-full bg-blue-100">
+                    <Text className="text-blue-800 text-xs font-semibold">{String(m)[0].toUpperCase() + String(m).slice(1)}</Text>
+                  </View>
+                ))}
+              </View>
+              {aiMandatoryMethods.length > 0 && (
+                <Text className="text-red-600 text-xs mb-2">Mandatory: {aiMandatoryMethods.map(m => String(m)[0].toUpperCase() + String(m).slice(1)).join(', ')}</Text>
+              )}
+              <View className="flex-row space-x-3 mt-2">
+                <TouchableOpacity onPress={() => setShowVerificationConfirm(false)} className="flex-1 bg-gray-200 rounded-lg py-3">
+                  <Text className="text-gray-700 font-medium text-center">Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={handleConfirmVerificationPlan} className="flex-1 bg-blue-600 rounded-lg py-3">
+                  <Text className="text-white font-medium text-center">OK</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
         {/* Header with dynamic Save button */}
         <View className="bg-white border-b border-gray-200 px-4 py-4 pt-12">
           <View className="flex-row items-center justify-between mb-4">

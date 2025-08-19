@@ -166,6 +166,9 @@ export interface AIGoal {
   followUpQuestion?: string;
   needsWeeklySchedule?: boolean;
   weeklySchedule?: { [key: string]: string }; // Day-specific time settings (e.g., { "monday": "09:00", "wednesday": "14:00" })
+  // Added to carry index-based schedule representation
+  weeklyWeekdays?: number[];
+  weeklyTimeSettings?: { [key: number]: string[] } | { [key: string]: string[] };
 }
 
 export interface AIContext {
