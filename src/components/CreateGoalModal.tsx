@@ -3,7 +3,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import * as Location from 'expo-location';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -21,9 +21,11 @@ import { CreateGoalProvider, useCreateGoal } from '../features/createGoal/state'
 import { AIGoalDraft, mergeAIGoal, updateDraftWithDates, validateAIGoal } from '../features/goals/aiDraft';
 import { useAuth } from '../hooks/useAuth';
 import { AIService } from '../services/ai';
+import { CalendarEventService } from '../services/calendarEventService';
 import { GoalService } from '../services/goalService';
 import { getPlaceDetails } from '../services/places';
-import { CreateGoalForm, GoalDuration, GoalFrequency, TargetLocation, VerificationType } from '../types';
+import { CreateGoalForm, GoalDuration, GoalFrequency, GoalSpec, TargetLocation, ValidationResult, VerificationType } from '../types';
+import { toIndexKeyMap } from '../utils/schedule';
 import MapPreview from './MapPreview';
 import SimpleDatePicker, { DateSelection } from './SimpleDatePicker';
 
@@ -71,11 +73,26 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
   const [aiSuccessCriteria, setAiSuccessCriteria] = useState<string>('');
   const [scheduleReady, setScheduleReady] = useState<boolean>(true);
   const [blockingReasons, setBlockingReasons] = useState<string[]>([]);
-  // Pre-schedule verification confirmation
-  const [showVerificationConfirm, setShowVerificationConfirm] = useState(false);
+  // GoalSpec verification methods and summary
   const [aiAnalyzedMethods, setAiAnalyzedMethods] = useState<VerificationType[]>([] as any);
   const [aiMandatoryMethods, setAiMandatoryMethods] = useState<VerificationType[]>([] as any);
   const [aiVerificationSummary, setAiVerificationSummary] = useState('');
+
+  // GoalSpec compiler & plan state (Step 0)
+  const [goalSpec, setGoalSpec] = useState<GoalSpec | null>(null);
+  const [goalSpecLoading, setGoalSpecLoading] = useState<boolean>(false);
+  const [showSpecPlanModal, setShowSpecPlanModal] = useState<boolean>(false);
+  const [specFollowUpQuestion, setSpecFollowUpQuestion] = useState<string>('');
+  const [specFollowUpAnswer, setSpecFollowUpAnswer] = useState<string>('');
+
+  // Schedule validator state (Step 2)
+  const [scheduleValidation, setScheduleValidation] = useState<ValidationResult | null>(null);
+  const [scheduleValidating, setScheduleValidating] = useState<boolean>(false);
+  const scheduleValidateInFlight = useRef(false);
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const [showValidationModal, setShowValidationModal] = useState(false);
+  const [showScheduleFixes, setShowScheduleFixes] = useState<boolean>(false);
+  const [scheduleValidationResult, setScheduleValidationResult] = useState<ValidationResult | null>(null);
 
   // Utility: check if verification methods provide objective proof beyond manual
   const isVerificationSufficient = (methods: VerificationType[]) => {
@@ -83,42 +100,334 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     return (methods || []).some((m) => (objective as any).includes(m));
   };
 
-  // Reusable: analyze and open verification plan modal
-  const analyzeAndOpenVerificationPlan = async () => {
+  // Post-process GoalSpec/analyze results to enforce verification requirements
+  const postProcessVerificationMethods = (
+    spec: GoalSpec | null, 
+    currentMethods: VerificationType[], 
+    currentMandatory: VerificationType[],
+    userText: string = ''
+  ) => {
+    let methods = [...currentMethods];
+    let mandatory = [...currentMandatory];
+    let issues: string[] = [];
+    let missingFields: string[] = [];
+    let followUpQuestion: string = '';
+
+    // Check location mode and requirements
+    const loc = spec?.verification?.constraints?.location;
+    
+    if (loc?.mode === 'movement') {
+      // never ask for place; do not add missingFields: 'targetLocation'
+      console.log('[PostProcess] Movement goal detected - no place name required');
+      // Ensure location stays in mandatory methods
+      if (!mandatory.includes('location' as any)) {
+        mandatory.push('location' as any);
+      }
+    } else if (loc?.mode === 'geofence') {
+      // For geofence mode, treat location as satisfied if ANY of these exist:
+      // - goalSpec.verification.constraints.location.name
+      // - goalSpec.verification.constraints.location.placeId  
+      // - formData.targetLocation?.name
+      const hasPlace = !!(loc?.name || loc?.placeId || formData?.targetLocation?.name);
+      
+      if (!hasPlace) {
+        // add missingFields ['targetLocation'] and set a single follow-up question
+        missingFields.push('targetLocation');
+        if (!followUpQuestion) {
+          followUpQuestion = 'Please provide the place name for location verification.';
+        }
+        console.log('[PostProcess] Added location to mandatory due to missing place info');
+      } else {
+        console.log('[PostProcess] Geofence location satisfied with existing place info');
+      }
+      
+      // Ensure location stays in mandatory methods
+      if (!mandatory.includes('location' as any)) {
+        mandatory.push('location' as any);
+      }
+    } else if (loc && !methods.includes('location' as any)) {
+      // If location constraint exists but not in methods/mandatory: add it
+      methods.push('location' as any);
+      mandatory.push('location' as any);
+      console.log('[PostProcess] Added location method due to location constraint');
+    }
+
+    // Check if goal type looks digital from GoalSpec constraints or user text
+    const hasScreentimeConstraints = !!(spec?.verification?.constraints?.screentime);
+    const userTextLooksDigital = /\b(app|apps|screen|digital|coding|IDE|browser|social media|focus timer|study app|watching videos)\b/i.test(userText);
+    
+    if ((hasScreentimeConstraints || userTextLooksDigital) && !methods.includes('screentime' as any)) {
+      methods.push('screentime' as any);
+      mandatory.push('screentime' as any);
+      console.log('[PostProcess] Added screentime method due to digital goal type');
+      
+      // If no bundleIds in constraints, flag for UI selection
+      if (!spec?.verification?.constraints?.screentime?.bundleIds?.length) {
+        issues.push('App selection required for screentime verification');
+      }
+    }
+
+    // Enforce sufficiency = at least one of ['location','photo','screentime'] in both methods and mandatory
+    const objectiveMethods = ['location', 'photo', 'screentime'];
+    const hasObjectiveMethod = methods.some(m => objectiveMethods.includes(m));
+    const hasObjectiveMandatory = mandatory.some(m => objectiveMethods.includes(m));
+    const sufficiency = hasObjectiveMethod && hasObjectiveMandatory;
+
+    return {
+      methods: methods as VerificationType[],
+      mandatory: mandatory as VerificationType[],
+      sufficiency,
+      issues,
+      missingFields,
+      followUpQuestion
+    };
+  };
+
+  // Single validator function for schedule validation
+  async function validateScheduleAndMaybeProceed({ 
+    onSuccess, 
+    checkScheduleReady = true, 
+    checkSufficiency = true,
+    checkGoalSpec = true
+  }: { 
+    onSuccess: () => void;
+    checkScheduleReady?: boolean;
+    checkSufficiency?: boolean;
+    checkGoalSpec?: boolean;
+  }) {
+    // Check if this request is still valid (cancellation logic)
+    if (scheduleValidateInFlight.current || scheduleValidating) return;
+    scheduleValidateInFlight.current = true;
+    setScheduleValidating(true);
     try {
-      const promptSource = rememberedPrompt || aiPrompt || aiDraft.title || formData.title || '';
-      const { methods, mandatory, usedFallback } = await AIService.analyzeVerificationMethods({
-        prompt: promptSource,
-        targetLocationName: formData.targetLocation?.name || (aiDraft as any).targetLocation?.name,
-        placeId: (aiDraft as any).targetLocation?.placeId,
-        locale: 'ko-KR',
-        timezone: 'Asia/Seoul'
-      });
-      const allowed: VerificationType[] = ['location','time','screentime','photo','manual'] as any;
-      const cleanMethods = (methods || []).filter((m: any) => (allowed as any).includes(m)) as VerificationType[];
-      const cleanMandatory = (mandatory || []).filter((m: any) => (allowed as any).includes(m)) as VerificationType[];
-      if (!cleanMethods.length || !isVerificationSufficient(cleanMethods)) {
-        Alert.alert('Unsupported Goal', 'This goal cannot be created because it cannot be sufficiently verified with the available methods.');
+      // Pre-validation checks (moved from calling functions)
+      if (checkScheduleReady && !scheduleReady) {
+        Alert.alert('Schedule Needed', (blockingReasons && blockingReasons.length) ? blockingReasons.join('\n') : 'Please add schedule days on the calendar.');
         return;
       }
-      if (usedFallback) {
-        Alert.alert('AI Notice', 'AI 분석 실패 → heuristic fallback 사용됨. 개발 로그를 확인하세요.');
-        console.warn('[AI] analyzeVerificationMethods used heuristic fallback');
+
+      if (checkSufficiency) {
+        const currentMethods = formData.verificationMethods || [];
+        const currentMandatory = (formData.lockedVerificationMethods || []).concat(aiMandatoryMethods || []);
+        const processed = postProcessVerificationMethods(goalSpec, currentMethods, currentMandatory, rememberedPrompt || aiPrompt);
+        
+        if (!processed.sufficiency) {
+          Alert.alert(
+            'Insufficient Verification',
+            'This goal cannot be sufficiently proven with the authentication methods currently available. (One of Location/Photo/ScreenTime is required.)',
+            [{ text: 'OK' }]
+          );
+          return;
+        }
       }
-      setAiAnalyzedMethods(cleanMethods as any);
-      setAiMandatoryMethods(cleanMandatory as any);
-      const summaryResp = await AIService.explainSuccessCriteria({
-        title: aiDraft.title || formData.title,
-        verificationMethods: cleanMethods as any,
-        weeklyWeekdays: [], weeklyTimeSettings: {}, includeDates: [], excludeDates: [],
-        targetLocationName: formData.targetLocation?.name || (aiDraft as any).targetLocation?.name
-      } as any);
-      setAiVerificationSummary(summaryResp.summary);
-      setShowVerificationConfirm(true);
-    } catch {
-      Alert.alert('AI Error', 'Failed to analyze verification methods. Please try again.');
+
+      if (checkGoalSpec && (!goalSpec || !goalSpec.schedule)) {
+        Alert.alert('AI Error', 'GoalSpec is missing. Please go back and regenerate.');
+        actions.setStep(0);
+        return;
+      }
+
+      // 1) build weeklyWeekdays and weeklyTimeSettings (number-key map)
+      const weeklyTimeSettings = toIndexKeyMap(formData.weeklySchedule || {});
+      const weeklyWeekdays = formData.weeklyWeekdays || [];
+
+      // 2) Enhanced pre-check with partial week consideration and complete week validation
+      const requiredCount = goalSpec?.schedule?.countRule?.count ?? 1;
+      const enforcePartialWeeks = goalSpec?.schedule?.enforcePartialWeeks ?? false;
+      const effectiveDays = weeklyWeekdays.filter(d => (weeklyTimeSettings[d] || []).length > 0);
+      
+      // For partial weeks, allow more flexible validation
+      if (enforcePartialWeeks) {
+        // Check if the pattern can potentially satisfy the requirement
+        const totalSessions = effectiveDays.reduce((sum, day) => sum + (weeklyTimeSettings[day] || []).length, 0);
+        const minSessionsPerWeek = Math.min(...effectiveDays.map(day => (weeklyTimeSettings[day] || []).length));
+        
+        if (effectiveDays.length === 0) {
+          Alert.alert(
+            'Schedule Needed',
+            'Please select at least one day with scheduled times for your goal.'
+          );
+          return;
+        }
+        
+        // For partial weeks, ensure the pattern can reach the required count
+        if (totalSessions < requiredCount) {
+          Alert.alert(
+            'Insufficient Schedule Pattern',
+            `Your goal requires ${requiredCount} sessions per week, but your selected pattern provides ${totalSessions} total sessions. Please add more times or days.`
+          );
+          return;
+        }
+      } else {
+        // Standard validation for full weeks
+        if (effectiveDays.length < requiredCount) {
+          Alert.alert(
+            'Insufficient Schedule',
+            `Your goal requires ${requiredCount} sessions per week, but you only have ${effectiveDays.length} days with scheduled times. Please add more days or times.`
+          );
+          return;
+        }
+      }
+
+      // 3) Enhanced validation: check schedule compatibility with CalendarEvents
+      // Always read the latest CalendarEvents for validation (no stale data)
+      const latestCalendarEvents = CalendarEventService.convertWeeklyScheduleToEvents(
+        'temp-goal-id', // Temporary ID for validation
+        weeklyWeekdays,
+        weeklyTimeSettings,
+        formData.duration?.startDate || new Date().toISOString(),
+        formData.duration?.endDate || new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
+      );
+
+      // Add include/exclude dates as override events
+      const latestOverrideEvents = CalendarEventService.convertIncludeExcludeToEvents(
+        'temp-goal-id',
+        formData.includeDates || [],
+        formData.excludeDates || []
+      );
+
+      const allLatestEvents = [...latestCalendarEvents, ...latestOverrideEvents];
+
+      // Log validation attempt for debugging
+      console.log(`[Schedule] Validating with ${allLatestEvents.length} events (${latestCalendarEvents.length} weekly + ${latestOverrideEvents.length} override)`);
+
+      if (!goalSpec) {
+        Alert.alert('Error', 'Goal specification is missing. Please try again.');
+        return;
+      }
+
+      // Use the latest events for validation
+      const result = AIService.validateGoalByCalendarEvents(
+        allLatestEvents,
+        goalSpec,
+        formData.duration?.startDate || new Date().toISOString(),
+        formData.duration?.endDate || new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
+      );
+
+      setScheduleValidation(result || null);
+
+      if (!result?.isCompatible) {
+        // Enhanced error handling for partial weeks and complete week validation
+        if (enforcePartialWeeks && result?.issues) {
+          // Filter out issues that are acceptable for partial weeks
+          const acceptableIssues = result.issues.filter(issue => 
+            !issue.includes('Weekly pattern provides') && 
+            !issue.includes('Selected schedule provides')
+          );
+          
+          if (acceptableIssues.length === 0) {
+            // All issues are acceptable for partial weeks, proceed
+            setScheduleValidation(null);
+            onSuccess();
+            return;
+          }
+        }
+        
+        // Store validation result and show fixes modal
+        setScheduleValidationResult(result);
+        if (result.fixes) {
+          setShowScheduleFixes(true);
+        } else {
+          // Show enhanced alert with partial week and complete week context
+          let message = 'Schedule validation failed:\n\n';
+          message += result.issues.join('\n');
+          
+          if (enforcePartialWeeks) {
+            message += '\n\nNote: Partial weeks are allowed for this goal, but some constraints still need to be satisfied.';
+          }
+          
+          message += '\n\nNote: Only complete weeks (7 days) are used for validation. Incomplete weeks at the start or end of your goal period are excluded.';
+          
+          Alert.alert('Schedule Incompatible', message);
+        }
+        return;
+      }
+
+      // OK → 진행
+      setScheduleValidation(null);
+      console.log('[Schedule] Validation successful - proceeding to next step');
+      onSuccess();
+    } catch (err) {
+      console.error('[Schedule] validation error', err);
+      
+      // Enhanced error logging for debugging
+      if (err instanceof Error) {
+        console.error('[Schedule] Error details:', {
+          message: err.message,
+          stack: err.stack,
+          timestamp: new Date().toISOString()
+        });
+      }
+      
+      Alert.alert('Validation error', 'Failed to validate schedule. Please try again.');
+    } finally {
+      scheduleValidateInFlight.current = false;
+      setScheduleValidating(false);
     }
+  }
+
+  // Apply Fixes handler
+  const handleApplyFixes = () => {
+    if (!scheduleValidationResult?.fixes) return;
+
+    const fixes = scheduleValidationResult.fixes;
+    
+    // Update formData with fixes
+    setFormData(prev => {
+      const next = { ...prev };
+      
+      // Merge weeklyWeekdays (array) - ensure it's a valid array
+      if (fixes.weeklyWeekdays && Array.isArray(fixes.weeklyWeekdays)) {
+        next.weeklyWeekdays = [...fixes.weeklyWeekdays]; // Create a fresh copy
+      }
+      
+      // Merge weeklyTimeSettings into weeklySchedule (string-keyed map)
+      if (fixes.weeklyTimeSettings && typeof fixes.weeklyTimeSettings === 'object') {
+        const merged = { ...(prev.weeklySchedule || {}) };
+        
+        // Convert number keys (0..6) to string keys for formData.weeklySchedule
+        Object.entries(fixes.weeklyTimeSettings).forEach(([k, v]) => {
+          const stringKey = String(k); // Ensure string key for formData.weeklySchedule
+          merged[stringKey] = Array.isArray(v) ? [...v] : []; // Create fresh array copies
+        });
+        
+        next.weeklySchedule = merged;
+      }
+      
+      return next;
+    });
+
+    // Update weeklyScheduleData (UI state: weekdays Set + timeSettings)
+    if (fixes.weeklyWeekdays || fixes.weeklyTimeSettings) {
+      setWeeklyScheduleData(prev => {
+        const updated = { ...prev };
+        
+        // Update weekdays Set with fresh copy
+        if (fixes.weeklyWeekdays && Array.isArray(fixes.weeklyWeekdays)) {
+          updated.weekdays = new Set(fixes.weeklyWeekdays);
+        }
+        
+        // Update timeSettings (convert number-key to string-key for UI compatibility)
+        if (fixes.weeklyTimeSettings && typeof fixes.weeklyTimeSettings === 'object') {
+          const convertedTimeSettings: { [key: string]: string[] } = {};
+          Object.entries(fixes.weeklyTimeSettings).forEach(([k, v]) => {
+            const stringKey = String(k); // Convert to string key for UI state
+            convertedTimeSettings[stringKey] = Array.isArray(v) ? [...v] : []; // Create fresh array copies
+          });
+          updated.timeSettings = { ...prev.timeSettings, ...convertedTimeSettings };
+        }
+        
+        return updated;
+      });
+    }
+
+    // 🔑 반드시 결과/모달/로딩 리셋
+    setShowScheduleFixes(false);
+    setScheduleValidationResult(null);
+    scheduleValidateInFlight.current = false;
+    setScheduleValidating(false);
   };
+
   const [selectedCategory, setSelectedCategory] = useState(0); // 0 for all
   const [filteredExamples, setFilteredExamples] = useState<string[]>(AIService.getExamplePrompts());
   const [weeklyScheduleData, setWeeklyScheduleData] = useState<{
@@ -292,43 +601,23 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     }
   }, [appState, state.step]);
 
-  // Confirm verification plan: apply locks and proceed
-  const handleConfirmVerificationPlan = () => {
-    // Merge selected + lock mandatory
-    setFormData(prev => {
-      const merged = new Set([...(prev.verificationMethods || []), ...aiAnalyzedMethods as any, ...aiMandatoryMethods as any]);
-      const locked = new Set([...(prev.lockedVerificationMethods || []), ...aiMandatoryMethods as any]);
-      // Client-side guard: if targetLocation exists, force-add and lock location
-      const hasTargetLoc = !!(prev.targetLocation && (prev.targetLocation.placeId || prev.targetLocation.name));
-      if (hasTargetLoc) {
-        merged.add('location' as any);
-        locked.add('location' as any);
-      }
-      return {
-        ...prev,
-        verificationMethods: Array.from(merged) as any,
-        lockedVerificationMethods: Array.from(locked) as any,
-      };
-    });
-    setShowVerificationConfirm(false);
-    setAppState('READY_TO_REVIEW');
-    goToStep(1);
-  };
 
-  // Ensure AI mandatory verification methods are selected and locked
+
+  // Ensure AI mandatory verification methods are selected and locked from GoalSpec
   const ensureAIMandatoryVerifications = useCallback(async () => {
     try {
       setAiVerificationLoading(true);
-      const promptSource = rememberedPrompt || aiPrompt || aiDraft.title || formData.title || '';
-      if (!promptSource) return;
-      const { methods, mandatory } = await AIService.analyzeVerificationMethods(promptSource);
+      // Use stored GoalSpec data instead of re-analyzing
+      if (goalSpec && goalSpec.verification) {
+        const methods = Array.isArray(goalSpec.verification.methods) ? goalSpec.verification.methods : [];
+        const mandatory = Array.isArray(goalSpec.verification.mandatory) ? goalSpec.verification.mandatory : [];
+        
       setFormData(prev => {
-        const merged = new Set([...(prev.verificationMethods || []), ...(methods || []), ...(mandatory || [])]);
-        const locked = new Set([...(prev.lockedVerificationMethods || []), ...(mandatory || [])]);
-        // If we already have a place, ensure 'location' is selected (locking already handled by mandatory)
-        const loc = prev.targetLocation || aiDraft.targetLocation;
-        const hasPlaceInfo = !!(loc && ((loc as any).placeId || (loc as any).name));
-        if (hasPlaceInfo) {
+          const merged = new Set([...(prev.verificationMethods || []), ...methods, ...mandatory]);
+          const locked = new Set([...(prev.lockedVerificationMethods || []), ...mandatory]);
+          // Client-side guard: if targetLocation exists, force-add and lock location
+          const hasTargetLoc = !!(prev.targetLocation && (prev.targetLocation.placeId || prev.targetLocation.name));
+          if (hasTargetLoc) {
           merged.add('location' as any);
           locked.add('location' as any);
         }
@@ -339,13 +628,14 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         };
       });
       aiVerificationAppliedRef.current = true;
+      }
     } catch (e) {
       // Ignore AI failure, keep current
-      console.warn('[CreateGoalModal] analyzeVerificationMethods failed, skipping lock');
+      console.warn('[CreateGoalModal] ensureAIMandatoryVerifications failed:', e);
     } finally {
       setAiVerificationLoading(false);
     }
-  }, [rememberedPrompt, aiPrompt, aiDraft.title, aiDraft.verificationMethods, aiDraft.targetLocation, formData.title]);
+  }, [goalSpec]);
 
   // Ensure AI methods are applied whenever we land on Schedule step
   useEffect(() => {
@@ -375,6 +665,8 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       weeklySchedule: {},
       includeDates: [],
       excludeDates: [],
+      // Clear AI-generated schedule specifications
+      schedule: undefined,
       // Remove schedule-derived locks (time/manual) while keeping other methods intact
       lockedVerificationMethods: (prev.lockedVerificationMethods || []).filter(m => m !== 'time' && m !== 'manual') as any,
     }));
@@ -446,14 +738,171 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     }
   };
 
+  // Clear stale validation errors when inputs change
+  const clearValidationErrors = useCallback(() => {
+    setScheduleValidation(null);
+    setScheduleValidationResult(null);
+    setShowScheduleFixes(false);
+  }, []);
+
+  // Sync weekly schedule changes to calendar events
+  const syncWeeklyScheduleToCalendar = useCallback(async () => {
+    if (!formData.duration?.startDate || !formData.duration?.endDate) return;
+    
+    try {
+      // Convert weekly schedule to calendar events
+      const weeklyEvents = CalendarEventService.convertWeeklyScheduleToEvents(
+        'temp-goal-id', // Will be replaced with actual goalId when goal is created
+        formData.weeklyWeekdays || [],
+        formData.weeklySchedule || {},
+        formData.duration.startDate,
+        formData.duration.endDate
+      );
+      
+      // Store in local state for validation (not persisted yet)
+      console.log('[CreateGoalModal] Weekly schedule synced to calendar events:', weeklyEvents.length);
+    } catch (error) {
+      console.error('[CreateGoalModal] Failed to sync weekly schedule:', error);
+      // Don't throw error to avoid breaking the UI
+    }
+  }, [formData.weeklyWeekdays, formData.weeklySchedule, formData.duration?.startDate, formData.duration?.endDate]);
+
+  // Watch for input changes and clear stale errors
+  useEffect(() => {
+    clearValidationErrors();
+  }, [
+    formData.weeklyWeekdays,
+    formData.weeklySchedule,
+    formData.includeDates,
+    formData.excludeDates,
+    formData.duration?.startDate,
+    formData.duration?.endDate,
+    clearValidationErrors
+  ]);
+
+  // Sync weekly schedule to calendar events when schedule changes
+  useEffect(() => {
+    if (formData.weeklyWeekdays && formData.weeklyWeekdays.length > 0) {
+      syncWeeklyScheduleToCalendar();
+    }
+  }, [formData.weeklyWeekdays, formData.weeklySchedule, syncWeeklyScheduleToCalendar]);
+
+  // Integration Test Scenario: "오류 → 수정 → Next" 시나리오
+  // 
+  // 시나리오 1: 스케줄 오류 발생 → 수정 → Next 성공
+  // 1. 사용자가 부족한 스케줄로 Next 클릭
+  // 2. validateGoalByCalendarEvents에서 오류 반환
+  // 3. showScheduleFixes 모달 표시
+  // 4. 사용자가 handleApplyFixes로 수정사항 적용
+  // 5. clearValidationErrors로 오류 상태 초기화
+  // 6. 다시 Next 클릭 시 정상 진행
+  //
+  // 시나리오 2: 비동기 경쟁 상태 방지
+  // 1. 사용자가 빠르게 Next를 여러 번 클릭
+  // 2. scheduleValidateInFlight로 중복 요청 방지
+  // 3. 이전 요청은 자동 취소
+  //
+  // 시나리오 3: 입력 변경 시 stale error 방지
+  // 1. validation 오류 발생 후
+  // 2. 사용자가 weeklyWeekdays, weeklySchedule 등 변경
+  // 3. useEffect로 자동으로 오류 상태 초기화
+  // 4. 최신 데이터로 validation 재시도 가능
+  //
+  // 시나리오 4: CalendarEvent 기반 검증 흐름
+  // 1. onNext 호출 시 최신 formData로 CalendarEvent 생성
+  // 2. validateGoalByCalendarEvents()에 전달하여 검증
+  // 3. sliceCompleteWeeks()로 완전 주만 대상으로 검증
+  // 4. 빈도/요일/시간 제약 조건 검증
+  // 5. 검증 실패 시 구체적인 오류 메시지와 수정 제안
+
   // Next request from Schedule with AI gating
-  const handleRequestNextFromSchedule = () => {
-    if (!scheduleReady) {
-      Alert.alert('Schedule Needed', (blockingReasons && blockingReasons.length) ? blockingReasons.join('\n') : 'Please add schedule days on the calendar.');
+  const handleRequestNextFromSchedule = useCallback(async () => {
+    if (scheduleValidating || scheduleValidateInFlight.current) {
+      console.log('[CreateGoalModal] 스케줄 검증 중복 요청 차단');
       return;
     }
-    goToStep(2);
-  };
+
+    setScheduleValidating(true);
+    scheduleValidateInFlight.current = true;
+    setValidationErrors([]);
+
+    try {
+      console.log('[CreateGoalModal] === 스케줄 검증 시작 ===');
+      console.log('[CreateGoalModal] 검증 대상:', {
+        startDate: formData.duration?.startDate,
+        endDate: formData.duration?.endDate,
+        weeklyWeekdays: formData.weeklyWeekdays,
+        weeklySchedule: formData.weeklySchedule,
+        includeDates: formData.includeDates,
+        excludeDates: formData.excludeDates
+      });
+
+      if (!goalSpec) {
+        console.log('[CreateGoalModal] GoalSpec이 없어 검증 스킵');
+        setScheduleValidating(false);
+        scheduleValidateInFlight.current = false;
+        return;
+      }
+
+      // CalendarEvent로 변환
+      const latestCalendarEvents = CalendarEventService.convertWeeklyScheduleToEvents(
+        'temp-goal-id',
+        formData.weeklyWeekdays || [],
+        formData.weeklySchedule || {},
+        formData.duration?.startDate || '',
+        formData.duration?.endDate || ''
+      );
+
+      const includeExcludeEvents = CalendarEventService.convertIncludeExcludeToEvents(
+        'temp-goal-id',
+        formData.includeDates || [],
+        formData.excludeDates || []
+      );
+
+      const allEvents = [...latestCalendarEvents, ...includeExcludeEvents];
+      console.log('[CreateGoalModal] 변환된 CalendarEvent:', {
+        weeklyCount: latestCalendarEvents.length,
+        overrideCount: includeExcludeEvents.length,
+        totalCount: allEvents.length
+      });
+
+      // 검증 실행
+      console.log('[CreateGoalModal] AIService.validateGoalByCalendarEvents 호출');
+      const result = AIService.validateGoalByCalendarEvents(
+        allEvents,
+        goalSpec,
+        formData.duration?.startDate || '',
+        formData.duration?.endDate || ''
+      );
+
+      console.log('[CreateGoalModal] === 검증 결과 ===');
+      console.log('[CreateGoalModal] 호환성:', result.isCompatible);
+      console.log('[CreateGoalModal] 완전 주 수:', result.completeWeekCount);
+      console.log('[CreateGoalModal] 검증 상세:', result.validationDetails);
+      
+      if (result.issues.length > 0) {
+        console.log('[CreateGoalModal] 실패 사유 요약:', result.issues);
+      }
+
+      if (result.isCompatible) {
+        console.log('[CreateGoalModal] 검증 성공 - 다음 단계로 진행');
+        goToStep(2);
+      } else {
+        console.log('[CreateGoalModal] 검증 실패 - 오류 모달 표시');
+        setValidationErrors(result.issues);
+        setShowValidationModal(true);
+      }
+
+    } catch (error) {
+      console.error('[CreateGoalModal] 검증 중 오류:', error);
+      setValidationErrors(['검증 중 오류가 발생했습니다.']);
+      setShowValidationModal(true);
+    } finally {
+      console.log('[CreateGoalModal] === 스케줄 검증 완료 ===');
+      setScheduleValidating(false);
+      scheduleValidateInFlight.current = false;
+    }
+  }, [scheduleValidating, goalSpec, formData, goToStep]);
 
   const prevStep = () => {
     if (state.step > 0) {
@@ -553,89 +1002,177 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       if (!aiContext) {
         // Initial generation
         console.log('[CreateGoalModal] Initial AI generation');
-        aiResult = await AIService.generateGoalFromText(aiPrompt.trim());
-        setAiContext({
-          conversationHistory: [
-            { role: 'user', content: aiPrompt.trim() }
-          ],
-          partialGoal: aiResult
-        });
-        // Prefill any available schedule/method hints into form even before full validation
-        applyAIToFormPartial(mergeAIGoal(aiDraft, aiResult));
+        // Step 0: Compile GoalSpec first (semantic-first)
+        try {
+          setGoalSpecLoading(true);
+          const spec = await AIService.compileGoalSpec({
+            prompt: aiPrompt.trim(),
+            title: aiDraft.title || formData.title,
+            targetLocationName: (aiDraft as any)?.targetLocation?.name || formData.targetLocation?.name,
+            placeId: (aiDraft as any)?.targetLocation?.placeId || formData.targetLocation?.placeId,
+            locale: 'ko-KR',
+            timezone: 'Asia/Seoul'
+          });
+          if (!spec || typeof spec !== 'object' || !spec.verification || !spec.schedule) {
+            Alert.alert('AI Error', 'Failed to parse GoalSpec. Please refine your input.');
+            setGoalSpecLoading(false);
+            setAppState('IDLE');
+            return;
+          }
+          setGoalSpec(spec);
+          
+          // Update formData with schedule information from GoalSpec
+          setFormData(prev => ({
+            ...prev,
+            schedule: {
+              countRule: spec.schedule?.countRule,
+              timeWindows: spec.schedule?.timeWindows,
+              weekdayConstraints: spec.schedule?.weekdayConstraints,
+              weekBoundary: spec.schedule?.weekBoundary || 'startWeekday',
+              enforcePartialWeeks: spec.schedule?.enforcePartialWeeks || false
+            }
+          }));
+          
+          // Post-process verification methods to enforce requirements
+          const initialMethods = Array.isArray(spec.verification?.methods) ? spec.verification.methods : [];
+          const initialMandatory = Array.isArray(spec.verification?.mandatory) ? spec.verification.mandatory : [];
+          const processed = postProcessVerificationMethods(spec, initialMethods, initialMandatory, aiPrompt.trim());
+          
+          // Update the spec with processed methods
+          spec.verification.methods = processed.methods;
+          spec.verification.mandatory = processed.mandatory;
+          spec.verification.sufficiency = processed.sufficiency;
+          
+          // Show processed results to user
+          setAiAnalyzedMethods(processed.methods);
+          setAiMandatoryMethods(processed.mandatory);
+          setAiVerificationSummary(spec.verification?.rationale || '');
+          
+          // Check sufficiency before proceeding
+          if (!processed.sufficiency) {
+            Alert.alert(
+              'Insufficient Verification',
+              'This goal cannot be sufficiently proven with the authentication methods currently available. (One of Location/Photo/ScreenTime is required.)',
+              [{ text: 'OK', onPress: () => { setGoalSpecLoading(false); setAppState('IDLE'); } }]
+            );
+            return;
+          }
+
+          // Handle missing fields from post-processing
+          if (processed.missingFields && processed.missingFields.length > 0) {
+            // Update the spec with missing fields
+            if (!spec.missingFields) spec.missingFields = [];
+            spec.missingFields = [...new Set([...spec.missingFields, ...processed.missingFields])];
+            
+            // Set follow-up question if provided
+            if (processed.followUpQuestion) {
+              setSpecFollowUpQuestion(processed.followUpQuestion);
+            }
+          }
+
+          // Follow-up if disambiguation needed
+          if (spec.schedule?.requiresDisambiguation && spec.schedule?.followUpQuestion) {
+            setSpecFollowUpQuestion(spec.schedule.followUpQuestion);
+          } else if (!processed.followUpQuestion) {
+            setSpecFollowUpQuestion('');
+          }
+          setShowSpecPlanModal(true);
+        } catch (e) {
+          Alert.alert('AI Error', 'Failed to compile GoalSpec. Please try again.');
+          setAppState('IDLE');
+          return;
+        } finally {
+          setGoalSpecLoading(false);
+        }
+        return; // Stop legacy flow; proceed after user confirms plan
       } else {
         // Follow-up refinement
         console.log('[CreateGoalModal] AI refinement');
-        aiResult = await AIService.continueGoalRefinement(aiContext, aiPrompt.trim());
-        setAiContext((prev: any) => ({
-          ...prev,
-          conversationHistory: [
-            ...prev.conversationHistory,
-            { role: 'user', content: aiPrompt.trim() },
-            { role: 'assistant', content: JSON.stringify(aiResult) }
-          ],
-          partialGoal: aiResult
-        }));
-        applyAIToFormPartial(mergeAIGoal(aiDraft, aiResult));
-      }
-
-      console.log('[CreateGoalModal] AI result:', aiResult);
-
-      // Merge AI result into draft
-      const updatedDraft = mergeAIGoal(aiDraft, aiResult);
-      setAiDraft(updatedDraft);
-
-      // Validate and determine next state
-      const validation = validateAIGoal(updatedDraft);
-      console.log('[CreateGoalModal] Validation result:', validation);
-
-      if (validation.needsDatePicker) {
-        // Proceed by confirming verification plan first; schedule will be set in step 2
-        setFollowUpQuestion('');
+        // Refinement: recompile GoalSpec with user follow-up (if any) concatenated
+        const refinementText = specFollowUpAnswer ? `${aiPrompt.trim()}\n\nAnswer: ${specFollowUpAnswer}` : aiPrompt.trim();
         try {
-          const promptSource = rememberedPrompt || aiPrompt || updatedDraft.title || aiDraft.title || formData.title || '';
-          const { methods, mandatory } = await AIService.analyzeVerificationMethods(promptSource);
-          const allowed: VerificationType[] = ['location','time','screentime','photo','manual'] as any;
-          const cleanMethods = (methods || []).filter((m: any) => (allowed as any).includes(m));
-          const cleanMandatory = (mandatory || []).filter((m: any) => (allowed as any).includes(m));
-          if (!cleanMethods.length) {
-            Alert.alert('Unsupported Goal', 'This goal cannot be verified with the available methods. Please refine your goal.');
-            setLoading(false);
+          setGoalSpecLoading(true);
+          const spec = await AIService.compileGoalSpec({
+            prompt: refinementText,
+            title: aiDraft.title || formData.title,
+            targetLocationName: (aiDraft as any)?.targetLocation?.name || formData.targetLocation?.name,
+            placeId: (aiDraft as any)?.targetLocation?.placeId || formData.targetLocation?.placeId,
+            locale: 'ko-KR',
+            timezone: 'Asia/Seoul'
+          });
+          if (!spec || typeof spec !== 'object' || !spec.verification || !spec.schedule) {
+            Alert.alert('AI Error', 'Failed to parse GoalSpec. Please refine your input.');
+            setGoalSpecLoading(false);
             setAppState('IDLE');
-            console.timeEnd('[CreateGoalModal] AI Generation');
             return;
           }
-          setAiAnalyzedMethods(cleanMethods as any);
-          setAiMandatoryMethods(cleanMandatory as any);
-          const summaryResp = await AIService.explainSuccessCriteria({
-            title: updatedDraft.title || formData.title,
-            verificationMethods: cleanMethods as any,
-            weeklyWeekdays: [], weeklyTimeSettings: {}, includeDates: [], excludeDates: [],
-            targetLocationName: formData.targetLocation?.name || (aiDraft as any).targetLocation?.name
-          } as any);
-          setAiVerificationSummary(summaryResp.summary);
-          setShowVerificationConfirm(true);
-        } catch {
-          setAiAnalyzedMethods([] as any);
-          setAiMandatoryMethods([] as any);
-          setAiVerificationSummary('');
-          setShowVerificationConfirm(true);
+          setGoalSpec(spec);
+          
+          // Update formData with schedule information from GoalSpec
+          setFormData(prev => ({
+            ...prev,
+            schedule: {
+              countRule: spec.schedule?.countRule,
+              timeWindows: spec.schedule?.timeWindows,
+              weekdayConstraints: spec.schedule?.weekdayConstraints,
+              weekBoundary: spec.schedule?.weekBoundary || 'startWeekday',
+              enforcePartialWeeks: spec.schedule?.enforcePartialWeeks || false
+            }
+          }));
+          
+          // Post-process verification methods to enforce requirements
+          const initialMethods = Array.isArray(spec.verification?.methods) ? spec.verification.methods : [];
+          const initialMandatory = Array.isArray(spec.verification?.mandatory) ? spec.verification.mandatory : [];
+          const processed = postProcessVerificationMethods(spec, initialMethods, initialMandatory, refinementText);
+          
+          // Update the spec with processed methods
+          spec.verification.methods = processed.methods;
+          spec.verification.mandatory = processed.mandatory;
+          spec.verification.sufficiency = processed.sufficiency;
+          
+          // Show processed results to user
+          setAiAnalyzedMethods(processed.methods);
+          setAiMandatoryMethods(processed.mandatory);
+          setAiVerificationSummary(spec.verification?.rationale || '');
+          
+          // Check sufficiency before proceeding
+          if (!processed.sufficiency) {
+            Alert.alert(
+              'Insufficient Verification',
+              'This goal cannot be sufficiently proven with the authentication methods currently available. (One of Location/Photo/ScreenTime is required.)',
+              [{ text: 'OK', onPress: () => { setGoalSpecLoading(false); setAppState('IDLE'); } }]
+            );
+            return;
+          }
+
+          // Handle missing fields from post-processing
+          if (processed.missingFields && processed.missingFields.length > 0) {
+            // Update the spec with missing fields
+            if (!spec.missingFields) spec.missingFields = [];
+            spec.missingFields = [...new Set([...spec.missingFields, ...processed.missingFields])];
+            
+            // Set follow-up question if provided
+            if (processed.followUpQuestion) {
+              setSpecFollowUpQuestion(processed.followUpQuestion);
+            }
+          }
+          
+          if (spec.schedule?.requiresDisambiguation && spec.schedule?.followUpQuestion) {
+            setSpecFollowUpQuestion(spec.schedule.followUpQuestion);
+          } else if (!processed.followUpQuestion) {
+            setSpecFollowUpQuestion('');
+          }
+          setShowSpecPlanModal(true);
+        } catch (e) {
+          Alert.alert('AI Error', 'Failed to refine GoalSpec. Please try again.');
+          setAppState('IDLE');
+          return;
+        } finally {
+          setGoalSpecLoading(false);
         }
-      } else if (validation.missingFields && validation.missingFields.length > 0) {
-        if (validation.missingFields.includes('targetLocation')) {
-          setFollowUpQuestion(validation.followUpQuestion || 'Please select a location for your goal.');
-          setAppState('NEEDS_LOCATION');
-        } else {
-          setFollowUpQuestion('');
-          setAppState('READY_TO_REVIEW');
-          goToStep(1);
-        }
-      } else {
-        // All fields complete: analyze verification and confirm before proceeding
-        await analyzeAndOpenVerificationPlan();
+        return; // Stop legacy flow; proceed after user confirms plan
       }
 
-      // Clear AI prompt after processing
-      setAiPrompt('');
 
     } catch (error: any) {
       console.error('[CreateGoalModal] AI generation failed:', error);
@@ -949,77 +1486,53 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
 
   // Optimistic goal submission with two-phase creation
   const handleSubmit = async () => {
-    // Block save if schedule is not ready per AI evaluation
-    const readyEval = AIService.evaluateScheduleReadiness({
-      startDateISO: formData.duration?.startDate || aiDraft.startDate || undefined,
-      endDateISO: formData.duration?.endDate || aiDraft.duration?.endDate || undefined,
-      weeklyWeekdays: formData.weeklyWeekdays || [],
-      includeDates: formData.includeDates || [],
-      excludeDates: formData.excludeDates || [],
-      verificationMethods: formData.verificationMethods as any,
-      targetLocationName: formData.targetLocation?.name,
-    });
-    if (!readyEval.ready) {
-      Alert.alert('Schedule Needed', (readyEval.reasons && readyEval.reasons.length) ? readyEval.reasons.join('\n') : 'Please add schedule days on the calendar.');
-      actions.setStep(1);
-      return;
-    }
-    if (!user) {
-      Alert.alert('Error', 'You must be signed in to create goals.');
-      return;
-    }
-
-    console.time('[CreateGoalModal] Goal Creation - Single Phase');
+    if (!user) return;
+    
     try {
-      setAppState('SAVING');
       setLoading(true);
-
-      // Build payload with safe defaults
-      const goalData = {
+      
+      // Create goal
+      const goalId = await GoalService.createGoal({
         ...formData,
-        title: (formData.title && formData.title.trim()) || aiDraft.title || 'New Goal',
-        category: formData.category || 'Personal',
-        frequency: formData.frequency || { count: 1, unit: 'per_day' },
-        duration: formData.duration || { type: 'weeks', value: 2 },
-        verificationMethods: (formData.verificationMethods?.length ? formData.verificationMethods : ['manual']) as any,
         userId: user.id,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        // Ensure schedule-related fields are present
-        needsWeeklySchedule: formData.needsWeeklySchedule,
-        weeklySchedule: formData.weeklySchedule,
-        weeklyWeekdays: formData.weeklyWeekdays,
-        includeDates: formData.includeDates,
-        excludeDates: formData.excludeDates,
-      };
+      });
 
-      console.log('[CreateGoalModal] Saving goal (single phase):', goalData);
-      // Fire-and-forget save to avoid blocking the UI
-      GoalService.createGoal(goalData)
-        .then(() => console.log('[CreateGoalModal] Goal saved successfully'))
-        .catch((err) => {
-          console.error('[CreateGoalModal] Goal creation failed (background):', err);
-          Alert.alert('Error', 'Failed to create goal in background. Please check your connection.');
-        })
-        .finally(() => {
-          console.timeEnd('[CreateGoalModal] Goal Creation - Single Phase');
-        });
+      // Create calendar events from weekly schedule and include/exclude dates
+      try {
+        const weeklyEvents = CalendarEventService.convertWeeklyScheduleToEvents(
+          goalId,
+          formData.weeklyWeekdays || [],
+          formData.weeklySchedule || {},
+          formData.duration?.startDate || new Date().toISOString(),
+          formData.duration?.endDate || new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
+        );
 
-      if (mountedRef.current) {
-        setAppState('SAVED_OPTIMISTIC');
-        setLoading(false);
-        handleClose();
-        onGoalCreated();
+        const overrideEvents = CalendarEventService.convertIncludeExcludeToEvents(
+          goalId,
+          formData.includeDates || [],
+          formData.includeDates || [] // Note: excludeDates are handled as override events
+        );
+
+        const allEvents = [...weeklyEvents, ...overrideEvents];
+        
+        if (allEvents.length > 0) {
+          await CalendarEventService.createCalendarEvents(goalId, allEvents);
+          console.log(`[CreateGoalModal] Created ${allEvents.length} calendar events for goal ${goalId}`);
+        }
+      } catch (error) {
+        console.warn('[CreateGoalModal] Failed to create calendar events:', error);
+        // Continue without calendar events - goal creation is more important
       }
+
+      // Close modal and notify parent
+      onGoalCreated();
+      onClose();
+      
     } catch (error) {
-      console.error('[CreateGoalModal] Goal creation failed:', error);
+      console.error('[CreateGoalModal] Error creating goal:', error);
       Alert.alert('Error', 'Failed to create goal. Please try again.');
-      if (mountedRef.current) {
-        setLoading(false);
-        setAppState('READY_TO_REVIEW');
-      }
     } finally {
-      // timing ended in the background finally for accuracy
+      setLoading(false);
     }
   };
  
@@ -1034,26 +1547,26 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
 
       {/* Only show selected dates when not in AI Assistant step */}
       {state.step !== 0 && (aiDraft.startDate || aiDraft.duration) && (
-        <View className="mb-3">
-          <Text className="text-blue-700 text-xs mb-2">Selected:</Text>
-          <View className="flex-row flex-wrap gap-2">
+        <View style={{ marginBottom: 12 }}>
+          <Text style={{ color: '#1d4ed8', fontSize: 12, marginBottom: 8 }}>Selected:</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
             {aiDraft.startDate && (
-              <View className="bg-blue-100 rounded-full px-3 py-1">
-                <Text className="text-blue-800 text-xs font-semibold">
+              <View style={{ backgroundColor: '#dbeafe', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 4 }}>
+                <Text style={{ color: '#1e40af', fontSize: 12, fontWeight: '600' }}>
                   Start: {new Date(aiDraft.startDate).toLocaleDateString()}
                 </Text>
               </View>
             )}
             {aiDraft.duration?.endDate && (
-              <View className="bg-blue-100 rounded-full px-3 py-1">
-                <Text className="text-blue-800 text-xs font-semibold">
+              <View style={{ backgroundColor: '#dbeafe', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 4 }}>
+                <Text style={{ color: '#1e40af', fontSize: 12, fontWeight: '600' }}>
                   End: {new Date(aiDraft.duration.endDate).toLocaleDateString()}
                 </Text>
               </View>
             )}
             {aiDraft.duration?.type && aiDraft.duration?.value && (
-              <View className="bg-green-100 rounded-full px-3 py-1">
-                <Text className="text-green-800 text-xs font-semibold">
+              <View style={{ backgroundColor: '#dcfce7', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 4 }}>
+                <Text style={{ color: '#166534', fontSize: 12, fontWeight: '600' }}>
                   Duration: {aiDraft.duration.value} {aiDraft.duration.type}
                 </Text>
               </View>
@@ -1063,14 +1576,13 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       )}
 
         <TextInput
-          className="bg-white rounded-lg px-3 py-3 border border-blue-200 text-gray-900"
+          style={{ backgroundColor: 'white', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 12, borderWidth: 1, borderColor: '#bfdbfe', color: '#111827', minHeight: 80 }}
           placeholder={"Describe your goal (e.g., 'Go to the gym 3 times a week')"}
           placeholderTextColor="#9CA3AF"
           value={aiPrompt}
           onChangeText={setAiPrompt}
           multiline
           textAlignVertical="top"
-          style={{ minHeight: 80 }}
           editable={!loading}
         />
 
@@ -1078,11 +1590,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         <TouchableOpacity
           onPress={() => {
             if (loading) return;
-            if (appState === 'IDLE') {
               handleAiGeneration();
-            } else {
-              goToStep(1);
-            }
           }}
           disabled={loading || (appState === 'IDLE' && !aiPrompt.trim())}
           style={{
@@ -1093,7 +1601,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
           }}
         >
           <Text style={{ color: 'white', textAlign: 'center', fontWeight: '600' }}>
-            {loading ? 'Generating...' : (appState === 'IDLE' ? 'Generate with AI' : 'Next: Schedule')}
+            {loading ? 'Generating...' : 'Generate with AI'}
           </Text>
         </TouchableOpacity>
 
@@ -1211,8 +1719,8 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
   const renderDatePickerSection = () => (
     <View style={{ marginBottom: 24 }}>
       {aiVerificationLoading && (
-        <View className="mb-3 bg-blue-50 border border-blue-200 rounded-lg p-3">
-          <Text className="text-blue-700 text-sm">Analyzing verification methods with AI...</Text>
+        <View style={{ marginBottom: 12, backgroundColor: '#eff6ff', borderWidth: 1, borderColor: '#bfdbfe', borderRadius: 8, padding: 12 }}>
+          <Text style={{ color: '#1d4ed8', fontSize: 14 }}>Analyzing verification methods with AI...</Text>
         </View>
       )}
       <SimpleDatePicker
@@ -1240,6 +1748,12 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         includeDates={formData.includeDates}
         excludeDates={formData.excludeDates}
         onIncludeExcludeChange={(inc, exc) => setFormData(prev => ({ ...prev, includeDates: inc, excludeDates: exc }))}
+        // Pass initial weekly schedule to show persistence
+        initialSelectedWeekdays={formData.weeklyWeekdays}
+        initialWeeklyTimeSettings={formData.weeklySchedule}
+        onRequestNext={handleRequestNextFromSchedule}
+        goalSpec={goalSpec}
+        loading={scheduleValidating}
       />
     </View>
   );
@@ -1256,39 +1770,39 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       <Text style={{ color: '#b45309', marginBottom: 12, fontSize: 14 }}>{followUpQuestion}</Text>
       
       {/* Target Location Display */}
-      <View className="mb-3">
-        <Text className="text-gray-700 font-semibold mb-2">Target Location</Text>
+      <View style={{ marginBottom: 12 }}>
+        <Text style={{ color: '#374151', fontWeight: '600', marginBottom: 8 }}>Target Location</Text>
         {formData.targetLocation ? (
-          <View className="bg-white rounded-lg p-3 border border-gray-300">
-            <Text className="text-gray-800 font-medium">{formData.targetLocation.name}</Text>
+          <View style={{ backgroundColor: 'white', borderRadius: 8, padding: 12, borderWidth: 1, borderColor: '#d1d5db' }}>
+            <Text style={{ color: '#1f2937', fontWeight: '500' }}>{formData.targetLocation.name}</Text>
             {formData.targetLocation.address && (
-              <Text className="text-gray-600 text-sm mt-1">{formData.targetLocation.address}</Text>
+              <Text style={{ color: '#4b5563', fontSize: 14, marginTop: 4 }}>{formData.targetLocation.address}</Text>
             )}
-            <Text className="text-gray-500 text-xs mt-1">
+            <Text style={{ color: '#6b7280', fontSize: 12, marginTop: 4 }}>
               {formData.targetLocation.lat.toFixed(6)}, {formData.targetLocation.lng.toFixed(6)}
             </Text>
           </View>
         ) : (
-          <Text className="text-gray-500 italic">Not set</Text>
+          <Text style={{ color: '#6b7280', fontStyle: 'italic' }}>Not set</Text>
         )}
       </View>
 
       {/* Location Action Buttons */}
-      <View className="flex-row space-x-3">
+      <View style={{ flexDirection: 'row', gap: 12 }}>
         <TouchableOpacity
-          className="flex-1 bg-blue-500 rounded-lg p-3 flex-row items-center justify-center"
+          style={{ flex: 1, backgroundColor: '#3b82f6', borderRadius: 8, padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}
           onPress={openLocationPicker}
         >
           <Ionicons name="search" size={20} color="white" />
-          <Text className="text-white font-semibold ml-2">Search</Text>
+          <Text style={{ color: 'white', fontWeight: '600', marginLeft: 8 }}>Search</Text>
         </TouchableOpacity>
         
         <TouchableOpacity
-          className="flex-1 bg-green-500 rounded-lg p-3 flex-row items-center justify-center"
+          style={{ flex: 1, backgroundColor: '#10b981', borderRadius: 8, padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}
           onPress={handleUseCurrentLocation}
         >
           <Ionicons name="location" size={20} color="white" />
-          <Text className="text-white font-semibold ml-2">Current Location</Text>
+          <Text style={{ color: 'white', fontWeight: '600', marginLeft: 8 }}>Current Location</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -1297,95 +1811,101 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
   const renderManualFormSection = () => (
     <View>
       {/* Review Header */}
-      <View className="mb-6">
-        <Text className="text-xl font-bold text-gray-800 mb-2">Review Your Goal</Text>
-        <Text className="text-gray-600">Review and confirm your goal details before saving</Text>
+      <View style={{ marginBottom: 24 }}>
+        <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#1f2937', marginBottom: 8 }}>Review Your Goal</Text>
+        <Text style={{ color: '#4b5563' }}>Review and confirm your goal details before saving</Text>
       </View>
 
       {/* Basic Information */}
-      <View className="mb-6">
-        <View className="flex-row items-center justify-between mb-3">
-          <Text className="text-gray-700 font-semibold text-lg">Basic Information</Text>
+      <View style={{ marginBottom: 24 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <Text style={{ color: '#374151', fontWeight: '600', fontSize: 18 }}>Basic Information</Text>
           <TouchableOpacity 
             onPress={() => actions.setStep(0)}
-            className="flex-row items-center px-3 py-1 bg-blue-50 rounded-lg"
+            style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 4, backgroundColor: '#eff6ff', borderRadius: 8 }}
           >
             <Ionicons name="create-outline" size={16} color="#2563EB" />
-            <Text className="text-blue-600 text-sm ml-1">Edit</Text>
+            <Text style={{ color: '#2563eb', fontSize: 14, marginLeft: 4 }}>Edit</Text>
           </TouchableOpacity>
         </View>
         
-        <View className="bg-white rounded-lg p-4 border border-gray-200">
-          <Text className="text-gray-800 font-medium text-lg mb-2">{formData.title || 'Not set'}</Text>
+        <View style={{ backgroundColor: 'white', borderRadius: 8, padding: 16, borderWidth: 1, borderColor: '#e5e7eb' }}>
+          <Text style={{ color: '#1f2937', fontWeight: '500', fontSize: 18, marginBottom: 8 }}>{formData.title || 'Not set'}</Text>
           {formData.description && (
-            <Text className="text-gray-600 mb-2">{formData.description}</Text>
+            <Text style={{ color: '#4b5563', marginBottom: 8 }}>{formData.description}</Text>
           )}
-          <Text className="text-gray-500 text-sm">Category: {formData.category}</Text>
+          <Text style={{ color: '#6b7280', fontSize: 14 }}>Category: {formData.category}</Text>
         </View>
       </View>
 
       {/* Schedule Information */}
-      <View className="mb-6">
-        <View className="flex-row items-center justify-between mb-3">
-          <Text className="text-gray-700 font-semibold text-lg">Schedule</Text>
+      <View style={{ marginBottom: 24 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <Text style={{ color: '#374151', fontWeight: '600', fontSize: 18 }}>Schedule</Text>
           <TouchableOpacity 
-            onPress={() => actions.setStep(1)}
-            className="flex-row items-center px-3 py-1 bg-blue-50 rounded-lg"
+            onPress={() => goToStep(1)}
+            style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 4, backgroundColor: '#eff6ff', borderRadius: 8 }}
           >
             <Ionicons name="create-outline" size={16} color="#2563EB" />
-            <Text className="text-blue-600 text-sm ml-1">Edit</Text>
+            <Text style={{ color: '#2563eb', fontSize: 14, marginLeft: 4 }}>Edit</Text>
           </TouchableOpacity>
         </View>
         
-        <View className="bg-white rounded-lg p-4 border border-gray-200">
+        <View style={{ backgroundColor: 'white', borderRadius: 8, padding: 16, borderWidth: 1, borderColor: '#e5e7eb' }}>
           {/* Duration/Frequency removed per request */}
           {formData.startDate && (
-            <Text className="text-gray-800">
-              <Text className="font-medium">Start Date:</Text> {new Date(formData.startDate).toLocaleDateString()}
+            <Text style={{ color: '#1f2937' }}>
+              <Text style={{ fontWeight: '500' }}>Start Date:</Text> {new Date(formData.startDate).toLocaleDateString()}
             </Text>
           )}
         </View>
       </View>
 
       {/* Verification Methods */}
-      <View className="mb-6">
-        <Text className="text-gray-700 font-semibold text-lg mb-3">Verification Methods</Text>
-        <View className="flex-row flex-wrap gap-2">
+      <View style={{ marginBottom: 24 }}>
+        <Text style={{ color: '#374151', fontWeight: '600', fontSize: 18, marginBottom: 12 }}>Verification Methods</Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {formData.verificationMethods.length > 0 ? (
             formData.verificationMethods.map((method) => (
-              <View key={method} className="px-3 py-2 bg-blue-100 rounded-lg">
-                <Text className="text-blue-800 text-sm font-medium">
+              <View key={method} style={{ paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#dbeafe', borderRadius: 8 }}>
+                <Text style={{ color: '#1e40af', fontSize: 14, fontWeight: '500' }}>
                   {method.charAt(0).toUpperCase() + method.slice(1)}
                 </Text>
               </View>
             ))
           ) : (
-            <Text className="text-gray-500 italic">No verification methods selected</Text>
+            <Text style={{ color: '#6b7280', fontStyle: 'italic' }}>No verification methods selected</Text>
           )}
         </View>
       </View>
 
       {/* Verification Plan Summary */}
-      <View className="mb-6">
-        <Text className="text-gray-700 font-semibold text-lg mb-3">Verification Plan Summary</Text>
-        <View className="bg-white rounded-lg p-4 border border-gray-200">
+      <View style={{ marginBottom: 24 }}>
+        <Text style={{ color: '#374151', fontWeight: '600', fontSize: 18, marginBottom: 12 }}>Verification Plan Summary</Text>
+        <View style={{ backgroundColor: 'white', borderRadius: 8, padding: 16, borderWidth: 1, borderColor: '#e5e7eb' }}>
           {/* One-line AI summary if available */}
           {aiSuccessCriteria ? (
-            <Text className="text-gray-800 mb-3">{aiSuccessCriteria}</Text>
+            <Text style={{ color: '#1f2937', marginBottom: 12 }}>{aiSuccessCriteria}</Text>
           ) : (
-            <Text className="text-gray-500 mb-3">Summary will appear based on your configured methods and schedule.</Text>
+            <Text style={{ color: '#6b7280', marginBottom: 12 }}>Summary will appear based on your configured methods and schedule.</Text>
           )}
 
           {/* Methods with lock indicators */}
-          <View className="mb-3">
-            <Text className="text-gray-700 font-semibold mb-2">Methods</Text>
-            <View className="flex-row flex-wrap gap-2">
+          <View style={{ marginBottom: 12 }}>
+            <Text style={{ color: '#374151', fontWeight: '600', marginBottom: 8 }}>Methods</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               {(formData.verificationMethods || []).map((m) => {
                 const locked = (formData.lockedVerificationMethods || []).includes(m as any);
                 return (
-                  <View key={m} className={`px-3 py-1 rounded-full flex-row items-center ${locked ? 'bg-blue-800' : 'bg-blue-100'}`}>
+                  <View key={m} style={[
+                    { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, flexDirection: 'row', alignItems: 'center' },
+                    locked ? { backgroundColor: '#1e40af' } : { backgroundColor: '#dbeafe' }
+                  ]}>
                     {locked && <Ionicons name="lock-closed" size={12} color="#FFFFFF" style={{ marginRight: 4 }} />}
-                    <Text className={`${locked ? 'text-white' : 'text-blue-800'} text-xs font-semibold`}>{m.charAt(0).toUpperCase() + m.slice(1)}</Text>
+                    <Text style={[
+                      { fontSize: 12, fontWeight: '600' },
+                      locked ? { color: 'white' } : { color: '#1e40af' }
+                    ]}>{m.charAt(0).toUpperCase() + m.slice(1)}</Text>
                   </View>
                 );
               })}
@@ -1394,14 +1914,14 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
 
           {/* Schedule overview */}
           <View>
-            <Text className="text-gray-700 font-semibold mb-2">Schedule</Text>
+            <Text style={{ color: '#374151', fontWeight: '600', marginBottom: 8 }}>Schedule</Text>
             {formData.duration?.startDate || formData.duration?.endDate ? (
-              <Text className="text-gray-700 text-sm mb-1">
+              <Text style={{ color: '#1f2937', fontSize: 14 }}>
                 {formData.duration?.startDate ? `Start: ${new Date(formData.duration.startDate).toLocaleDateString()}` : ''}
                 {formData.duration?.endDate ? `  End: ${new Date(formData.duration.endDate).toLocaleDateString()}` : ''}
               </Text>
             ) : (
-              <Text className="text-gray-500 text-sm mb-1">Duration not set</Text>
+              <Text style={{ color: '#6b7280', fontStyle: 'italic' }}>Duration not set</Text>
             )}
             {(formData.weeklyWeekdays && formData.weeklyWeekdays.length > 0) ? (
               <View>
@@ -1410,81 +1930,85 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
                   const times = (formData.weeklySchedule as any)?.[d] || [];
                   const timeText = Array.isArray(times) && times.length > 0 ? (times as string[]).join(', ') : 'No time set';
                   return (
-                    <Text key={d} className="text-gray-700 text-sm">{dayShort[d]}: {timeText}</Text>
+                    <Text key={d} style={{ color: '#1f2937', fontSize: 12 }}>{dayShort[d]}: {timeText}</Text>
                   );
                 })}
               </View>
             ) : (
-              <Text className="text-gray-500 text-sm">Weekly schedule not set</Text>
+              <Text style={{ color: '#6b7280', fontStyle: 'italic' }}>Weekly schedule not set</Text>
             )}
           </View>
         </View>
       </View>
 
       {/* Full Plan Overview - consolidate every relevant detail */}
-      <View className="mb-6">
-        <Text className="text-gray-700 font-semibold text-lg mb-3">Full Plan Overview</Text>
-        <View className="bg-white rounded-lg p-4 border border-gray-200">
+      <View style={{ marginBottom: 24 }}>
+        <Text style={{ color: '#374151', fontWeight: '600', fontSize: 18, marginBottom: 12 }}>Full Plan Overview</Text>
+        <View style={{ backgroundColor: 'white', borderRadius: 8, padding: 16, borderWidth: 1, borderColor: '#e5e7eb' }}>
           {/* Goal info */}
-          <Text className="text-gray-800 text-sm mb-1"><Text className="font-semibold">Goal:</Text> {formData.title || 'Not set'}</Text>
+          <Text style={{ color: '#1f2937', fontWeight: '500', fontSize: 18, marginBottom: 8 }}><Text style={{ fontWeight: '600' }}>Goal:</Text> {formData.title || 'Not set'}</Text>
           {!!formData.description && (
-            <Text className="text-gray-600 text-xs mb-2">{formData.description}</Text>
+            <Text style={{ color: '#4b5563', fontSize: 14, marginBottom: 8 }}>{formData.description}</Text>
           )}
 
           {/* Verification methods and mandatory */}
-          <View className="mt-2">
-            <Text className="text-gray-800 text-sm font-semibold mb-1">Verification Methods</Text>
-            <View className="flex-row flex-wrap gap-2">
+          <View style={{ marginBottom: 12 }}>
+            <Text style={{ color: '#1f2937', fontWeight: '600', marginBottom: 8 }}>Verification Methods</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               {(formData.verificationMethods || []).map((m) => (
-                <View key={m} className="px-2 py-1 rounded-full bg-blue-100">
-                  <Text className="text-blue-800 text-xs font-semibold">{m.charAt(0).toUpperCase() + m.slice(1)}</Text>
+                <View key={m} style={{ paddingHorizontal: 12, paddingVertical: 4, backgroundColor: '#dbeafe', borderRadius: 8 }}>
+                  <Text style={{ color: '#1e40af', fontSize: 14, fontWeight: '500' }}>
+                    {m.charAt(0).toUpperCase() + m.slice(1)}
+                  </Text>
                 </View>
               ))}
               {(formData.verificationMethods || []).length === 0 && (
-                <Text className="text-gray-500 text-xs">None</Text>
+                <Text style={{ color: '#6b7280', fontStyle: 'italic' }}>None</Text>
               )}
             </View>
-            <Text className="text-gray-700 text-xs mt-2"><Text className="font-semibold">Mandatory (Locked):</Text> {(formData.lockedVerificationMethods || []).length > 0 ? (formData.lockedVerificationMethods as any).map((m: string) => m.charAt(0).toUpperCase() + m.slice(1)).join(', ') : 'None'}</Text>
+            <Text style={{ color: '#1f2937', fontSize: 12, marginTop: 4 }}><Text style={{ fontWeight: '600' }}>Mandatory (Locked):</Text> {(formData.lockedVerificationMethods || []).length > 0 ? (formData.lockedVerificationMethods as any).map((m: string) => m.charAt(0).toUpperCase() + m.slice(1)).join(', ') : 'None'}</Text>
           </View>
 
           {/* Target Location */}
-          <View className="mt-3">
-            <Text className="text-gray-800 text-sm font-semibold mb-1">Target Location</Text>
+          <View style={{ marginBottom: 12 }}>
+            <Text style={{ color: '#1f2937', fontWeight: '600', marginBottom: 8 }}>Target Location</Text>
             {formData.targetLocation ? (
               <View>
-                <Text className="text-gray-800 text-sm">{formData.targetLocation.name}</Text>
+                <Text style={{ color: '#1f2937', fontSize: 14 }}>{formData.targetLocation.name}</Text>
                 {!!formData.targetLocation.address && (
-                  <Text className="text-gray-600 text-xs">{formData.targetLocation.address}</Text>
+                  <Text style={{ color: '#4b5563', fontSize: 12, marginTop: 4 }}>{formData.targetLocation.address}</Text>
                 )}
-                <Text className="text-gray-500 text-xs">{formData.targetLocation.lat?.toFixed(6)}, {formData.targetLocation.lng?.toFixed(6)}</Text>
+                <Text style={{ color: '#6b7280', fontSize: 10 }}>
+                  {formData.targetLocation.lat.toFixed(6)}, {formData.targetLocation.lng.toFixed(6)}
+                </Text>
               </View>
             ) : (
-              <Text className="text-gray-500 text-xs">Not set</Text>
+              <Text style={{ color: '#6b7280', fontStyle: 'italic' }}>Not set</Text>
             )}
           </View>
 
           {/* Frequency */}
-          <View className="mt-3">
-            <Text className="text-gray-800 text-sm font-semibold mb-1">Frequency</Text>
-            <Text className="text-gray-700 text-sm">{formData.frequency?.count || 0} per {formData.frequency?.unit?.replace('per_', '') || 'day'}</Text>
+          <View style={{ marginBottom: 12 }}>
+            <Text style={{ color: '#1f2937', fontWeight: '600', marginBottom: 8 }}>Frequency</Text>
+            <Text style={{ color: '#1f2937', fontSize: 14 }}>{formData.frequency?.count || 0} per {formData.frequency?.unit?.replace('per_', '') || 'day'}</Text>
           </View>
 
           {/* Duration */}
-          <View className="mt-3">
-            <Text className="text-gray-800 text-sm font-semibold mb-1">Duration</Text>
+          <View style={{ marginBottom: 12 }}>
+            <Text style={{ color: '#1f2937', fontWeight: '600', marginBottom: 8 }}>Duration</Text>
             {formData.duration?.startDate || formData.duration?.endDate ? (
-              <Text className="text-gray-700 text-sm">
+              <Text style={{ color: '#1f2937', fontSize: 14 }}>
                 {formData.duration?.startDate ? `Start: ${new Date(formData.duration.startDate).toLocaleDateString()}` : ''}
                 {formData.duration?.endDate ? `  End: ${new Date(formData.duration.endDate).toLocaleDateString()}` : ''}
               </Text>
             ) : (
-              <Text className="text-gray-500 text-sm">Not set</Text>
+              <Text style={{ color: '#6b7280', fontStyle: 'italic' }}>Not set</Text>
             )}
           </View>
 
           {/* Weekly Schedule */}
-          <View className="mt-3">
-            <Text className="text-gray-800 text-sm font-semibold mb-1">Weekly Schedule</Text>
+          <View style={{ marginBottom: 12 }}>
+            <Text style={{ color: '#1f2937', fontWeight: '600', marginBottom: 8 }}>Weekly Schedule</Text>
             {(formData.weeklyWeekdays && formData.weeklyWeekdays.length > 0) ? (
               <View>
                 {(formData.weeklyWeekdays || []).sort().map((d) => {
@@ -1492,31 +2016,31 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
                   const times = (formData.weeklySchedule as any)?.[d] || [];
                   const timeText = Array.isArray(times) && times.length > 0 ? (times as string[]).join(', ') : 'No time set';
                   return (
-                    <Text key={d} className="text-gray-700 text-sm">{dayShort[d]}: {timeText}</Text>
+                    <Text key={d} style={{ color: '#1f2937', fontSize: 12 }}>{dayShort[d]}: {timeText}</Text>
                   );
                 })}
               </View>
             ) : (
-              <Text className="text-gray-500 text-sm">Not set</Text>
+              <Text style={{ color: '#6b7280', fontStyle: 'italic' }}>Not set</Text>
             )}
           </View>
 
           {/* Per-day overrides */}
-          <View className="mt-3">
-            <Text className="text-gray-800 text-sm font-semibold mb-1">Per-day Overrides</Text>
-            <Text className="text-gray-700 text-xs">Included dates: {(formData.includeDates || []).length}</Text>
+          <View style={{ marginBottom: 12 }}>
+            <Text style={{ color: '#1f2937', fontWeight: '600', marginBottom: 8 }}>Per-day Overrides</Text>
+            <Text style={{ color: '#1f2937', fontSize: 14 }}>Included dates: {(formData.includeDates || []).length}</Text>
             {(formData.includeDates || []).slice(0, 8).map((ds, i) => (
-              <Text key={`inc-${i}`} className="text-gray-600 text-xs">• {ds}</Text>
+              <Text key={`inc-${i}`} style={{ color: '#4b5563', fontSize: 12 }}>• {ds}</Text>
             ))}
             {(formData.includeDates || []).length > 8 && (
-              <Text className="text-gray-500 text-xs">…and {(formData.includeDates || []).length - 8} more</Text>
+              <Text style={{ color: '#6b7280', fontStyle: 'italic' }}>…and {(formData.includeDates || []).length - 8} more</Text>
             )}
-            <Text className="text-gray-700 text-xs mt-2">Excluded dates: {(formData.excludeDates || []).length}</Text>
+            <Text style={{ color: '#1f2937', fontSize: 12, marginTop: 4 }}>Excluded dates: {(formData.excludeDates || []).length}</Text>
             {(formData.excludeDates || []).slice(0, 8).map((ds, i) => (
-              <Text key={`exc-${i}`} className="text-gray-600 text-xs">• {ds}</Text>
+              <Text key={`exc-${i}`} style={{ color: '#6b7280', fontStyle: 'italic' }}>• {ds}</Text>
             ))}
             {(formData.excludeDates || []).length > 8 && (
-              <Text className="text-gray-500 text-xs">…and {(formData.excludeDates || []).length - 8} more</Text>
+              <Text style={{ color: '#6b7280', fontStyle: 'italic' }}>…and {(formData.excludeDates || []).length - 8} more</Text>
             )}
           </View>
         </View>
@@ -1524,19 +2048,19 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
 
       {/* Target Location */}
       {formData.verificationMethods.includes('location') && (
-        <View className="mb-6">
-          <Text className="text-gray-700 font-semibold text-lg mb-3">Target Location</Text>
+        <View style={{ marginBottom: 24 }}>
+          <Text style={{ color: '#374151', fontWeight: '600', fontSize: 18, marginBottom: 12 }}>Target Location</Text>
           
           {/* Target Location Display with Map Preview */}
           {formData.targetLocation ? (
-            <View className="bg-white rounded-lg p-4 border border-gray-200 mb-3">
-              <Text className="text-gray-800 font-medium text-lg mb-2">{formData.targetLocation.name}</Text>
+            <View style={{ backgroundColor: 'white', borderRadius: 8, padding: 16, borderWidth: 1, borderColor: '#e5e7eb' }}>
+              <Text style={{ color: '#1f2937', fontWeight: '500', fontSize: 18, marginBottom: 8 }}>{formData.targetLocation.name}</Text>
               {formData.targetLocation.address && (
-                <Text className="text-gray-600 text-sm mb-2">{formData.targetLocation.address}</Text>
+                <Text style={{ color: '#4b5563', fontSize: 14, marginTop: 4 }}>{formData.targetLocation.address}</Text>
               )}
               
               {/* Map Preview */}
-              <View className="h-32 bg-gray-100 rounded-lg overflow-hidden mb-3">
+              <View style={{ marginBottom: 12 }}>
                 <MapPreview 
                   location={formData.targetLocation}
                   onPress={() => {
@@ -1545,46 +2069,46 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
                 />
               </View>
               
-              <Text className="text-gray-500 text-xs">
+              <Text style={{ color: '#6b7280', fontSize: 12 }}>
                 Coordinates: {formData.targetLocation.lat.toFixed(6)}, {formData.targetLocation.lng.toFixed(6)}
               </Text>
             </View>
           ) : (
-            <View className="bg-gray-50 rounded-lg p-4 border border-gray-200 mb-3">
-              <Text className="text-gray-500 italic text-center">No location selected</Text>
+            <View style={{ backgroundColor: '#f3f4f6', borderRadius: 8, padding: 16, borderWidth: 1, borderColor: '#e5e7eb' }}>
+              <Text style={{ color: '#6b7280', fontStyle: 'italic', fontSize: 14 }}>No location selected</Text>
             </View>
           )}
 
           {/* Location Action Buttons */}
-          <View className="flex-row space-x-3">
+          <View style={{ marginTop: 12 }}>
             <TouchableOpacity
-              className="flex-1 bg-blue-500 rounded-lg p-3 flex-row items-center justify-center"
+              style={{ flex: 1, backgroundColor: '#3b82f6', borderRadius: 8, padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}
               onPress={openLocationPicker}
             >
               <Ionicons name="search" size={20} color="white" />
-              <Text className="text-white font-semibold ml-2">Search</Text>
+              <Text style={{ color: 'white', fontWeight: '600', marginLeft: 8 }}>Search</Text>
             </TouchableOpacity>
             
             <TouchableOpacity
-              className="flex-1 bg-green-500 rounded-lg p-3 flex-row items-center justify-center"
+              style={{ flex: 1, backgroundColor: '#10b981', borderRadius: 8, padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}
               onPress={handleUseCurrentLocation}
             >
               <Ionicons name="location" size={20} color="white" />
-              <Text className="text-white font-semibold ml-2">Current Location</Text>
+              <Text style={{ color: 'white', fontWeight: '600', marginLeft: 8 }}>Current Location</Text>
             </TouchableOpacity>
           </View>
         </View>
       )}
 
       {/* Back button to go to previous step */}
-      <View className="mb-6">
+      <View style={{ marginBottom: 24 }}>
         <TouchableOpacity 
-          className="bg-gray-200 rounded-lg p-3 flex-row items-center justify-center"
-          onPress={() => actions.setStep(1)}
+          style={{ flex: 1, backgroundColor: '#e5e7eb', borderRadius: 8, padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}
+          onPress={() => goToStep(1)}
           activeOpacity={0.8}
         >
           <Ionicons name="chevron-back" size={16} color="#374151" />
-          <Text className="text-gray-800 font-semibold ml-2">Back</Text>
+          <Text style={{ color: '#2563eb', fontWeight: '600', marginLeft: 8 }}>Back</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -1620,6 +2144,8 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
             targetLocation={formData.targetLocation}
             onOpenLocationPicker={openLocationPicker}
             onUseCurrentLocation={handleUseCurrentLocation}
+            goalSpec={goalSpec}
+            loading={scheduleValidating}
           />
         );
       case 'location':
@@ -1663,6 +2189,11 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     return sections;
   };
 
+  // Next step handler
+  const onNext = useCallback(() => {
+    goToStep(2);
+  }, [goToStep]);
+
   return (
     <Modal 
       visible={visible} 
@@ -1670,57 +2201,302 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       presentationStyle="pageSheet" 
       onRequestClose={handleClose}
     >
-      <View className="flex-1 bg-gray-50">
-        {/* Pre-schedule verification confirmation modal */}
-        <Modal visible={showVerificationConfirm} transparent animationType="fade" onRequestClose={() => setShowVerificationConfirm(false)}>
-          <View className="flex-1 justify-center items-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-            <View className="bg-white mx-6 rounded-2xl p-4 shadow-lg border border-gray-200" style={{ minWidth: 300 }}>
-              <Text className="text-center text-lg font-semibold text-gray-800 mb-3">Verification Plan</Text>
+      <View style={{ flex: 1, backgroundColor: '#f9fafb' }}>
+        {/* GoalSpec Verification Plan Modal */}
+        <Modal visible={showSpecPlanModal} transparent animationType="fade" onRequestClose={() => setShowSpecPlanModal(false)}>
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.4)' }}>
+            <View style={{ backgroundColor: '#fff', borderRadius: 20, padding: 24, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 5 }}>
+              <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#1f2937', marginBottom: 16 }}>Verification Plan</Text>
               {!!aiVerificationSummary && (
-                <Text className="text-gray-700 text-sm mb-3 text-center">{aiVerificationSummary}</Text>
+                <Text style={{ color: '#4b5563', marginBottom: 12 }}>{aiVerificationSummary}</Text>
               )}
-              <Text className="text-gray-800 text-sm font-semibold mb-2">Methods:</Text>
-              <View className="flex-row flex-wrap gap-2 mb-3">
-                {aiAnalyzedMethods.map((m) => (
-                  <View key={m as any} className="px-3 py-1 rounded-full bg-blue-100">
-                    <Text className="text-blue-800 text-xs font-semibold">{String(m)[0].toUpperCase() + String(m).slice(1)}</Text>
+              <Text style={{ fontSize: 16, fontWeight: '600', color: '#1f2937', marginBottom: 8 }}>Methods:</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+                {(aiAnalyzedMethods || []).map((m) => (
+                  <View key={String(m)} style={{ paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, backgroundColor: '#dbeafe' }}>
+                    <Text style={{ color: '#1e40af', fontSize: 12, fontWeight: '600' }}>{String(m)[0].toUpperCase() + String(m).slice(1)}</Text>
                   </View>
                 ))}
               </View>
-              {aiMandatoryMethods.length > 0 && (
-                <Text className="text-red-600 text-xs mb-2">Mandatory: {aiMandatoryMethods.map(m => String(m)[0].toUpperCase() + String(m).slice(1)).join(', ')}</Text>
+              
+              {aiMandatoryMethods && aiMandatoryMethods.length > 0 && (
+                <Text style={{ color: '#dc2626', fontSize: 12, marginBottom: 8 }}>Mandatory: {(aiMandatoryMethods || []).map(m => String(m)[0].toUpperCase() + String(m).slice(1)).join(', ')}</Text>
               )}
-              <View className="flex-row space-x-3 mt-2">
-                <TouchableOpacity onPress={() => setShowVerificationConfirm(false)} className="flex-1 bg-gray-200 rounded-lg py-3">
-                  <Text className="text-gray-700 font-medium text-center">Cancel</Text>
+              
+              <View style={{ marginTop: 16, padding: 12, backgroundColor: '#eff6ff', borderRadius: 8, borderWidth: 1, borderColor: '#bfdbfe' }}>
+                <Text style={{ color: '#1e40af', fontSize: 14, fontWeight: '500', marginBottom: 4 }}>GPS Movement Tracking</Text>
+                <Text style={{ color: '#1d4ed8', fontSize: 12 }}>
+                  Your location will be tracked during scheduled sessions to verify you're at the specified location.
+                </Text>
+              </View>
+              
+              {specFollowUpQuestion && (
+                <View style={{ marginTop: 16 }}>
+                  <Text style={{ color: '#1f2937', fontSize: 14, marginBottom: 4 }}>{specFollowUpQuestion}</Text>
+                  
+                  <TextInput
+                    style={{ backgroundColor: 'white', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: '#d1d5db', color: '#111827' }}
+                    placeholder="Type your answer here..."
+                    value={specFollowUpAnswer}
+                    onChangeText={setSpecFollowUpAnswer}
+                    editable={!goalSpecLoading}
+                  />
+                  
+                  {goalSpecLoading && (
+                    <View style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+                      <ActivityIndicator size="small" color="#3B82F6" />
+                      <Text style={{ color: '#2563eb', fontSize: 12, marginLeft: 8 }}>Processing your answer...</Text>
+                    </View>
+                  )}
+                </View>
+              )}
+            </View>
+            
+            <View style={{ flexDirection: 'row', gap: 12, marginTop: 16 }}>
+              <TouchableOpacity onPress={() => setShowSpecPlanModal(false)} style={{ flex: 1, backgroundColor: '#e5e7eb', borderRadius: 8, paddingVertical: 12 }}>
+                <Text style={{ color: '#374151', fontWeight: '500', textAlign: 'center' }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                onPress={async () => {
+                  // Use location-based logic instead of string-based checks
+                  const loc = goalSpec?.verification?.constraints?.location;
+                  // For geofence mode, treat location as satisfied if ANY of these exist:
+                  // - goalSpec.verification.constraints.location.name
+                  // - goalSpec.verification.constraints.location.placeId  
+                  // - formData.targetLocation?.name
+                  const needsPlace = loc?.mode === 'geofence' &&
+                                   !(loc?.name || loc?.placeId || formData?.targetLocation?.name);
+                  const isMovementGoal = loc?.mode === 'movement';
+                  
+                  if (needsPlace && specFollowUpAnswer.trim()) {
+                    // User answered place name question for geofence goal, recompile GoalSpec
+                    try {
+                      setGoalSpecLoading(true);
+                      
+                      // Update formData with user's answer
+                      setFormData(prev => ({
+                        ...prev,
+                        targetLocation: { 
+                          ...(prev.targetLocation || {}), 
+                          name: specFollowUpAnswer.trim(),
+                          lat: prev.targetLocation?.lat || 0,
+                          lng: prev.targetLocation?.lng || 0
+                        } as TargetLocation
+                      }));
+                      
+                      // Also update aiDraft if it exists
+                      if (aiDraft.targetLocation) {
+                        setAiDraft(prev => ({
+                          ...prev,
+                          targetLocation: {
+                            ...prev.targetLocation,
+                            name: specFollowUpAnswer.trim()
+                          }
+                        }));
+                      }
+                      
+                      const originalPrompt = rememberedPrompt || aiPrompt;
+                      const title = aiDraft.title || formData.title;
+                      const timezone = 'Asia/Seoul';
+                      const locale = 'ko-KR';
+                      
+                      const refined = await AIService.compileGoalSpec({
+                        prompt: originalPrompt,
+                        title,
+                        timezone,
+                        locale,
+                        targetLocationName: specFollowUpAnswer.trim()
+                      });
+                      
+                      if (!refined || typeof refined !== 'object' || !refined.verification || !refined.schedule) {
+                        Alert.alert('AI Error', 'Failed to parse refined GoalSpec. Please try again.');
+                        return;
+                      }
+                      
+                      setGoalSpec(refined);
+                      
+                      // Post-process verification methods to enforce requirements
+                      const initialMethods = Array.isArray(refined.verification?.methods) ? refined.verification.methods : [];
+                      const initialMandatory = Array.isArray(refined.verification?.mandatory) ? refined.verification.mandatory : [];
+                      const processed = postProcessVerificationMethods(refined, initialMethods, initialMandatory, originalPrompt);
+                      
+                      // Update the spec with processed methods
+                      refined.verification.methods = processed.methods;
+                      refined.verification.mandatory = processed.mandatory;
+                      refined.verification.sufficiency = processed.sufficiency;
+                      
+                      // Show processed results to user
+                      setAiAnalyzedMethods(processed.methods);
+                      setAiMandatoryMethods(processed.mandatory);
+                      setAiVerificationSummary(refined.verification?.rationale || '');
+                      
+                      // Check sufficiency before proceeding
+                      if (!processed.sufficiency) {
+                        Alert.alert(
+                          'Insufficient Verification',
+                          'This goal cannot be sufficiently proven with the authentication methods currently available. (One of Location/Photo/ScreenTime is required.)',
+                          [{ text: 'OK' }]
+                        );
+                        return;
+                      }
+
+                      // Handle missing fields from post-processing
+                      if (processed.missingFields && processed.missingFields.length > 0) {
+                        // Update the spec with missing fields
+                        if (!refined.missingFields) refined.missingFields = [];
+                        refined.missingFields = [...new Set([...refined.missingFields, ...processed.missingFields])];
+                        
+                        // Set follow-up question if provided, but avoid repeating location questions if user already answered
+                        if (processed.followUpQuestion) {
+                          const isLocationQuestion = processed.followUpQuestion.includes('place name') || processed.followUpQuestion.includes('location');
+                          const userAlreadyAnsweredLocation = specFollowUpAnswer.trim() && isLocationQuestion;
+                          
+                          if (!userAlreadyAnsweredLocation) {
+                            setSpecFollowUpQuestion(processed.followUpQuestion);
+                            setSpecFollowUpAnswer('');
+                            return; // Stay in modal for another follow-up
+                          } else {
+                            // User already answered location question, clear it and proceed
+                            console.log('[FollowUp] User already answered location question, proceeding...');
+                          }
+                        }
+                      }
+                      
+                      // Proceed only if refined.schedule?.requiresDisambiguation === false
+                      if (refined.schedule?.requiresDisambiguation && refined.schedule?.followUpQuestion) {
+                        setSpecFollowUpQuestion(refined.schedule.followUpQuestion);
+                        setSpecFollowUpAnswer('');
+                        return; // Stay in modal for another follow-up
+                      }
+                      
+                      // No more disambiguation needed, proceed
+                      setSpecFollowUpQuestion('');
+                      setSpecFollowUpAnswer('');
+                      setShowSpecPlanModal(false);
+                      setAppState('NEEDS_DATES');
+                      goToStep(1);
+                    } catch (e) {
+                      Alert.alert('AI Error', 'Failed to refine GoalSpec. Please try again.');
+                    } finally {
+                      setGoalSpecLoading(false);
+                    }
+                  } else if (!specFollowUpQuestion || isMovementGoal) {
+                    // No follow-up needed OR movement goal (can proceed without place name)
+                    // Check if verification methods are sufficient before proceeding
+                    if (!aiAnalyzedMethods.length || !isVerificationSufficient(aiAnalyzedMethods)) {
+                      Alert.alert('Unsupported Goal', 'This goal cannot be created because it cannot be sufficiently verified with the available methods.');
+                      return;
+                    }
+                    setShowSpecPlanModal(false);
+                    setAppState('NEEDS_DATES');
+                    goToStep(1);
+                  }
+                  // If there's a geofence follow-up question but no answer, do nothing (wait for user input)
+                }} 
+                disabled={goalSpecLoading || (!!specFollowUpQuestion && 
+                  (goalSpec?.verification?.constraints?.location?.mode === 'geofence' &&
+                   !(goalSpec?.verification?.constraints?.location?.name || 
+                     goalSpec?.verification?.constraints?.location?.placeId || 
+                     formData?.targetLocation?.name)) && 
+                  !specFollowUpAnswer.trim())}
+                style={[
+                  { flex: 1, borderRadius: 8, paddingVertical: 12 },
+                  goalSpecLoading || (!!specFollowUpQuestion && 
+                    (goalSpec?.verification?.constraints?.location?.mode === 'geofence' &&
+                     !(goalSpec?.verification?.constraints?.location?.name || 
+                       goalSpec?.verification?.constraints?.location?.placeId || 
+                       formData?.targetLocation?.name)) && 
+                    !specFollowUpAnswer.trim())
+                    ? { backgroundColor: '#9ca3af' }
+                    : { backgroundColor: '#2563eb' }
+                ]}
+              >
+                <Text style={{ color: 'white', fontWeight: '500', textAlign: 'center' }}>
+                  {goalSpecLoading ? 'Processing...' : 
+                   (specFollowUpQuestion && 
+                    (goalSpec?.verification?.constraints?.location?.mode === 'geofence' &&
+                     !(goalSpec?.verification?.constraints?.location?.name || 
+                       goalSpec?.verification?.constraints?.location?.placeId || 
+                       formData?.targetLocation?.name)) && 
+                    !specFollowUpAnswer.trim()) ? 'Answer Required' : 'OK'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Schedule Fixes Modal */}
+        <Modal visible={showScheduleFixes} transparent animationType="fade" onRequestClose={() => setShowScheduleFixes(false)}>
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.4)' }}>
+            <View style={{ backgroundColor: '#fff', borderRadius: 20, padding: 24, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 5 }}>
+              <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#1f2937', marginBottom: 16 }}>Schedule Issues</Text>
+              
+              {scheduleValidationResult?.issues && (
+                <View style={{ marginBottom: 16 }}>
+                  <Text style={{ fontSize: 16, fontWeight: '600', color: '#dc2626', marginBottom: 8 }}>Issues:</Text>
+                  {scheduleValidationResult.issues.map((issue: string, index: number) => (
+                    <Text key={index} style={{ color: '#dc2626', fontSize: 14 }}>• {issue}</Text>
+                  ))}
+                </View>
+              )}
+
+              {scheduleValidationResult?.fixes && (
+                <View style={{ marginBottom: 16 }}>
+                  <Text style={{ fontSize: 16, fontWeight: '600', color: '#1f2937', marginBottom: 8 }}>Suggested fixes:</Text>
+                  {scheduleValidationResult.fixes.weeklyWeekdays && (
+                    <Text style={{ color: '#1f2937', fontSize: 14 }}>
+                      • Use weekdays: {scheduleValidationResult.fixes.weeklyWeekdays.map((d: number) => ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d]).join(', ')}
+                    </Text>
+                  )}
+                  {scheduleValidationResult.fixes.weeklyTimeSettings && (
+                    <Text style={{ color: '#1f2937', fontSize: 14 }}>• Use suggested time windows</Text>
+                  )}
+                </View>
+              )}
+
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <TouchableOpacity 
+                  onPress={() => {
+                    setShowScheduleFixes(false);
+                    setScheduleValidationResult(null);
+                  }} 
+                  style={{ flex: 1, backgroundColor: '#e5e7eb', borderRadius: 8, paddingVertical: 12 }}
+                >
+                  <Text style={{ color: '#374151', fontWeight: '500', textAlign: 'center' }}>Cancel</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={handleConfirmVerificationPlan} className="flex-1 bg-blue-600 rounded-lg py-3">
-                  <Text className="text-white font-medium text-center">OK</Text>
-                </TouchableOpacity>
+                
+                {scheduleValidationResult?.fixes && (
+                  <TouchableOpacity 
+                    onPress={handleApplyFixes}
+                    style={{ flex: 1, backgroundColor: '#2563eb', borderRadius: 8, paddingVertical: 12 }}
+                  >
+                    <Text style={{ color: 'white', fontWeight: '500', textAlign: 'center' }}>Apply Fixes</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
           </View>
         </Modal>
+
         {/* Header with dynamic Save button */}
-        <View className="bg-white border-b border-gray-200 px-4 py-4 pt-12">
-          <View className="flex-row items-center justify-between mb-4">
+        <View style={{ backgroundColor: '#fff', padding: 16, borderBottomWidth: 1, borderBottomColor: '#e5e7eb' }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <TouchableOpacity onPress={handleClose}>
               <Ionicons name="close" size={24} color="#6B7280" />
             </TouchableOpacity>
-            <Text className="text-lg font-bold text-gray-800">Create Goal</Text>
+            <Text style={{ fontSize: 20, fontWeight: 'bold' }}>Create Goal</Text>
             <TouchableOpacity
               onPress={handleSubmit}
               disabled={loading || state.step !== 2}
-              className={`px-4 py-2 rounded-lg ${
-                loading || state.step !== 2
-                  ? 'bg-gray-400' 
-                  : 'bg-blue-600'
-              }`}
+              style={[
+                { padding: 12, borderRadius: 8 },
+                loading || state.step !== 2 ? { backgroundColor: '#e5e7eb' } : { backgroundColor: '#2563eb' }
+              ]}
             >
               {loading ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
-                <Text className="text-white font-semibold">
+                <Text style={{ color: 'white', fontWeight: '600' }}>
                   {appState === 'SAVING' ? 'Saving...' : 'Save Goal'}
                 </Text>
               )}
@@ -1728,62 +2504,50 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
           </View>
           
           {/* Stepper Progress - Fixed position for all steps */}
-          <View className="flex-row items-center justify-center mb-6">
+          <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: 16 }}>
             {STEPS.map((step, index) => (
               <TouchableOpacity
                 key={step.id}
                 onPress={() => goToStep(index)}
                 disabled={index > state.step}
-                className="flex-row items-center"
+                style={[
+                  { marginHorizontal: 8 },
+                  index <= state.step ? { borderBottomWidth: 2, borderBottomColor: '#2563eb' } : {}
+                ]}
               >
-                <View className="flex-col items-center">
-                  <View className={`w-10 h-10 rounded-full items-center justify-center ${
-                    index <= state.step ? 'bg-blue-600' : 'bg-gray-300'
-                  }`}>
-                    <Text className={`text-sm font-semibold ${
-                      index <= state.step ? 'text-white' : 'text-gray-600'
-                    }`}>
-                      {index + 1}
-                    </Text>
-                  </View>
-                  <Text className="text-gray-600 text-xs mt-2 text-center" numberOfLines={1}>
-                    {step.title}
-                  </Text>
-                </View>
-                {/* Add spacing between steps */}
-                {index < STEPS.length - 1 && <View className="w-16" />}
+                <Text style={{ fontSize: 16, fontWeight: index <= state.step ? '600' : '400' }}>
+                  {step.title}
+                </Text>
               </TouchableOpacity>
             ))}
           </View>
           
           {/* Thin progress bar below stepper - 3 connected bars without circles */}
-          <View className="flex-row items-center justify-center mb-6">
-            <View className="flex-row items-center">
-              {[0, 1, 2].map((stepIndex) => (
-                <React.Fragment key={stepIndex}>
-                  <View className={`w-20 h-1 ${
-                    stepIndex <= state.step ? 'bg-blue-600' : 'bg-gray-300'
-                  }`} />
-                  {stepIndex < 2 && (
-                    <View className={`w-1 h-1 mx-1 rounded-full ${
-                      stepIndex < state.step ? 'bg-blue-600' : 'bg-gray-300'
-                    }`} />
-                  )}
-                </React.Fragment>
-              ))}
-            </View>
+          <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: 8 }}>
+            {[0, 1, 2].map((stepIndex) => (
+              <View
+                key={stepIndex}
+                style={{
+                  width: 20,
+                  height: 4,
+                  backgroundColor: stepIndex <= state.step ? '#2563eb' : '#e5e7eb',
+                  marginHorizontal: 2,
+                  borderRadius: 2
+                }}
+              />
+            ))}
           </View>
         </View>
 
         {/* Background task progress indicator */}
         {backgroundTaskProgress && (
-          <View className="bg-blue-50 border-b border-blue-200 px-4 py-2">
-            <Text className="text-blue-700 text-sm text-center">{backgroundTaskProgress}</Text>
+          <View style={{ backgroundColor: '#e5e7eb', padding: 12 }}>
+            <Text style={{ color: '#4b5563', fontSize: 14 }}>{backgroundTaskProgress}</Text>
           </View>
         )}
         {state.step === 1 && aiVerificationLoading && (
-          <View className="bg-blue-50 border-b border-blue-200 px-4 py-2">
-            <Text className="text-blue-700 text-sm text-center">Analyzing verification methods with AI...</Text>
+          <View style={{ backgroundColor: '#e5e7eb', padding: 12 }}>
+            <Text style={{ color: '#2563eb', fontSize: 14 }}>Analyzing verification methods with AI...</Text>
           </View>
         )}
 
@@ -1808,11 +2572,11 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         presentationStyle="pageSheet"
         onRequestClose={closeLocationPicker}
       >
-        <View className="flex-1 bg-white">
+        <View style={{ flex: 1, backgroundColor: '#fff' }}>
           {/* Drag handle */}
-          <View className="items-center pt-3 pb-2 bg-blue-600">
-            <View style={{ width: 44, height: 5, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.6)' }} />
-            <Text className="text-white font-semibold text-lg mt-2">Select Location</Text>
+          <View style={{ padding: 16, backgroundColor: '#2563eb' }}>
+            <View style={{ width: 40, height: 5, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.6)' }} />
+            <Text style={{ color: 'white', fontSize: 18, fontWeight: '600', marginTop: 8 }}>Select Location</Text>
           </View>
 
           {/* Use LocationSearch component instead of custom implementation */}
@@ -1842,14 +2606,14 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
           />
 
           {/* Confirm */}
-          <View className="p-4">
+          <View style={{ padding: 16 }}>
             <TouchableOpacity
-              className="bg-blue-600 rounded-lg py-3 flex-row items-center justify-center"
+              style={{ flex: 1, backgroundColor: '#2563eb', borderRadius: 8, padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}
               onPress={handlePickerConfirm}
               disabled={!pickerSelectedLocation}
             >
               <Ionicons name="checkmark" size={20} color="#FFFFFF" />
-              <Text className="text-white font-semibold ml-2">Confirm Location</Text>
+              <Text style={{ color: 'white', fontWeight: '600', marginLeft: 8 }}>Confirm Location</Text>
             </TouchableOpacity>
           </View>
         </View>

@@ -52,6 +52,59 @@ export type VerificationType = 'location' | 'time' | 'screentime' | 'photo' | 'm
 export type TimeFrame = 'daily' | 'weekly' | 'monthly';
 export type VerificationStatus = 'success' | 'fail';
 
+// GoalSpec type for AI-generated goal specifications
+export interface GoalSpec {
+  title: string;
+  verification: {
+    methods: VerificationType[];
+    mandatory: VerificationType[];
+    constraints?: {
+      location?: {
+        mode?: 'geofence' | 'movement';
+        name?: string;
+        placeId?: string;
+        radiusM?: number;
+        minDwellMin?: number;
+        minDistanceKm?: number;
+        evidence?: 'GPS' | 'HealthKit' | 'GoogleFit';
+      };
+      screentime?: {
+        bundleIds?: string[];
+        category?: string;
+      };
+      photo?: {
+        required?: boolean;
+      };
+    };
+    sufficiency: boolean;
+    rationale: string;
+  };
+  schedule: {
+    countRule?: {
+      operator: '>=' | '==' | '<=';
+      count: number;
+      unit: 'per_week' | 'per_day' | 'per_month';
+    };
+    weekdayConstraints?: number[];
+    timeRules?: Array<{
+      days: number[]; // 0=Sun..6=Sat
+      range: [string, string]; // HH:MM format
+      label?: string;
+      source: 'user_text' | 'inferred';
+    }>;
+    timeWindows?: Array<{
+      label: string;
+      range: [string, string]; // HH:MM format
+      source: 'user_text' | 'inferred';
+    }>;
+    weekBoundary?: 'startWeekday' | 'isoWeek';
+    enforcePartialWeeks?: boolean;
+    requiresDisambiguation?: boolean;
+    followUpQuestion?: string;
+  };
+  missingFields?: string[];
+}
+
 export interface GoalFrequency {
   count: number;
   unit: 'per_day' | 'per_week' | 'per_month';
@@ -92,6 +145,15 @@ export interface Goal {
   weeklyWeekdays?: number[];
   includeDates?: string[]; // YYYY-MM-DD within duration
   excludeDates?: string[]; // YYYY-MM-DD within duration
+  
+  // AI-generated schedule specifications
+  schedule?: {
+    countRule?: { count: number; operator: string; unit: string };
+    timeWindows?: Array<{ label: string; range: [string, string]; source: string }>;
+    weekdayConstraints?: number[];
+    weekBoundary?: 'startWeekday' | 'isoWeek';
+    enforcePartialWeeks?: boolean;
+  };
 }
 
 export interface Verification {
@@ -136,6 +198,31 @@ export interface ScreenTimeData {
   appName: string;
   duration: number; // in minutes
   date: Date;
+}
+
+// Calendar event type for unified schedule management
+export interface CalendarEvent {
+  id: string;          // uuid
+  date: string;        // YYYY-MM-DD (Asia/Seoul 기준)
+  time?: string;       // "HH:mm"
+  goalId: string;
+  source: 'weekly' | 'override';
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+// Validation result type for goal validation
+export interface ValidationResult {
+  isCompatible: boolean;
+  issues: string[];
+  fixes?: Record<string, any>;
+  summary: string;
+  completeWeekCount: number;
+  validationDetails: {
+    frequencyCheck: { passed: boolean; details: string };
+    weekdayCheck: { passed: boolean; details: string };
+    timeCheck: { passed: boolean; details: string };
+  };
 }
 
 // AI Goal types
@@ -204,4 +291,13 @@ export interface CreateGoalForm {
   weeklyWeekdays?: number[];
   includeDates?: string[];
   excludeDates?: string[];
+  
+  // AI-generated schedule specifications
+  schedule?: {
+    countRule?: { count: number; operator: string; unit: string };
+    timeWindows?: Array<{ label: string; range: [string, string]; source: string }>;
+    weekdayConstraints?: number[];
+    weekBoundary?: 'startWeekday' | 'isoWeek';
+    enforcePartialWeeks?: boolean;
+  };
 }

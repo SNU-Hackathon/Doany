@@ -1,4 +1,11 @@
-// Simple Date Picker Component - Schedule Step with Calendar
+/**
+ * Simple Date Picker Component - Schedule Step with Calendar
+ * 
+ * 경계/정합성 규칙:
+ * 1. 기간이 7일 미만이면 검증 스킵 (불완전 주만 존재)
+ * 2. 중복 이벤트 카운트 정책: 동일 날짜·시간 다중 등록은 개수만큼 집계 (기본)
+ * 3. 타임존: Asia/Seoul 고정, 날짜 문자열은 YYYY-MM-DD
+ */
 
 import { Ionicons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
@@ -13,7 +20,8 @@ import {
   View
 } from 'react-native';
 import { convertDurationToRange } from '../features/goals/aiDraft';
-import { TargetLocation, VerificationType } from '../types';
+import { CalendarEventService } from '../services/calendarEventService';
+import { CalendarEvent, GoalSpec, TargetLocation, VerificationType } from '../types';
 import MapPreview from './MapPreview';
 
 export interface DateSelection {
@@ -48,6 +56,10 @@ interface SimpleDatePickerProps {
   targetLocation?: TargetLocation;
   onOpenLocationPicker?: () => void;
   onUseCurrentLocation?: () => void;
+  // GoalSpec for verification note
+  goalSpec?: GoalSpec | null;
+  // Loading state for Next button
+  loading?: boolean;
 }
 
 export default function SimpleDatePicker({
@@ -69,10 +81,24 @@ export default function SimpleDatePicker({
   blockingReasons = [],
   onRequestNext,
   initialSelectedWeekdays,
-  initialWeeklyTimeSettings
-  , targetLocation, onOpenLocationPicker, onUseCurrentLocation
+  initialWeeklyTimeSettings,
+  targetLocation, 
+  onOpenLocationPicker, 
+  onUseCurrentLocation,
+  goalSpec,
+  loading = false
 }: SimpleDatePickerProps) {
+  /**
+   * 로컬 날짜를 YYYY-MM-DD 형식으로 변환
+   * 
+   * 타임존 규칙: Asia/Seoul 고정
+   * 날짜 문자열: YYYY-MM-DD 형식
+   * 
+   * @param d Date 객체
+   * @returns YYYY-MM-DD 형식의 날짜 문자열
+   */
   const getLocalYMD = (d: Date) => {
+    // Asia/Seoul 타임존 기준으로 날짜 계산
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, '0');
     const dd = String(d.getDate()).padStart(2, '0');
@@ -89,8 +115,60 @@ export default function SimpleDatePicker({
   const [currentMonth, setCurrentMonth] = useState(new Date(startDate || today));
 
   // Weekly Schedule state (always visible)
-  const [selectedWeekdays, setSelectedWeekdays] = useState<Set<number>>(new Set());
-  const [weeklyTimeSettings, setWeeklyTimeSettings] = useState<{ [key: string]: string[] }>({});
+  const [selectedWeekdays, setSelectedWeekdays] = useState<Set<number>>(
+    new Set(initialSelectedWeekdays || [])
+  );
+  const [weeklyTimeSettings, setWeeklyTimeSettings] = useState<{ [key: string]: string[] }>(
+    initialWeeklyTimeSettings || {}
+  );
+  
+  // Override events state for visual distinction
+  const [overrideEvents, setOverrideEvents] = useState<CalendarEvent[]>([]);
+  
+  // Fetch override events for the current date range
+  useEffect(() => {
+    const fetchOverrideEvents = async () => {
+      if (!startDate || !endDate) return;
+      
+      try {
+        const events = await CalendarEventService.getCalendarEventsBySource(
+          'override',
+          startDate,
+          endDate
+        );
+        // Extract only override events from the result
+        setOverrideEvents(events.override || []);
+      } catch (error) {
+        console.log('[SimpleDatePicker] Error fetching override events:', error);
+      }
+    };
+    
+    fetchOverrideEvents();
+  }, [startDate, endDate]);
+  
+  // Helper function to get override times for a specific weekday
+  const getOverrideTimesForWeekday = useCallback((weekdayIndex: number) => {
+    if (!startDate || !endDate) return [];
+    
+    const overrideTimes: string[] = [];
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      if (d.getDay() === weekdayIndex) {
+        const dateStr = getLocalYMD(d);
+        const dayOverrides = overrideEvents.filter(e => e.date === dateStr);
+        dayOverrides.forEach(event => {
+          if (event.time && !overrideTimes.includes(event.time)) {
+            overrideTimes.push(event.time);
+          }
+        });
+      }
+    }
+    
+    return overrideTimes;
+  }, [startDate, endDate, overrideEvents]);
+
   const [isEditingWeeklySchedule, setIsEditingWeeklySchedule] = useState(true);
   const [editingMode, setEditingMode] = useState<'period' | 'schedule'>('period');
   const [includeDates, setIncludeDates] = useState<string[]>(initialIncludeDates);
@@ -332,9 +410,14 @@ export default function SimpleDatePicker({
     if (dateStr < today) return; // Don't allow past dates
 
     if (editingMode === 'schedule') {
-      // Toggle include/exclude based on base weekly schedule
+      // 🔄 SCHEDULE MODE: Toggle include/exclude based on base weekly schedule
+      console.log(`[Calendar] Toggling schedule for date: ${dateStr}`);
+      
       const baseIncluded = selectedWeekdays.has(new Date(dateStr).getDay()) && (!!endDate ? (dateStr >= (startDate || today) && dateStr <= endDate) : true);
       const currentlyScheduled = ((baseIncluded && !excludeDates.includes(dateStr)) || includeDates.includes(dateStr));
+      const dayName = dayShort[new Date(dateStr).getDay()];
+
+      console.log(`[Calendar] Date ${dateStr} (${dayName}): baseIncluded=${baseIncluded}, currentlyScheduled=${currentlyScheduled}`);
 
       let nextInclude = [...includeDates];
       let nextExclude = [...excludeDates];
@@ -345,17 +428,21 @@ export default function SimpleDatePicker({
           if (!nextExclude.includes(dateStr)) nextExclude.push(dateStr);
           // Ensure not in include
           nextInclude = nextInclude.filter(d => d !== dateStr);
+          console.log(`[Calendar] Disabled ${dayName} ${dateStr} by adding to exclude`);
         } else {
           // Was scheduled only due to include; turning off -> remove from include
           nextInclude = nextInclude.filter(d => d !== dateStr);
+          console.log(`[Calendar] Disabled ${dayName} ${dateStr} by removing from include`);
         }
       } else {
         if (baseIncluded) {
           // Base includes but currently off due to exclude; turning on -> remove from exclude
           nextExclude = nextExclude.filter(d => d !== dateStr);
+          console.log(`[Calendar] Enabled ${dayName} ${dateStr} by removing from exclude`);
         } else {
           // Base excludes; turning on -> add to include
           if (!nextInclude.includes(dateStr)) nextInclude.push(dateStr);
+          console.log(`[Calendar] Enabled ${dayName} ${dateStr} by adding to include`);
         }
       }
 
@@ -371,10 +458,11 @@ export default function SimpleDatePicker({
       setExcludeDates(nextExclude);
       onIncludeExcludeChange?.(nextInclude, nextExclude);
 
-      // Reflect this single-day change into Weekly Schedule by checking if any occurrences
-      // of this weekday remain scheduled across the current range
+      // 🔄 SYNC WEEKLY SCHEDULE: Reflect this single-day change into Weekly Schedule
+      // Check if any occurrences of this weekday remain scheduled across the current range
       const dayIdx = new Date(dateStr).getDay();
       let anyScheduledForWeekday = false;
+      
       if (startDate && endDate) {
         const start = new Date(startDate);
         const end = new Date(endDate);
@@ -383,29 +471,43 @@ export default function SimpleDatePicker({
           const ds = d.toISOString().split('T')[0];
           const baseInc = selectedWeekdays.has(dayIdx);
           const sched = (baseInc && !nextExclude.includes(ds)) || nextInclude.includes(ds);
-          if (sched) { anyScheduledForWeekday = true; break; }
+          if (sched) { 
+            anyScheduledForWeekday = true; 
+            break; 
+          }
         }
       } else {
         const baseInc = selectedWeekdays.has(dayIdx);
         anyScheduledForWeekday = baseInc || nextInclude.includes(dateStr);
       }
 
+      console.log(`[WeeklySchedule] Weekday ${dayName} (${dayIdx}): anyScheduledForWeekday=${anyScheduledForWeekday}`);
+
       if (anyScheduledForWeekday) {
+        // Ensure weekday is in selectedWeekdays
         setSelectedWeekdays(prev => {
+          if (prev.has(dayIdx)) return prev; // Already selected
           const next = new Set(prev);
           next.add(dayIdx);
+          console.log(`[WeeklySchedule] Added ${dayName} to weekly schedule`);
           return next;
         });
       } else {
+        // Remove weekday from selectedWeekdays if no dates are scheduled
         setSelectedWeekdays(prev => {
+          if (!prev.has(dayIdx)) return prev; // Already removed
           const next = new Set(prev);
           next.delete(dayIdx);
+          console.log(`[WeeklySchedule] Removed ${dayName} from weekly schedule (no scheduled dates)`);
           return next;
         });
+        
         // If the weekday has no scheduled dates left, remove its time settings as well
         setWeeklyTimeSettings(prev => {
+          if (!prev[dayIdx]) return prev; // No time settings to remove
           const copy: any = { ...prev };
           delete copy[dayIdx];
+          console.log(`[WeeklySchedule] Removed time settings for ${dayName} (no scheduled dates)`);
           return copy;
         });
       }
@@ -510,6 +612,32 @@ export default function SimpleDatePicker({
   };
 
   // Weekly Schedule functions (always visible)
+  const dayShort = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  
+  // Sync weekly schedule changes to calendar events
+  const syncWeeklyScheduleToCalendar = useCallback(async () => {
+    if (!startDate || !endDate) return;
+    
+    try {
+      // Convert Set to array for the service
+      const weekdaysArray = Array.from(selectedWeekdays);
+      
+      // Sync weekly schedule to calendar events
+      await CalendarEventService.syncWeeklyScheduleToCalendar(
+        'temp-goal-id', // Will be replaced with actual goalId when goal is created
+        weekdaysArray,
+        weeklyTimeSettings,
+        startDate,
+        endDate
+      );
+      
+      console.log('[SimpleDatePicker] Weekly schedule synced to calendar events');
+    } catch (error) {
+      console.error('[SimpleDatePicker] Failed to sync weekly schedule:', error);
+      // Don't throw error to avoid breaking the UI
+    }
+  }, [startDate, endDate, selectedWeekdays, weeklyTimeSettings]);
+  
   const toggleWeekday = useCallback((dayIndex: number) => {
     // Defer state updates to avoid setState during render warnings
     setTimeout(() => {
@@ -517,48 +645,88 @@ export default function SimpleDatePicker({
         const next = new Set(prev);
         const wasSelected = next.has(dayIndex);
         if (wasSelected) {
+          // 🔄 REMOVING WEEKDAY: Update Weekly Schedule and Calendar
+          console.log(`[WeeklySchedule] Removing weekday ${dayIndex} (${dayShort[dayIndex]})`);
           next.delete(dayIndex);
+          
+          // Remove time settings for this weekday
           setWeeklyTimeSettings(prevTimes => {
             const copy = { ...prevTimes } as any;
             delete copy[dayIndex];
+            console.log(`[WeeklySchedule] Removed time settings for ${dayShort[dayIndex]}`);
             return copy;
           });
-          // Remove all calendar schedules for this weekday within the range
+          
+          // 🗓️ SYNC CALENDAR: Remove all calendar schedules for this weekday within the range
           if (startDate && endDate) {
             const start = new Date(startDate);
             const end = new Date(endDate);
-            const nextInclude = includeDates.filter(ds => new Date(ds).getDay() !== dayIndex || new Date(ds) < start || new Date(ds) > end);
-            // Exclude every in-range date of that weekday explicitly to clear schedule
+            
+            // Remove any include dates that were this weekday
+            const nextInclude = includeDates.filter(ds => {
+              const date = new Date(ds);
+              return date.getDay() !== dayIndex || date < start || date > end;
+            });
+            
+            // Add explicit excludes for all in-range dates of this weekday
             const explicitExcludes: string[] = [];
             for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
               if (d.getDay() !== dayIndex) continue;
               const ds = d.toISOString().split('T')[0];
-              if (!explicitExcludes.includes(ds)) explicitExcludes.push(ds);
+              if (!explicitExcludes.includes(ds)) {
+                explicitExcludes.push(ds);
+                console.log(`[Calendar] Adding explicit exclude for ${ds} (${dayShort[dayIndex]})`);
+              }
             }
+            
+            // Update exclude dates, removing old excludes for this weekday and adding new ones
             const nextExclude = excludeDates
-              .filter(ds => new Date(ds).getDay() !== dayIndex || new Date(ds) < start || new Date(ds) > end)
+              .filter(ds => {
+                const date = new Date(ds);
+                return date.getDay() !== dayIndex || date < start || date > end;
+              })
               .concat(explicitExcludes)
-              .filter((v, i, a) => a.indexOf(v) === i)
+              .filter((v, i, a) => a.indexOf(v) === i) // Remove duplicates
               .sort();
+            
             setIncludeDates(nextInclude);
             setExcludeDates(nextExclude);
             onIncludeExcludeChange?.(nextInclude, nextExclude);
+            
+            console.log(`[Calendar] Updated calendar: removed ${dayShort[dayIndex]} schedules, added ${explicitExcludes.length} explicit excludes`);
           }
+          
+          // 🗓️ SYNC CALENDAR EVENTS: Update calendar events
+          syncWeeklyScheduleToCalendar();
         } else {
+          // 🔄 ADDING WEEKDAY: Update Weekly Schedule and Calendar
+          console.log(`[WeeklySchedule] Adding weekday ${dayIndex} (${dayShort[dayIndex]})`);
           next.add(dayIndex);
-          // Add all in-range occurrences of this weekday as scheduled by removing excludes
+          
+          // 🗓️ SYNC CALENDAR: Add all in-range occurrences of this weekday as scheduled
           if (startDate && endDate) {
             const start = new Date(startDate);
             const end = new Date(endDate);
-            const nextExclude = excludeDates.filter(ds => new Date(ds).getDay() !== dayIndex || new Date(ds) < start || new Date(ds) > end);
+            
+            // Remove excludes for this weekday within the range (allowing them to be scheduled)
+            const nextExclude = excludeDates.filter(ds => {
+              const date = new Date(ds);
+              return date.getDay() !== dayIndex || date < start || date > end;
+            });
+            
             setExcludeDates(nextExclude);
             onIncludeExcludeChange?.(includeDates, nextExclude);
+            
+            console.log(`[Calendar] Updated calendar: enabled ${dayShort[dayIndex]} schedules by removing excludes`);
           }
+          
+          // 🗓️ SYNC CALENDAR EVENTS: Update calendar events
+          syncWeeklyScheduleToCalendar();
         }
         return next;
       });
     }, 0);
-  }, [startDate, endDate, includeDates, excludeDates, onIncludeExcludeChange]);
+  }, [startDate, endDate, includeDates, excludeDates, onIncludeExcludeChange, dayShort, syncWeeklyScheduleToCalendar]);
 
   const openAddTimeModal = useCallback((dayIndex: number) => {
     setEditingDayIndex(dayIndex);
@@ -579,23 +747,59 @@ export default function SimpleDatePicker({
   }, [weeklyTimeSettings]);
 
   const removeTime = useCallback((dayIndex: number, timeIdx: number) => {
+    const dayName = dayShort[dayIndex];
+    console.log(`[WeeklySchedule] Removing time ${timeIdx} for ${dayName}`);
+    
     setWeeklyTimeSettings(prev => {
       const list = prev[dayIndex] ? [...prev[dayIndex]] : [];
+      const removedTime = list[timeIdx];
       list.splice(timeIdx, 1);
       const next = { ...prev } as any;
+      
       if (list.length > 0) {
         next[dayIndex] = list;
+        console.log(`[WeeklySchedule] Updated time settings for ${dayName}: ${list.join(', ')}`);
       } else {
         delete next[dayIndex];
+        console.log(`[WeeklySchedule] Removed all time settings for ${dayName}`);
+        
+        // 🔄 SYNC WEEKDAYS: If no times left, remove the weekday from selection
         setSelectedWeekdays(prevDays => {
           const copy = new Set(prevDays);
           copy.delete(dayIndex);
+          console.log(`[WeeklySchedule] Removed ${dayName} from weekly schedule (no times left)`);
           return copy;
         });
+        
+        // 🗓️ SYNC CALENDAR: Remove all calendar schedules for this weekday within the range
+        if (startDate && endDate) {
+          const start = new Date(startDate);
+          const end = new Date(endDate);
+          
+          // Add explicit excludes for all in-range dates of this weekday
+          const explicitExcludes: string[] = [];
+          for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+            if (d.getDay() !== dayIndex) continue;
+            const ds = d.toISOString().split('T')[0];
+            if (!explicitExcludes.includes(ds)) {
+              explicitExcludes.push(ds);
+            }
+          }
+          
+          // Update exclude dates
+          setExcludeDates(prev => {
+            const next = [...prev, ...explicitExcludes]
+              .filter((v, i, a) => a.indexOf(v) === i) // Remove duplicates
+              .sort();
+            return next;
+          });
+          
+          console.log(`[Calendar] Added ${explicitExcludes.length} explicit excludes for ${dayName}`);
+        }
       }
       return next;
     });
-  }, []);
+  }, [startDate, endDate, dayShort]);
 
   const saveTime = useCallback(() => {
     const time = `${editingTimeHour.padStart(2, '0')}:${editingTimeMinute.padStart(2, '0')}`;
@@ -617,16 +821,116 @@ export default function SimpleDatePicker({
     setShowTimePicker(false);
     setEditingDayIndex(-1);
     setEditingTimeIndex(-1);
-  }, [editingDayIndex, editingTimeIndex, editingTimeHour, editingTimeMinute]);
+    
+    // 🗓️ SYNC CALENDAR EVENTS: Update calendar events after time change
+    setTimeout(() => syncWeeklyScheduleToCalendar(), 100);
+  }, [editingDayIndex, editingTimeIndex, editingTimeHour, editingTimeMinute, syncWeeklyScheduleToCalendar]);
 
   const clearWeeklySchedule = useCallback(() => {
+    console.log('[WeeklySchedule] Clearing all weekly schedule data');
+    
+    // Clear weekly schedule
     setSelectedWeekdays(new Set());
     setWeeklyTimeSettings({});
-  }, []);
+    
+    // 🗓️ SYNC CALENDAR: Clear all calendar schedules within the range
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      
+      // Add all in-range dates to exclude to clear the schedule
+      const explicitExcludes: string[] = [];
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const ds = d.toISOString().split('T')[0];
+        if (!explicitExcludes.includes(ds)) {
+          explicitExcludes.push(ds);
+        }
+      }
+      
+      // Clear include dates and add all dates to exclude
+      setIncludeDates([]);
+      setExcludeDates(explicitExcludes);
+      onIncludeExcludeChange?.([], explicitExcludes);
+      
+      console.log(`[Calendar] Cleared all calendar schedules, added ${explicitExcludes.length} explicit excludes`);
+    } else {
+      // No date range defined, just clear include dates
+      setIncludeDates([]);
+      onIncludeExcludeChange?.([], excludeDates);
+      console.log('[Calendar] Cleared include dates (no date range defined)');
+    }
+    
+    // 🗓️ SYNC CALENDAR EVENTS: Update calendar events after clearing
+    setTimeout(() => syncWeeklyScheduleToCalendar(), 100);
+  }, [startDate, endDate, excludeDates, onIncludeExcludeChange, syncWeeklyScheduleToCalendar]);
 
   const calendarDays = generateCalendarDays();
 
-  const dayShort = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  // Generate verification note based on GoalSpec
+  const generateVerificationNote = (): string => {
+    if (!goalSpec?.verification) return '';
+
+    const mandatory = goalSpec.verification.mandatory || [];
+    const constraints = goalSpec.verification.constraints || {};
+    const methods = verificationMethods || [];
+    
+    // Determine place label (no hard-coded "gym" or venue names)
+    const placeLabel = constraints.location?.name 
+                      ?? targetLocation?.name 
+                      ?? "the selected place";
+
+    const lines: string[] = [];
+
+    // 1) Location verification
+    if (mandatory.includes('location')) {
+      const radiusM = constraints.location?.radiusM || 100;
+      const minDwellMin = constraints.location?.minDwellMin || 10;
+      
+      let locationText = `During the scheduled times, you'll be verified by being at ${placeLabel}`;
+      
+      if (radiusM) {
+        locationText += ` (within ~${radiusM} m)`;
+      } else {
+        locationText += ' (within the selected area)';
+      }
+      
+      if (minDwellMin) {
+        locationText += ` for at least ${minDwellMin} minutes.`;
+      } else {
+        locationText += ' for a short period.';
+      }
+      
+      lines.push(locationText);
+    }
+
+    // 2) Photo verification  
+    if (mandatory.includes('photo') || (methods.includes('photo' as any) && constraints.photo?.required)) {
+      lines.push('During the scheduled times, upload a photo as proof to be counted.');
+    }
+
+    // 3) Screentime verification
+    if (mandatory.includes('screentime')) {
+      if (constraints.screentime?.bundleIds?.length) {
+        const apps = constraints.screentime.bundleIds.join(', ');
+        lines.push(`During the scheduled times, usage of these apps will be verified: ${apps}.`);
+      } else {
+        lines.push('During the scheduled times, your app usage will be verified.');
+      }
+    }
+
+    // 4) Time reminder (append-only, not primary proof)
+    if (methods.includes('time' as any)) {
+      lines.push('Times act as reminders; verification relies on your selected proof methods.');
+    }
+
+    // 5) Manual insufficient warning
+    if (methods.includes('manual' as any) && 
+        !methods.some(m => ['location', 'photo', 'screentime'].includes(m))) {
+      lines.push('Manual check-in alone is not sufficient for objective verification.');
+    }
+
+    return lines.join('\n');
+  };
 
   // Verification Methods (bottom section)
   const allMethods: VerificationType[] = ['location', 'time', 'screentime', 'photo', 'manual'];
@@ -709,6 +1013,39 @@ export default function SimpleDatePicker({
           )}
         </View>
 
+        {/* Weekly window information and count rule */}
+        {goalSpec?.schedule && (
+          <View className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            {/* Count rule display */}
+            {goalSpec.schedule.countRule && (
+              <View className="mb-2">
+                <Text className="text-blue-800 font-medium text-sm">
+                  Goal: {goalSpec.schedule.countRule.operator} {goalSpec.schedule.countRule.count} times per week
+                </Text>
+              </View>
+            )}
+            
+            {/* Weekly window boundary information */}
+            {goalSpec.schedule.weekBoundary && (
+              <View className="mb-2">
+                <Text className="text-blue-700 text-sm">
+                  {goalSpec.schedule.weekBoundary === 'startWeekday' 
+                    ? `Weekly windows run from your start date to the following ${new Date(startDate).toLocaleDateString('en-US', { weekday: 'long' })}.`
+                    : 'Weekly windows follow ISO standard (Monday to Sunday).'
+                  }
+                </Text>
+              </View>
+            )}
+            
+            {/* Partial week handling note */}
+            {goalSpec.schedule.enforcePartialWeeks === false && (
+              <Text className="text-blue-600 text-xs italic">
+                Partial weeks do not enforce the weekly minimum; tracking starts from the first full week.
+              </Text>
+            )}
+          </View>
+        )}
+
         {isEditingWeeklySchedule ? (
             <View>
             {/* Day selector chips */}
@@ -725,31 +1062,66 @@ export default function SimpleDatePicker({
             </View>
 
             {/* Times per selected day */}
-            {Array.from(selectedWeekdays).sort().map((dayIdx) => (
-              <View key={dayIdx} className="mb-3 p-3 bg-gray-50 rounded-lg">
-                <View className="flex-row items-center justify-between mb-2">
-                  <Text className="text-gray-800 font-medium">{dayShort[dayIdx]}</Text>
-                  <TouchableOpacity onPress={() => openAddTimeModal(dayIdx)} className="px-3 py-1 bg-blue-100 rounded">
-                    <Text className="text-blue-700 text-xs font-semibold">Add time</Text>
-                  </TouchableOpacity>
-                </View>
-                <View className="flex-row flex-wrap gap-2">
-                  {(weeklyTimeSettings[dayIdx] || []).map((t, i) => (
-                    <View key={`${t}-${i}`} className="flex-row items-center bg-green-100 px-3 py-1 rounded-full">
-                      <TouchableOpacity onPress={() => openEditTimeModal(dayIdx, i)}>
-                        <Text className="text-green-800 font-medium mr-1">{t}</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity onPress={() => removeTime(dayIdx, i)}>
-                        <Ionicons name="close" size={14} color="#047857" />
-                      </TouchableOpacity>
+            {Array.from(selectedWeekdays).sort().map((dayIdx) => {
+              const weeklyTimes = weeklyTimeSettings[dayIdx] || [];
+              const overrideTimes = getOverrideTimesForWeekday(dayIdx);
+              const hasOverrides = overrideTimes.length > 0;
+              
+              return (
+                <View key={dayIdx} className="mb-3 p-3 bg-gray-50 rounded-lg">
+                  <View className="flex-row items-center justify-between mb-2">
+                    <View className="flex-row items-center">
+                      <Text className="text-gray-800 font-medium">{dayShort[dayIdx]}</Text>
+                      {hasOverrides && (
+                        <View className="ml-2 px-2 py-1 bg-blue-100 rounded-full">
+                          <Text className="text-blue-700 text-xs font-medium">
+                            {overrideTimes.length} override{overrideTimes.length > 1 ? 's' : ''}
+                          </Text>
+                        </View>
+                      )}
                     </View>
-                  ))}
-                  {(weeklyTimeSettings[dayIdx]?.length || 0) === 0 && (
-                    <Text className="text-gray-500 text-xs">No times added</Text>
+                    <TouchableOpacity onPress={() => openAddTimeModal(dayIdx)} className="px-3 py-1 bg-blue-100 rounded">
+                      <Text className="text-blue-700 text-xs font-semibold">Add time</Text>
+                    </TouchableOpacity>
+                  </View>
+                  
+                  {/* Weekly pattern times */}
+                  <View className="mb-2">
+                    <Text className="text-xs text-gray-600 mb-1">Weekly Pattern:</Text>
+                    <View className="flex-row flex-wrap gap-2">
+                      {weeklyTimes.map((t, i) => (
+                        <View key={`weekly-${t}-${i}`} className="flex-row items-center bg-green-100 px-3 py-1 rounded-full border border-green-200">
+                          <TouchableOpacity onPress={() => openEditTimeModal(dayIdx, i)}>
+                            <Text className="text-green-800 font-medium mr-1">{t}</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity onPress={() => removeTime(dayIdx, i)}>
+                            <Ionicons name="close" size={14} color="#047857" />
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                      {weeklyTimes.length === 0 && (
+                        <Text className="text-gray-500 text-xs">No weekly times</Text>
+                      )}
+                    </View>
+                  </View>
+                  
+                  {/* Override times (read-only in edit mode) */}
+                  {hasOverrides && (
+                    <View>
+                      <Text className="text-xs text-blue-600 mb-1">Override Times (read-only):</Text>
+                      <View className="flex-row flex-wrap gap-2">
+                        {overrideTimes.map((t, i) => (
+                          <View key={`override-${t}-${i}`} className="bg-blue-50 px-3 py-1 rounded-full border border-blue-200 border-dashed">
+                            <Text className="text-blue-700 font-medium text-sm">{t}</Text>
+                            <View className="w-1.5 h-1.5 bg-blue-500 rounded-full ml-1" />
+                          </View>
+                        ))}
+                      </View>
+                    </View>
                   )}
                 </View>
-              </View>
-            ))}
+              );
+            })}
 
             <View className="flex-row gap-3 mt-2">
               <TouchableOpacity onPress={clearWeeklySchedule} className="flex-1 bg-gray-500 px-4 py-3 rounded-lg">
@@ -762,18 +1134,59 @@ export default function SimpleDatePicker({
           <View>
             {selectedWeekdays.size > 0 ? (
               <View className="gap-2">
-                {Array.from(selectedWeekdays).sort().map((dayIdx) => (
-                  <View key={dayIdx} className="flex-row items-start">
-                    <Text className="w-12 text-gray-800 font-medium">{dayShort[dayIdx]}</Text>
-                    <View className="flex-1 flex-row flex-wrap gap-2">
-                      {(weeklyTimeSettings[dayIdx] || []).map((t, i) => (
-                        <View key={`${t}-${i}`} className="bg-green-100 px-3 py-1 rounded-full">
-                          <Text className="text-green-800 font-medium">{t}</Text>
-                        </View>
-                      ))}
+                {Array.from(selectedWeekdays).sort().map((dayIdx) => {
+                  const weeklyTimes = weeklyTimeSettings[dayIdx] || [];
+                  const overrideTimes = getOverrideTimesForWeekday(dayIdx);
+                  const hasOverrides = overrideTimes.length > 0;
+                  
+                  return (
+                    <View key={dayIdx} className="flex-row items-start">
+                      <Text className="w-12 text-gray-800 font-medium">{dayShort[dayIdx]}</Text>
+                      <View className="flex-1">
+                        {/* Weekly pattern times */}
+                        {weeklyTimes.length > 0 && (
+                          <View className="flex-row flex-wrap gap-2 mb-2">
+                            {weeklyTimes.map((t, i) => (
+                              <View key={`weekly-${t}-${i}`} className="bg-green-100 px-3 py-1 rounded-full border border-green-200">
+                                <Text className="text-green-800 font-medium text-sm">{t}</Text>
+                              </View>
+                            ))}
+                          </View>
+                        )}
+                        
+                        {/* Override times with visual distinction */}
+                        {hasOverrides && (
+                          <View className="mb-2">
+                            <View className="flex-row items-center mb-1">
+                              <Text className="text-xs text-blue-600 font-medium mr-2">
+                                Override {overrideTimes.length} time{overrideTimes.length > 1 ? 's' : ''}
+                              </Text>
+                              <View className="w-2 h-2 bg-blue-500 rounded-full" />
+                            </View>
+                            <ScrollView 
+                              horizontal 
+                              showsHorizontalScrollIndicator={false}
+                              className="max-h-20"
+                            >
+                              <View className="flex-row gap-2">
+                                {overrideTimes.map((t, i) => (
+                                  <View key={`override-${t}-${i}`} className="bg-blue-100 px-3 py-1 rounded-full border border-blue-300 border-dashed">
+                                    <Text className="text-blue-800 font-medium text-sm">{t}</Text>
+                                  </View>
+                                ))}
+                              </View>
+                            </ScrollView>
+                          </View>
+                        )}
+                        
+                        {/* No times message */}
+                        {weeklyTimes.length === 0 && !hasOverrides && (
+                          <Text className="text-gray-500 text-xs">No times added</Text>
+                        )}
+                      </View>
                     </View>
-                  </View>
-                ))}
+                  );
+                })}
               </View>
             ) : (
               <View className="bg-gray-50 rounded-lg p-4">
@@ -783,6 +1196,21 @@ export default function SimpleDatePicker({
           </View>
         )}
       </View>
+
+      {/* How verification works - English only note */}
+      {(() => {
+        const verificationNote = generateVerificationNote();
+        if (!verificationNote) return null;
+        
+        return (
+          <View className="mb-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+            <Text className="text-gray-700 font-semibold text-sm mb-2">How verification works</Text>
+            <Text className="text-gray-600 text-xs leading-4" style={{ lineHeight: 16 }}>
+              {verificationNote}
+            </Text>
+          </View>
+        );
+      })()}
 
       {/* Calendar */}
       <View className="mb-6" style={{ height: VIEWPORT_HEIGHT }}>
@@ -1046,8 +1474,14 @@ export default function SimpleDatePicker({
           <Text className="text-gray-700 font-semibold ml-2">Back</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => (onRequestNext ? onRequestNext() : onNavigateToStep(2))} className="flex-1 bg-blue-600 rounded-lg py-3 flex-row items-center justify-center" disabled={!startDate}>
-          <Text className="text-white font-semibold mr-2">Next</Text>
+        <TouchableOpacity 
+          onPress={() => (onRequestNext ? onRequestNext() : onNavigateToStep(2))} 
+          className="flex-1 bg-blue-600 rounded-lg py-3 flex-row items-center justify-center" 
+          disabled={!startDate || loading}
+        >
+          <Text className="text-white font-semibold mr-2">
+            {onRequestNext ? (loading ? 'Validating...' : 'Next') : 'Continue'}
+          </Text>
           <Ionicons name="chevron-forward" size={16} color="white" />
         </TouchableOpacity>
       </View>
