@@ -16,6 +16,7 @@ import {
   writeBatch
 } from 'firebase/firestore';
 import { CreateGoalForm, Goal } from '../types';
+import { sanitizeGoalPayload } from '../utils/firestoreSanitize';
 import { db } from './firebase';
 
 export class GoalService {
@@ -36,37 +37,96 @@ export class GoalService {
         ...(goalData.targetLocation.address && { address: goalData.targetLocation.address })
       } : null;
 
+      // Log the payload before sanitization to debug timeWindows undefined issue
+      console.log('[GoalPayload Before Sanitize]', JSON.stringify({
+        ...goalData,
+        // Mask PII fields
+        userId: goalData.userId ? '***' : undefined,
+        targetLocation: goalData.targetLocation ? {
+          name: goalData.targetLocation.name ? '***' : undefined,
+          lat: goalData.targetLocation.lat,
+          lng: goalData.targetLocation.lng,
+          placeId: goalData.targetLocation.placeId ? '***' : undefined,
+          address: goalData.targetLocation.address ? '***' : undefined
+        } : null,
+        // Check schedule.timeWindows structure
+        schedule: goalData.schedule ? {
+          ...goalData.schedule,
+          timeWindows: goalData.schedule.timeWindows ? goalData.schedule.timeWindows.map((w: any, i: number) => ({
+            ...w,
+            // Check for undefined fields in each timeWindow
+            hasUndefinedFields: {
+              label: w.label === undefined,
+              range: w.range ? w.range.map((r: any, ri: number) => ({ index: ri, value: r, isUndefined: r === undefined })) : 'range is undefined',
+              source: w.source === undefined
+            }
+          })) : 'timeWindows is undefined'
+        } : 'schedule is undefined'
+      }, null, 2));
+
+      // Sanitize the payload to remove undefined values
+      const sanitizedGoalData = sanitizeGoalPayload(goalData);
+      
+      // Log the sanitized payload
+      console.log('[GoalPayload After Sanitize]', JSON.stringify({
+        ...sanitizedGoalData,
+        // Mask PII fields
+        userId: sanitizedGoalData.userId ? '***' : undefined,
+        targetLocation: sanitizedGoalData.targetLocation ? {
+          name: sanitizedGoalData.targetLocation.name ? '***' : undefined,
+          lat: sanitizedGoalData.targetLocation.lat,
+          lng: sanitizedGoalData.targetLocation.lng,
+          placeId: sanitizedGoalData.targetLocation.placeId ? '***' : undefined,
+          address: sanitizedGoalData.targetLocation.address ? '***' : undefined
+        } : null,
+        // Check sanitized schedule.timeWindows structure
+        schedule: sanitizedGoalData.schedule ? {
+          ...sanitizedGoalData.schedule,
+          timeWindows: sanitizedGoalData.schedule.timeWindows ? sanitizedGoalData.schedule.timeWindows.map((w: any, i: number) => ({
+            ...w,
+            // Check for undefined fields in each timeWindow after sanitization
+            hasUndefinedFields: {
+              label: w.label === undefined,
+              range: w.range ? w.range.map((r: any, ri: number) => ({ index: ri, value: r, isUndefined: r === undefined })) : 'range is undefined',
+              source: w.source === undefined
+            }
+          })) : 'timeWindows is undefined'
+        } : 'schedule is undefined'
+      }, null, 2));
+
       const goalDoc = {
-        userId: goalData.userId,
-        title: goalData.title,
-        description: goalData.description,
-        category: goalData.category,
-        verificationMethods: goalData.verificationMethods || [goalData.verificationType || 'manual'],
-        lockedVerificationMethods: goalData.lockedVerificationMethods || [],
+        userId: sanitizedGoalData.userId,
+        title: sanitizedGoalData.title,
+        description: sanitizedGoalData.description,
+        category: sanitizedGoalData.category,
+        verificationMethods: sanitizedGoalData.verificationMethods || [sanitizedGoalData.verificationType || 'manual'],
+        lockedVerificationMethods: sanitizedGoalData.lockedVerificationMethods || [],
         targetLocation: cleanTargetLocation,
-        frequency: goalData.frequency || { count: 1, unit: 'per_day' },
-        duration: goalData.duration || {
+        frequency: sanitizedGoalData.frequency || { count: 1, unit: 'per_day' },
+        duration: sanitizedGoalData.duration || {
           type: 'range',
-          startDate: goalData.startDate?.toISOString(),
-          endDate: goalData.endDate?.toISOString()
+          startDate: sanitizedGoalData.startDate?.toISOString(),
+          endDate: sanitizedGoalData.endDate?.toISOString()
         },
-        notes: goalData.notes || '',
+        notes: sanitizedGoalData.notes || '',
         // Weekly schedule and overrides
-        needsWeeklySchedule: goalData.needsWeeklySchedule || false,
-        weeklySchedule: goalData.weeklySchedule || {},
-        weeklyWeekdays: goalData.weeklyWeekdays || [],
-        includeDates: goalData.includeDates || [],
-        excludeDates: goalData.excludeDates || [],
+        needsWeeklySchedule: sanitizedGoalData.needsWeeklySchedule || false,
+        weeklySchedule: sanitizedGoalData.weeklySchedule || {},
+        weeklyWeekdays: sanitizedGoalData.weeklyWeekdays || [],
+        includeDates: sanitizedGoalData.includeDates || [],
+        excludeDates: sanitizedGoalData.excludeDates || [],
+        // AI-generated schedule specifications
+        schedule: sanitizedGoalData.schedule || null,
         // Dual timestamps: server authoritative + client for instant UI sort
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         createdAtClient: Timestamp.fromDate(new Date()),
         updatedAtClient: Timestamp.fromDate(new Date()),
         // Legacy fields for backward compatibility
-        verificationType: goalData.verificationType || goalData.verificationMethods?.[0] || 'manual',
-        timeFrame: goalData.timeFrame || 'daily',
-        startDate: goalData.startDate ? Timestamp.fromDate(goalData.startDate) : null,
-        endDate: goalData.endDate ? Timestamp.fromDate(goalData.endDate) : null
+        verificationType: sanitizedGoalData.verificationType || sanitizedGoalData.verificationMethods?.[0] || 'manual',
+        timeFrame: sanitizedGoalData.timeFrame || 'daily',
+        startDate: sanitizedGoalData.startDate ? Timestamp.fromDate(sanitizedGoalData.startDate) : null,
+        endDate: sanitizedGoalData.endDate ? Timestamp.fromDate(sanitizedGoalData.endDate) : null
       };
 
       batch.set(goalRef, goalDoc);
