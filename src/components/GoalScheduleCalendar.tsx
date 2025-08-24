@@ -167,13 +167,15 @@ function DateEditModal({
   onClose, 
   selectedDate, 
   calendarEvents, 
-  onCalendarEventsChange 
+  onCalendarEventsChange,
+  goalId
 }: {
   visible: boolean;
   onClose: () => void;
   selectedDate: string | null;
   calendarEvents: CalendarEvent[];
   onCalendarEventsChange: (events: CalendarEvent[]) => void;
+  goalId?: string;
 }) {
   const [editingTime, setEditingTime] = useState('');
   const [editingTimeIndex, setEditingTimeIndex] = useState(-1);
@@ -208,7 +210,7 @@ function DateEditModal({
     const newEvent: Omit<CalendarEvent, 'id' | 'createdAt' | 'updatedAt'> = {
       date: selectedDate!,
       time: editingTime,
-      goalId: 'temp-goal-id', // Will be replaced with actual goalId
+      goalId: goalId || 'temp-goal-id', // Use actual goalId if available
       source: 'override'
     };
     
@@ -449,8 +451,9 @@ export default function GoalScheduleCalendar({
   excludeDates = [],
   verifications = [],
   enforcePartialWeeks = false,
-  calendarEvents = []
-}: GoalScheduleCalendarProps) {
+  calendarEvents = [],
+  goalId
+}: GoalScheduleCalendarProps & { goalId?: string }) {
   const getLocalYMD = (d: Date) => {
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -483,8 +486,10 @@ export default function GoalScheduleCalendar({
 
   // Long press handler
   const handleDateLongPress = useCallback((dateStr: string) => {
+    console.log('[GoalScheduleCalendar] Long press detected for date:', dateStr);
     setSelectedDate(dateStr);
     setLongPressModalVisible(true);
+    console.log('[GoalScheduleCalendar] Modal state updated:', { selectedDate: dateStr, visible: true });
   }, []);
 
   // Single tap handler (existing behavior)
@@ -693,9 +698,13 @@ export default function GoalScheduleCalendar({
                       className="w-[14.28%] p-1"
                       style={{ aspectRatio: 1 }}
                       onPress={() => d && handleDatePress(d.dateStr)}
-                      onLongPress={() => d && handleDateLongPress(d.dateStr)}
+                      onLongPress={() => {
+                        console.log('[GoalScheduleCalendar] TouchableOpacity onLongPress triggered for date:', d?.dateStr);
+                        d && handleDateLongPress(d.dateStr);
+                      }}
                       delayLongPress={500}
                       activeOpacity={0.7}
+                      pressRetentionOffset={{ top: 20, left: 20, bottom: 20, right: 20 }}
                     >
                       {d ? (
                         <View className={`flex-1 rounded items-center justify-center relative ${
@@ -788,6 +797,7 @@ export default function GoalScheduleCalendar({
         selectedDate={selectedDate}
         calendarEvents={localCalendarEvents}
         onCalendarEventsChange={handleCalendarEventsChange}
+        goalId={goalId}
       />
     </View>
   );

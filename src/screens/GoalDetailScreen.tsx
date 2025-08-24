@@ -1,12 +1,12 @@
 // Goal detail screen showing verification history and progress
 
 import { Ionicons } from '@expo/vector-icons';
-import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
+import { RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import * as ImagePicker from 'expo-image-picker';
 import { getAuth } from 'firebase/auth';
 import { deleteDoc, doc } from 'firebase/firestore';
-import React, { useEffect, useLayoutEffect, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import {
   Alert,
   RefreshControl,
@@ -16,51 +16,36 @@ import {
   View,
 } from 'react-native';
 import GoalScheduleCalendar from '../components/GoalScheduleCalendar';
+import { useAuth } from '../hooks/useAuth';
+import { CalendarEventService } from '../services/calendarEventService';
 import { db } from '../services/firebase';
 import { GoalService } from '../services/goalService';
 import { VerificationService } from '../services/verificationService';
-import { Goal, RootStackParamList, Verification } from '../types';
+import { CalendarEvent, Goal, RootStackParamList, Verification } from '../types';
 
 type GoalDetailScreenRouteProp = RouteProp<RootStackParamList, 'GoalDetail'>;
 type GoalDetailScreenNavigationProp = StackNavigationProp<RootStackParamList, 'GoalDetail'>;
 
-export default function GoalDetailScreen() {
-  const route = useRoute<GoalDetailScreenRouteProp>();
-  const navigation = useNavigation<GoalDetailScreenNavigationProp>();
-  
-  // Log route params immediately for debugging
-  console.log('[GOAL:route]', route.params);
-  
+interface GoalDetailScreenProps {
+  route: GoalDetailScreenRouteProp;
+  navigation: GoalDetailScreenNavigationProp;
+}
+
+export default function GoalDetailScreen({ route, navigation }: GoalDetailScreenProps) {
   const { goalId } = route.params;
+  const { user } = useAuth();
   
-  // Validate goalId parameter
-  if (!goalId) {
-    console.error('[GOAL:error] Missing goalId parameter');
-    return (
-      <View className="flex-1 justify-center items-center bg-gray-50">
-        <Text className="text-red-600 text-lg mb-4">Invalid Goal ID</Text>
-        <Text className="text-gray-600 text-center mb-6">
-          The goal ID is missing. Please go back and try again.
-        </Text>
-        <TouchableOpacity
-          className="bg-blue-500 px-6 py-3 rounded-lg"
-          onPress={() => navigation.goBack()}
-        >
-          <Text className="text-white font-semibold">Go Back</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-  
+  // Move all hooks to the top level
   const [goal, setGoal] = useState<Goal | null>(null);
   const [verifications, setVerifications] = useState<Verification[]>([]);
+  const [successRate, setSuccessRate] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [successRate, setSuccessRate] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
 
-  const loadGoalData = async () => {
-    console.log('[GOAL:fetch:start]', { goalId, timestamp: new Date().toISOString() });
+  const loadGoalData = useCallback(async () => {
+    if (!goalId) return;
     
     try {
       setError(null);
@@ -84,9 +69,25 @@ export default function GoalDetailScreen() {
         return;
       }
 
+      // Load calendar events for the goal
+      let calendarEventsData: CalendarEvent[] = [];
+      try {
+        if (goalData.duration?.startDate && goalData.duration?.endDate) {
+          calendarEventsData = await CalendarEventService.getCalendarEvents(
+            goalId,
+            goalData.duration.startDate,
+            goalData.duration.endDate
+          );
+        }
+      } catch (error) {
+        console.warn('[GOAL:calendar-events] Failed to load calendar events:', error);
+        // Continue without calendar events
+      }
+
       setGoal(goalData);
       setVerifications(verificationsData);
       setSuccessRate(rate);
+      setCalendarEvents(calendarEventsData);
       console.log('[GOAL:fetch:success]', { 
         goalId, 
         title: goalData.title,
@@ -104,20 +105,13 @@ export default function GoalDetailScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [goalId]);
 
   useEffect(() => {
     loadGoalData();
-  }, [goalId]);
+  }, [goalId, loadGoalData]);
 
-
-
-  const onRefresh = () => {
-    setRefreshing(true);
-    loadGoalData();
-  };
-
-  const handleDeleteGoal = async () => {
+  const handleDeleteGoal = useCallback(async () => {
     if (!goal) return;
 
     Alert.alert(
@@ -169,7 +163,12 @@ export default function GoalDetailScreen() {
         }
       ]
     );
-  };
+  }, [goal, goalId, navigation]);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    loadGoalData();
+  }, [loadGoalData]);
 
   // Set up header with delete button
   useLayoutEffect(() => {
@@ -464,6 +463,9 @@ export default function GoalDetailScreen() {
             includeDates={goal.includeDates || []}
             excludeDates={goal.excludeDates || []}
             verifications={verifications}
+            enforcePartialWeeks={goal.schedule?.enforcePartialWeeks || false}
+            calendarEvents={calendarEvents}
+            goalId={goalId}
           />
         </View>
 
