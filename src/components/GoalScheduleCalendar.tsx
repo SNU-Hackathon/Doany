@@ -466,6 +466,11 @@ export default function GoalScheduleCalendar({
 
   // Update local calendar events when prop changes
   useEffect(() => {
+    console.log('[GoalScheduleCalendar] calendarEvents prop changed:', {
+      count: calendarEvents?.length || 0,
+      events: calendarEvents?.slice(0, 3) || [], // Show first 3 events
+      hasTime: calendarEvents?.some(e => e.time) || false
+    });
     setLocalCalendarEvents(calendarEvents);
   }, [calendarEvents]);
 
@@ -563,6 +568,24 @@ export default function GoalScheduleCalendar({
         .sort()
         .filter((time, index, array) => array.indexOf(time) === index); // Remove duplicates
       
+      // Debug logging for time display
+      if (dayEvents.length > 0) {
+        console.log(`[GoalScheduleCalendar] Date ${ds} has ${dayEvents.length} events:`, {
+          events: dayEvents.map(e => ({ time: e.time, source: e.source })),
+          times: dayTimes,
+          overrideCount: dayEvents.filter(e => e.source === 'override').length
+        });
+      }
+      
+      // Additional debug for empty times
+      if (dayEvents.length > 0 && dayTimes.length === 0) {
+        console.warn(`[GoalScheduleCalendar] Date ${ds} has events but no times:`, {
+          events: dayEvents,
+          eventsWithTime: dayEvents.filter(e => e.time),
+          eventsWithoutTime: dayEvents.filter(e => !e.time)
+        });
+      }
+      
       days.push({
         day: d,
         dateStr: ds,
@@ -573,7 +596,8 @@ export default function GoalScheduleCalendar({
         isToday,
         times: dayTimes, // Add times array
         overrideTimes: dayEvents.filter(e => e.source === 'override').map(e => e.time), // Add overrideTimes array
-        overrideCount: dayEvents.filter(e => e.source === 'override').length // Add overrideCount
+        overrideCount: dayEvents.filter(e => e.source === 'override').length, // Add overrideCount
+        dayEvents: dayEvents // Add full dayEvents array for debugging
       });
     }
     return days;
@@ -679,15 +703,18 @@ export default function GoalScheduleCalendar({
                         }`}>
                           <Text className={`text-sm font-semibold ${!d.inRange ? 'text-gray-400' : (d.isToday ? 'text-blue-800' : 'text-gray-800')}`}>{d.day}</Text>
                           
-                          {/* Time list rendering */}
-                          {d.times && d.times.length > 0 && (
+                                                    {/* Time list rendering with improved visibility and debugging */}
+                          {d.times && d.times.length > 0 ? (
                             <View className="mt-1 px-1">
+                              {/* Show first 2 times with clear formatting */}
                               {d.times.slice(0, 2).map((time: string, timeIndex: number) => {
                                 // Check if this time is from an override event
                                 const isOverride = d.overrideTimes && d.overrideTimes.includes(time);
                                 return (
-                                  <View key={timeIndex} className="flex-row items-center justify-center">
-                                    <Text className="text-xs text-gray-600 text-center leading-3">
+                                  <View key={timeIndex} className="flex-row items-center justify-center mb-0.5">
+                                    <Text className={`text-xs font-medium text-center leading-3 ${
+                                      isOverride ? 'text-blue-700' : 'text-gray-700'
+                                    }`}>
                                       {time}
                                     </Text>
                                     {isOverride && (
@@ -696,13 +723,15 @@ export default function GoalScheduleCalendar({
                                   </View>
                                 );
                               })}
+                              
+                              {/* Show remaining count with override indicator */}
                               {d.times.length > 2 && (
                                 <View className="flex-row items-center justify-center">
-                                  <Text className="text-xs text-gray-500 text-center leading-3">
+                                  <Text className="text-xs text-gray-500 text-center leading-3 font-medium">
                                     +{d.times.length - 2}
                                   </Text>
                                   {d.overrideCount > 0 && (
-                                    <View className="ml-1 px-1 py-0.5 bg-blue-100 rounded-full">
+                                    <View className="ml-1 px-1 py-0.5 bg-blue-100 rounded-full border border-blue-200">
                                       <Text className="text-xs text-blue-600 font-medium">
                                         {d.overrideCount}o
                                       </Text>
@@ -711,7 +740,14 @@ export default function GoalScheduleCalendar({
                                 </View>
                               )}
                             </View>
-                          )}
+                          ) : d.dayEvents && d.dayEvents.length > 0 ? (
+                            // Debug: Show event count when no times
+                            <View className="mt-1 px-1">
+                              <Text className="text-xs text-red-500 text-center leading-3">
+                                {d.dayEvents.length}e
+                              </Text>
+                            </View>
+                          ) : null}
                           
                           {d.requiredForDay > 0 && (
                             <View className="absolute -bottom-1 left-1 right-1 flex-row justify-center items-center">
