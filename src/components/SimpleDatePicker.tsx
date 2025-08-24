@@ -60,6 +60,8 @@ interface SimpleDatePickerProps {
   goalSpec?: GoalSpec | null;
   // Loading state for Next button
   loading?: boolean;
+  // Validation result for Next button state
+  validationResult?: { isCompatible: boolean; issues: string[] } | null;
 }
 
 export default function SimpleDatePicker({
@@ -86,7 +88,8 @@ export default function SimpleDatePicker({
   onOpenLocationPicker, 
   onUseCurrentLocation,
   goalSpec,
-  loading = false
+  loading = false,
+  validationResult
 }: SimpleDatePickerProps) {
   /**
    * 로컬 날짜를 YYYY-MM-DD 형식으로 변환
@@ -1467,6 +1470,17 @@ export default function SimpleDatePicker({
 
       </View>
 
+      {/* Validation Error Banner */}
+      {validationResult && !validationResult.isCompatible && validationResult.issues.length > 0 && (
+        <View className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+          <Text className="text-red-800 font-medium mb-2">Schedule Validation Failed</Text>
+          {validationResult.issues.map((issue, index) => (
+            <Text key={index} className="text-red-700 text-sm mb-1">• {issue}</Text>
+          ))}
+          <Text className="text-red-600 text-xs mt-2">Please fix the issues above before proceeding.</Text>
+        </View>
+      )}
+
       {/* Navigation Buttons */}
       <View className="flex-row space-x-3">
         <TouchableOpacity onPress={() => onNavigateToStep(0)} className="flex-1 bg-gray-200 rounded-lg py-3 flex-row items-center justify-center">
@@ -1476,13 +1490,25 @@ export default function SimpleDatePicker({
 
         <TouchableOpacity 
           onPress={() => (onRequestNext ? onRequestNext() : onNavigateToStep(2))} 
-          className="flex-1 bg-blue-600 rounded-lg py-3 flex-row items-center justify-center" 
-          disabled={!startDate || loading}
+          className={`flex-1 rounded-lg py-3 flex-row items-center justify-center ${
+            (!startDate || loading || (validationResult ? !validationResult.isCompatible : false)) 
+              ? 'bg-gray-400' 
+              : 'bg-blue-600'
+          }`}
+          disabled={!startDate || loading || (validationResult ? !validationResult.isCompatible : false)}
         >
-          <Text className="text-white font-semibold mr-2">
+          <Text className={`font-semibold mr-2 ${
+            (!startDate || loading || (validationResult ? !validationResult.isCompatible : false)) 
+              ? 'text-gray-600' 
+              : 'text-white'
+          }`}>
             {onRequestNext ? (loading ? 'Validating...' : 'Next') : 'Continue'}
           </Text>
-          <Ionicons name="chevron-forward" size={16} color="white" />
+          <Ionicons 
+            name="chevron-forward" 
+            size={16} 
+            color={(!startDate || loading || (validationResult ? !validationResult.isCompatible : false)) ? '#6B7280' : 'white'} 
+          />
         </TouchableOpacity>
       </View>
 

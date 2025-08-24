@@ -92,6 +92,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [showValidationModal, setShowValidationModal] = useState(false);
   const [showScheduleFixes, setShowScheduleFixes] = useState<boolean>(false);
+  const [lastValidationResult, setLastValidationResult] = useState<{ isCompatible: boolean; issues: string[] } | null>(null);
   const [scheduleValidationResult, setScheduleValidationResult] = useState<ValidationResult | null>(null);
 
   // Utility: check if verification methods provide objective proof beyond manual
@@ -770,6 +771,8 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
   // Watch for input changes and clear stale errors
   useEffect(() => {
     clearValidationErrors();
+    // Also clear last validation result to re-enable Next button
+    setLastValidationResult(null);
   }, [
     formData.weeklyWeekdays,
     formData.weeklySchedule,
@@ -884,11 +887,19 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         console.log('[CreateGoalModal] 실패 사유 요약:', result.issues);
       }
 
+      // Store validation result for UI state management
+      setLastValidationResult({
+        isCompatible: result.isCompatible,
+        issues: result.issues
+      });
+
       if (result.isCompatible) {
         console.log('[CreateGoalModal] 검증 성공 - 다음 단계로 진행');
+        console.log('[CreateGoalModal] ✅ 사용자 피드백: Next 버튼 활성화, 3. Schedule로 진행');
         goToStep(2);
       } else {
         console.log('[CreateGoalModal] 검증 실패 - 오류 모달 표시');
+        console.log('[CreateGoalModal] ❌ 사용자 피드백: Next 버튼 비활성화, 오류 배너 표시, 수정 요구');
         setValidationErrors(result.issues);
         setShowValidationModal(true);
       }
@@ -1491,6 +1502,26 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     try {
       setLoading(true);
       
+      // Log formData.schedule structure before creating goal
+      console.log('[CreateGoalModal] formData.schedule before createGoal:', JSON.stringify({
+        schedule: formData.schedule,
+        timeWindows: formData.schedule?.timeWindows,
+        timeWindowsType: typeof formData.schedule?.timeWindows,
+        timeWindowsIsArray: Array.isArray(formData.schedule?.timeWindows),
+        timeWindowsLength: formData.schedule?.timeWindows?.length,
+        timeWindowsDetails: formData.schedule?.timeWindows?.map((w: any, i: number) => ({
+          index: i,
+          label: w?.label,
+          range: w?.range,
+          source: w?.source,
+          hasUndefined: {
+            label: w?.label === undefined,
+            range: w?.range === undefined,
+            source: w?.source === undefined
+          }
+        }))
+      }, null, 2));
+
       // Create goal
       const goalId = await GoalService.createGoal({
         ...formData,
@@ -1754,6 +1785,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         onRequestNext={handleRequestNextFromSchedule}
         goalSpec={goalSpec}
         loading={scheduleValidating}
+        validationResult={lastValidationResult}
       />
     </View>
   );
@@ -2189,10 +2221,11 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     return sections;
   };
 
-  // Next step handler
+  // Next step handler - must validate schedule before proceeding
   const onNext = useCallback(() => {
-    goToStep(2);
-  }, [goToStep]);
+    // Always validate schedule before proceeding to next step
+    handleRequestNextFromSchedule();
+  }, [handleRequestNextFromSchedule]);
 
   return (
     <Modal 
