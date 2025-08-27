@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Modal,
   ScrollView,
@@ -20,7 +21,7 @@ import {
   View
 } from 'react-native';
 import { convertDurationToRange } from '../features/goals/aiDraft';
-import { CalendarEventService } from '../services/calendarEventService';
+import { CalendarEventService, applyWeeklyPattern } from '../services/calendarEventService';
 import { CalendarEvent, GoalSpec, TargetLocation, VerificationType } from '../types';
 import MapPreview from './MapPreview';
 
@@ -56,12 +57,19 @@ interface SimpleDatePickerProps {
   targetLocation?: TargetLocation;
   onOpenLocationPicker?: () => void;
   onUseCurrentLocation?: () => void;
+  // Calendar events context (optional for existing goals)
+  userId?: string;
+  goalId?: string;
   // GoalSpec for verification note
   goalSpec?: GoalSpec | null;
   // Loading state for Next button
   loading?: boolean;
   // Validation result for Next button state
   validationResult?: { isCompatible: boolean; issues: string[] } | null;
+  // Calendar events for display
+  calendarEvents?: CalendarEvent[];
+  // Callback when calendar events change (for override events)
+  onCalendarEventsChange?: (events: CalendarEvent[]) => void;
 }
 
 export default function SimpleDatePicker({
@@ -87,9 +95,13 @@ export default function SimpleDatePicker({
   targetLocation, 
   onOpenLocationPicker, 
   onUseCurrentLocation,
+  userId,
+  goalId,
   goalSpec,
   loading = false,
-  validationResult
+  validationResult,
+  calendarEvents = [],
+  onCalendarEventsChange
 }: SimpleDatePickerProps) {
   /**
    * 로컬 날짜를 YYYY-MM-DD 형식으로 변환
@@ -125,52 +137,11 @@ export default function SimpleDatePicker({
     initialWeeklyTimeSettings || {}
   );
   
-  // Override events state for visual distinction
-  const [overrideEvents, setOverrideEvents] = useState<CalendarEvent[]>([]);
+
   
-  // Fetch override events for the current date range
-  useEffect(() => {
-    const fetchOverrideEvents = async () => {
-      if (!startDate || !endDate) return;
-      
-      try {
-        const events = await CalendarEventService.getCalendarEventsBySource(
-          'override',
-          startDate,
-          endDate
-        );
-        // Extract only override events from the result
-        setOverrideEvents(events.override || []);
-      } catch (error) {
-        console.log('[SimpleDatePicker] Error fetching override events:', error);
-      }
-    };
-    
-    fetchOverrideEvents();
-  }, [startDate, endDate]);
+
   
-  // Helper function to get override times for a specific weekday
-  const getOverrideTimesForWeekday = useCallback((weekdayIndex: number) => {
-    if (!startDate || !endDate) return [];
-    
-    const overrideTimes: string[] = [];
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    
-    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-      if (d.getDay() === weekdayIndex) {
-        const dateStr = getLocalYMD(d);
-        const dayOverrides = overrideEvents.filter(e => e.date === dateStr);
-        dayOverrides.forEach(event => {
-          if (event.time && !overrideTimes.includes(event.time)) {
-            overrideTimes.push(event.time);
-          }
-        });
-      }
-    }
-    
-    return overrideTimes;
-  }, [startDate, endDate, overrideEvents]);
+
 
   const [isEditingWeeklySchedule, setIsEditingWeeklySchedule] = useState(true);
   const [editingMode, setEditingMode] = useState<'period' | 'schedule'>('period');
@@ -207,6 +178,13 @@ export default function SimpleDatePicker({
   const [editingTimeIndex, setEditingTimeIndex] = useState<number>(-1);
   const [editingTimeHour, setEditingTimeHour] = useState('10');
   const [editingTimeMinute, setEditingTimeMinute] = useState('00');
+  
+  // Date edit modal state for long press
+  const [showDateEditModal, setShowDateEditModal] = useState(false);
+  const [selectedDateForEdit, setSelectedDateForEdit] = useState<string | null>(null);
+  const [dateEditTimeInput, setDateEditTimeInput] = useState('');
+  const [showDateTimeInput, setShowDateTimeInput] = useState(false);
+  const [editingDateTimeIndex, setEditingDateTimeIndex] = useState(-1);
 
   // Change-detection to avoid loops
   const prevWeeklyDataRef = useRef<string>('');
@@ -325,6 +303,21 @@ export default function SimpleDatePicker({
       const inRange = !!(endDate && dateStr >= (startDate || today) && dateStr <= endDate);
       const baseIncluded = inRange && selectedWeekdays.has(new Date(dateStr).getDay());
       const isScheduled = inRange && ((baseIncluded && !excludeDates.includes(dateStr)) || includeDates.includes(dateStr));
+      
+      // Get times from calendar events for this date - ONLY ONE TIME PER DATE
+      const dayEvents = calendarEvents.filter(event => event.date === dateStr);
+      const allDayTimes = dayEvents
+        .map(event => event.time)
+        .filter(time => time) // Remove null/undefined times
+        .sort()
+        .filter((time, index, array) => array.indexOf(time) === index); // Remove duplicates
+      
+      // 🔄 SINGLE TIME PER DATE: Show only the first (most recent) time
+      const dayTimes = allDayTimes.length > 0 ? [allDayTimes[0]] : [];
+      
+      // 🔄 SCHEDULE-BASED TIME DISPLAY: Only show times for scheduled dates
+      const visibleTimes = isScheduled ? dayTimes : [];
+      
       days.push({
         day: d,
         dateStr,
@@ -335,7 +328,9 @@ export default function SimpleDatePicker({
         isWeekdayGoal: endDate && dateStr >= startDate && dateStr <= endDate && selectedWeekdays.has(new Date(dateStr).getDay()),
         isScheduled,
         baseIncluded,
-        isWithinRange: inRange
+        isWithinRange: inRange,
+        times: visibleTimes, // Only show times for scheduled dates
+        events: dayEvents // Store all events for potential use
       });
     }
     return days;
@@ -437,6 +432,16 @@ export default function SimpleDatePicker({
           nextInclude = nextInclude.filter(d => d !== dateStr);
           console.log(`[Calendar] Disabled ${dayName} ${dateStr} by removing from include`);
         }
+        
+        // 🔄 REMOVE CALENDAR EVENTS: When unscheduling a date, remove all its times
+        if (onCalendarEventsChange) {
+          const updatedEvents = calendarEvents.filter(event => event.date !== dateStr);
+          onCalendarEventsChange(updatedEvents);
+          
+          if (__DEV__) {
+            console.log(`[Calendar] Removed all times for unscheduled date: ${dateStr}`);
+          }
+        }
       } else {
         if (baseIncluded) {
           // Base includes but currently off due to exclude; turning on -> remove from exclude
@@ -460,60 +465,9 @@ export default function SimpleDatePicker({
       setIncludeDates(nextInclude);
       setExcludeDates(nextExclude);
       onIncludeExcludeChange?.(nextInclude, nextExclude);
-
-      // 🔄 SYNC WEEKLY SCHEDULE: Reflect this single-day change into Weekly Schedule
-      // Check if any occurrences of this weekday remain scheduled across the current range
-      const dayIdx = new Date(dateStr).getDay();
-      let anyScheduledForWeekday = false;
       
-      if (startDate && endDate) {
-        const start = new Date(startDate);
-        const end = new Date(endDate);
-        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-          if (d.getDay() !== dayIdx) continue;
-          const ds = d.toISOString().split('T')[0];
-          const baseInc = selectedWeekdays.has(dayIdx);
-          const sched = (baseInc && !nextExclude.includes(ds)) || nextInclude.includes(ds);
-          if (sched) { 
-            anyScheduledForWeekday = true; 
-            break; 
-          }
-        }
-      } else {
-        const baseInc = selectedWeekdays.has(dayIdx);
-        anyScheduledForWeekday = baseInc || nextInclude.includes(dateStr);
-      }
-
-      console.log(`[WeeklySchedule] Weekday ${dayName} (${dayIdx}): anyScheduledForWeekday=${anyScheduledForWeekday}`);
-
-      if (anyScheduledForWeekday) {
-        // Ensure weekday is in selectedWeekdays
-        setSelectedWeekdays(prev => {
-          if (prev.has(dayIdx)) return prev; // Already selected
-          const next = new Set(prev);
-          next.add(dayIdx);
-          console.log(`[WeeklySchedule] Added ${dayName} to weekly schedule`);
-          return next;
-        });
-      } else {
-        // Remove weekday from selectedWeekdays if no dates are scheduled
-        setSelectedWeekdays(prev => {
-          if (!prev.has(dayIdx)) return prev; // Already removed
-          const next = new Set(prev);
-          next.delete(dayIdx);
-          console.log(`[WeeklySchedule] Removed ${dayName} from weekly schedule (no scheduled dates)`);
-          return next;
-        });
-        
-        // If the weekday has no scheduled dates left, remove its time settings as well
-        setWeeklyTimeSettings(prev => {
-          if (!prev[dayIdx]) return prev; // No time settings to remove
-          const copy: any = { ...prev };
-          delete copy[dayIdx];
-          console.log(`[WeeklySchedule] Removed time settings for ${dayName} (no scheduled dates)`);
-          return copy;
-        });
-      }
+      // 🔄 UPDATE WEEKLY SCHEDULE DISPLAY: Reflect schedule changes in weekly display
+      setTimeout(() => updateWeeklyScheduleFromCalendar(), 100);
       return;
     }
 
@@ -617,29 +571,37 @@ export default function SimpleDatePicker({
   // Weekly Schedule functions (always visible)
   const dayShort = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   
-  // Sync weekly schedule changes to calendar events
+  // 🔧 PATTERN SEPARATION: Apply weekly pattern (only for existing goals with Weekly 저장 버튼)
   const syncWeeklyScheduleToCalendar = useCallback(async () => {
-    if (!startDate || !endDate) return;
+    if (!startDate || !endDate || !userId || !goalId) {
+      // Skip sync for new goals (e.g., in CreateGoalModal)
+      console.log('[SimpleDatePicker] Skipping weekly pattern apply - missing context');
+      return;
+    }
     
     try {
       // Convert Set to array for the service
       const weekdaysArray = Array.from(selectedWeekdays);
       
-      // Sync weekly schedule to calendar events
-      await CalendarEventService.syncWeeklyScheduleToCalendar(
-        'temp-goal-id', // Will be replaced with actual goalId when goal is created
-        weekdaysArray,
-        weeklyTimeSettings,
+      // 1) Weekly 저장 버튼 경로에서만 applyWeeklyPattern 호출
+      // 🔧 WEEKLY ONLY: 벌크 생성으로 전체 패턴 적용
+      await applyWeeklyPattern(
+        userId,
+        goalId,
         startDate,
-        endDate
+        endDate,
+        {
+          weekdays: weekdaysArray,
+          timeSettings: weeklyTimeSettings
+        }
       );
       
-      console.log('[SimpleDatePicker] Weekly schedule synced to calendar events');
+      console.log('[SimpleDatePicker] 🔧 WEEKLY PATTERN applied via applyWeeklyPattern - 벌크 생성 완료');
     } catch (error) {
-      console.error('[SimpleDatePicker] Failed to sync weekly schedule:', error);
+      console.error('[SimpleDatePicker] Failed to apply weekly pattern:', error);
       // Don't throw error to avoid breaking the UI
     }
-  }, [startDate, endDate, selectedWeekdays, weeklyTimeSettings]);
+  }, [startDate, endDate, selectedWeekdays, weeklyTimeSettings, userId, goalId]);
   
   const toggleWeekday = useCallback((dayIndex: number) => {
     // Defer state updates to avoid setState during render warnings
@@ -742,6 +704,11 @@ export default function SimpleDatePicker({
   const openEditTimeModal = useCallback((dayIndex: number, timeIdx: number) => {
     const currentTime = weeklyTimeSettings[dayIndex]?.[timeIdx] || '10:00';
     const [h, m] = currentTime.split(':');
+    
+    if (__DEV__) {
+      console.log(`[WeeklySchedule] Opening edit modal for ${currentTime} at dayIndex ${dayIndex}, timeIdx ${timeIdx}`);
+    }
+    
     setEditingDayIndex(dayIndex);
     setEditingTimeIndex(timeIdx);
     setEditingTimeHour(h.padStart(2, '0'));
@@ -756,12 +723,14 @@ export default function SimpleDatePicker({
     setWeeklyTimeSettings(prev => {
       const list = prev[dayIndex] ? [...prev[dayIndex]] : [];
       const removedTime = list[timeIdx];
-      list.splice(timeIdx, 1);
+      
+      // 🔧 IMMUTABLE PATTERN: filter 사용 (splice 금지)
+      const updatedList = list.filter((_, idx) => idx !== timeIdx);
       const next = { ...prev } as any;
       
-      if (list.length > 0) {
-        next[dayIndex] = list;
-        console.log(`[WeeklySchedule] Updated time settings for ${dayName}: ${list.join(', ')}`);
+      if (updatedList.length > 0) {
+        next[dayIndex] = updatedList;
+        console.log(`[WeeklySchedule] Updated time settings for ${dayName}: ${updatedList.join(', ')}`);
       } else {
         delete next[dayIndex];
         console.log(`[WeeklySchedule] Removed all time settings for ${dayName}`);
@@ -789,7 +758,7 @@ export default function SimpleDatePicker({
             }
           }
           
-          // Update exclude dates
+          // 🔧 IMMUTABLE PATTERN: concat 사용 (push 금지)
           setExcludeDates(prev => {
             const next = [...prev, ...explicitExcludes]
               .filter((v, i, a) => a.indexOf(v) === i) // Remove duplicates
@@ -811,26 +780,490 @@ export default function SimpleDatePicker({
       Alert.alert('Invalid Time', 'Please choose a valid time');
       return;
     }
-    setWeeklyTimeSettings(prev => {
-      const current = prev[editingDayIndex] ? [...prev[editingDayIndex]] : [];
-      if (editingTimeIndex === -1) {
-        if (!current.includes(time)) current.push(time);
+    
+    // 🔄 IMMEDIATE SYNC: Calculate updated values immediately for consistent state
+    // 🔧 IMMUTABLE PATTERN: 불변 방식으로 시간 배열 처리
+    const currentTimes = weeklyTimeSettings[editingDayIndex] ? [...weeklyTimeSettings[editingDayIndex]] : [];
+    let updatedTimes: string[];
+    let hasActualChange = false;
+    
+    if (editingTimeIndex === -1) {
+      // Add new time - 🔧 IMMUTABLE: concat 사용 (push 금지)
+      if (!currentTimes.includes(time)) {
+        updatedTimes = [...currentTimes, time].sort();
+        hasActualChange = true;
+        if (__DEV__) {
+          console.log(`[WeeklySchedule] Adding new time ${time} for weekday ${editingDayIndex}`);
+        }
       } else {
-        current[editingTimeIndex] = time;
+        updatedTimes = currentTimes;
       }
-      current.sort();
-      return { ...prev, [editingDayIndex]: current } as any;
-    });
+    } else {
+      // Edit existing time - 🔧 IMMUTABLE: map 사용 (직접 수정 금지)
+      if (currentTimes[editingTimeIndex] !== time) {
+        updatedTimes = currentTimes.map((t, idx) => idx === editingTimeIndex ? time : t).sort();
+        hasActualChange = true;
+        if (__DEV__) {
+          console.log(`[WeeklySchedule] Updated time at index ${editingTimeIndex} to ${time} for weekday ${editingDayIndex}`);
+        }
+      } else {
+        updatedTimes = currentTimes;
+      }
+    }
+    
+    if (!hasActualChange) {
+      if (__DEV__) {
+        console.log(`[WeeklySchedule] No change needed for ${time} on weekday ${editingDayIndex}`);
+      }
+      setShowTimePicker(false);
+      setEditingDayIndex(-1);
+      setEditingTimeIndex(-1);
+      return;
+    }
+    
+    // Calculate updated weekdays immediately
+    const updatedWeekdays = new Set(selectedWeekdays);
+    if (updatedTimes.length > 0) {
+      updatedWeekdays.add(editingDayIndex);
+    }
+    
+    // Calculate updated time settings immediately - 🔧 IMMUTABLE: updatedTimes 사용
+    const newTimeSettings = { ...weeklyTimeSettings, [editingDayIndex]: updatedTimes } as any;
+    
+    // 🔄 BATCH UPDATE: Update both states together, then notify parent
+    setWeeklyTimeSettings(newTimeSettings);
+    setSelectedWeekdays(updatedWeekdays);
+    
+    // 🔄 IMMEDIATE PARENT NOTIFICATION: No setTimeout needed
+    if (onWeeklyScheduleChange) {
+      onWeeklyScheduleChange(updatedWeekdays, newTimeSettings);
+      if (__DEV__) {
+        console.log('[WeeklySchedule] Immediately notified parent of weekly schedule change for calendar sync');
+      }
+    }
+    
+    // Close modal
     setShowTimePicker(false);
     setEditingDayIndex(-1);
     setEditingTimeIndex(-1);
+  }, [editingDayIndex, editingTimeIndex, editingTimeHour, editingTimeMinute, selectedWeekdays, weeklyTimeSettings, onWeeklyScheduleChange]);
+
+  // Long press handler for date editing
+  const handleDateLongPress = useCallback((dateStr: string) => {
+    if (__DEV__) console.log('[SimpleDatePicker] Long press detected for date:', dateStr);
     
-    // 🗓️ SYNC CALENDAR EVENTS: Update calendar events after time change
-    setTimeout(() => syncWeeklyScheduleToCalendar(), 100);
-  }, [editingDayIndex, editingTimeIndex, editingTimeHour, editingTimeMinute, syncWeeklyScheduleToCalendar]);
+    if (!dateStr) return;
+    
+    try {
+      setSelectedDateForEdit(dateStr);
+      setShowDateEditModal(true);
+      
+      // Add haptic feedback (skip for now)
+      // TODO: Add haptic feedback when ready
+    } catch (error) {
+      console.error('[SimpleDatePicker] Error in handleDateLongPress:', error);
+    }
+  }, []);
+
+  // Date edit modal functions
+  const handleAddTimeToDate = useCallback(async () => {
+    if (!selectedDateForEdit || !dateEditTimeInput.trim()) return;
+    
+    const timeRegex = /^([0-1][0-9]|2[0-3]):[0-5][0-9]$/;
+    if (!timeRegex.test(dateEditTimeInput)) {
+      Alert.alert('Invalid Time', 'Please use HH:MM format (e.g., 09:00)');
+      return;
+    }
+    
+    if (!onCalendarEventsChange) {
+      Alert.alert('Error', 'Calendar events update function not available');
+      return;
+    }
+    
+    // 🔄 ONE TIME PER DATE: Check if this date already has a time
+    const existingEventsForDate = calendarEvents.filter(e => e.date === selectedDateForEdit);
+    if (existingEventsForDate.length > 0) {
+      Alert.alert(
+        'Replace Existing Time', 
+        `This date already has a scheduled time (${existingEventsForDate[0].time}). Do you want to replace it with ${dateEditTimeInput}?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Replace', onPress: () => handleUpdateSingleTimeForDate(existingEventsForDate[0], dateEditTimeInput) }
+        ]
+      );
+      return;
+    }
+    
+    // 🔄 DATABASE PERSISTENCE: Save to database if userId and goalId are available
+    if (userId && goalId) {
+      try {
+        // 🔄 SINGLE TIME REPLACEMENT: Remove any existing times for this date first
+        const existingOverrides = await CalendarEventService.getCalendarEvents(userId, goalId, selectedDateForEdit, selectedDateForEdit);
+        for (const existingEvent of existingOverrides) {
+          if (existingEvent.time && existingEvent.source === 'override') {
+            await CalendarEventService.deleteOverride(userId, goalId, selectedDateForEdit, existingEvent.time);
+          }
+        }
+        
+        // Add the new time
+        await CalendarEventService.upsertOverride(userId, goalId, selectedDateForEdit, dateEditTimeInput);
+        
+        // Refresh calendar events after successful database save
+        const refreshedEvents = await CalendarEventService.getCalendarEvents(
+          userId, 
+          goalId, 
+          selectedDateForEdit, 
+          selectedDateForEdit
+        );
+        
+        // Merge with existing events from other dates
+        const otherDateEvents = calendarEvents.filter(e => e.date !== selectedDateForEdit);
+        const updatedEvents = [...otherDateEvents, ...refreshedEvents];
+        onCalendarEventsChange(updatedEvents);
+        
+        console.log(`[Calendar Edit Schedule] Successfully replaced time for date ${selectedDateForEdit} with ${dateEditTimeInput} (single time per date)`);
+      } catch (error) {
+        console.error('[Calendar Edit Schedule] Error saving override time to database:', error);
+        Alert.alert('Error', 'Failed to save time to database. Please try again.');
+        return;
+      }
+    } else {
+      // 🔄 LOCAL FALLBACK: Replace existing local events for this date
+      const otherDateEvents = calendarEvents.filter(e => e.date !== selectedDateForEdit);
+      const newEvent: CalendarEvent = {
+        id: `override-${selectedDateForEdit}-${dateEditTimeInput}-${Date.now()}`,
+        date: selectedDateForEdit,
+        time: dateEditTimeInput,
+        goalId: goalId || 'temp-goal-id',
+        source: 'override',
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+      
+      // Only keep the new event for this date (single time per date)
+      const updatedEvents = [...otherDateEvents, newEvent];
+      onCalendarEventsChange(updatedEvents);
+      
+      console.log(`[Calendar Edit Schedule] Replaced local time for date ${selectedDateForEdit} with ${dateEditTimeInput} (single time per date)`);
+    }
+    
+    // 🔄 INDEPENDENT DATE MANAGEMENT: Only affect this specific date
+    const dateToAdd = selectedDateForEdit;
+    if (!includeDates.includes(dateToAdd)) {
+      // 🔧 IMMUTABLE PATTERN: concat 사용 (push 금지)
+      const newIncludeDates = [...includeDates, dateToAdd].sort();
+      setIncludeDates(newIncludeDates);
+      onIncludeExcludeChange?.(newIncludeDates, excludeDates);
+    }
+    
+    // 🔄 UPDATE WEEKLY SCHEDULE DISPLAY: Reflect override in weekly schedule display
+    // This only updates the DISPLAY, not the underlying weekly pattern
+    setTimeout(() => updateWeeklyScheduleFromCalendar(), 100);
+    
+    // Reset input
+    setDateEditTimeInput('09:00');
+    setShowDateTimeInput(false);
+    
+    if (__DEV__) {
+      console.log('[SimpleDatePicker] Set SINGLE time for this specific date only:', {
+        date: selectedDateForEdit,
+        time: dateEditTimeInput,
+        affectedOtherDates: false,
+        updateType: 'single-override-only',
+        savedToDatabase: !!(userId && goalId)
+      });
+    }
+  }, [selectedDateForEdit, dateEditTimeInput, calendarEvents, onCalendarEventsChange, includeDates, excludeDates, onIncludeExcludeChange, userId, goalId]);
+
+  // Helper function to update a single time for a date (called from replace confirmation)
+  const handleUpdateSingleTimeForDate = useCallback(async (eventToReplace: CalendarEvent, newTime: string) => {
+    if (!selectedDateForEdit || !onCalendarEventsChange) return;
+    
+    // 🔄 DATABASE PERSISTENCE: Update in database if available
+    if (userId && goalId) {
+      try {
+        // Delete the old time if it exists
+        if (eventToReplace.time && eventToReplace.source === 'override') {
+          await CalendarEventService.deleteOverride(userId, goalId, selectedDateForEdit, eventToReplace.time);
+        }
+        
+        // Add the new time
+        await CalendarEventService.upsertOverride(userId, goalId, selectedDateForEdit, newTime);
+        
+        // Refresh calendar events
+        const refreshedEvents = await CalendarEventService.getCalendarEvents(userId, goalId, selectedDateForEdit, selectedDateForEdit);
+        const otherDateEvents = calendarEvents.filter(e => e.date !== selectedDateForEdit);
+        const updatedEvents = [...otherDateEvents, ...refreshedEvents];
+        onCalendarEventsChange(updatedEvents);
+        
+        console.log(`[Calendar Edit Schedule] Successfully updated single time for date ${selectedDateForEdit} from ${eventToReplace.time} to ${newTime}`);
+      } catch (error) {
+        console.error('[Calendar Edit Schedule] Error updating single time:', error);
+        Alert.alert('Error', 'Failed to update time. Please try again.');
+        return;
+      }
+    } else {
+      // 🔄 LOCAL FALLBACK: Update local events
+      const otherDateEvents = calendarEvents.filter(e => e.date !== selectedDateForEdit);
+      const updatedEvent: CalendarEvent = {
+        ...eventToReplace,
+        time: newTime,
+        source: 'override',
+        updatedAt: new Date()
+      };
+      
+      const updatedEvents = [...otherDateEvents, updatedEvent];
+      onCalendarEventsChange(updatedEvents);
+      
+      console.log(`[Calendar Edit Schedule] Updated local single time for date ${selectedDateForEdit} from ${eventToReplace.time} to ${newTime}`);
+    }
+    
+    // Update weekly schedule display immediately to prevent UI jitter
+    updateWeeklyScheduleFromCalendar();
+    
+    // Reset input
+    setDateEditTimeInput('09:00');
+    setShowDateTimeInput(false);
+  }, [selectedDateForEdit, calendarEvents, onCalendarEventsChange, userId, goalId]);
+
+  const handleEditTimeForDate = useCallback((timeIndex: number) => {
+    const dateEvents = calendarEvents.filter(event => event.date === selectedDateForEdit);
+    const eventToEdit = dateEvents[timeIndex];
+    
+    if (!eventToEdit || !eventToEdit.time) return;
+    
+    setDateEditTimeInput(eventToEdit.time);
+    setEditingDateTimeIndex(timeIndex);
+    setShowDateTimeInput(true);
+  }, [calendarEvents, selectedDateForEdit]);
+
+  const handleUpdateTimeForDate = useCallback(async () => {
+    if (!selectedDateForEdit || !dateEditTimeInput.trim() || editingDateTimeIndex === -1) return;
+    
+    const timeRegex = /^([0-1][0-9]|2[0-3]):[0-5][0-9]$/;
+    if (!timeRegex.test(dateEditTimeInput)) {
+      Alert.alert('Invalid Time', 'Please use HH:MM format (e.g., 09:00)');
+      return;
+    }
+    
+    if (!onCalendarEventsChange) return;
+    
+    const dateEvents = calendarEvents.filter(event => event.date === selectedDateForEdit);
+    const eventToUpdate = dateEvents[editingDateTimeIndex];
+    
+    if (!eventToUpdate) return;
+    
+    const oldTime = eventToUpdate.time;
+    
+    // 🔄 SINGLE TIME UPDATE: Use dedicated update function for consistent single-time behavior
+    await handleUpdateSingleTimeForDate(eventToUpdate, dateEditTimeInput);
+    
+    // Reset editing state
+    setEditingDateTimeIndex(-1);
+    
+    if (__DEV__) {
+      console.log('[SimpleDatePicker] Updated SINGLE time for this specific date only:', {
+        date: selectedDateForEdit,
+        oldTime,
+        newTime: dateEditTimeInput,
+        affectedOtherDates: false,
+        updateType: 'single-override-only'
+      });
+    }
+  }, [selectedDateForEdit, dateEditTimeInput, editingDateTimeIndex, calendarEvents, handleUpdateSingleTimeForDate]);
+
+  const handleDeleteTimeForDate = useCallback(async (timeIndex: number) => {
+    if (!selectedDateForEdit || !onCalendarEventsChange) return;
+    
+    const dateEvents = calendarEvents.filter(event => event.date === selectedDateForEdit);
+    const eventToDelete = dateEvents[timeIndex];
+    
+    if (!eventToDelete) return;
+    
+    Alert.alert(
+      'Delete Time',
+      `Are you sure you want to delete ${eventToDelete.time} from ${selectedDateForEdit}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            // 🔄 DATABASE PERSISTENCE: Delete from database if available
+            if (userId && goalId && eventToDelete.time && eventToDelete.source === 'override') {
+              try {
+                await CalendarEventService.deleteOverride(userId, goalId, selectedDateForEdit, eventToDelete.time);
+                
+                // Refresh calendar events after successful database delete
+                const refreshedEvents = await CalendarEventService.getCalendarEvents(userId, goalId, selectedDateForEdit, selectedDateForEdit);
+                const otherDateEvents = calendarEvents.filter(e => e.date !== selectedDateForEdit);
+                const updatedEvents = [...otherDateEvents, ...refreshedEvents];
+                onCalendarEventsChange(updatedEvents);
+                
+                console.log(`[Calendar Edit Schedule] Successfully deleted override time ${eventToDelete.time} for date ${selectedDateForEdit} from database`);
+              } catch (error) {
+                console.error('[Calendar Edit Schedule] Error deleting override time from database:', error);
+                Alert.alert('Error', 'Failed to delete time from database. Please try again.');
+                return;
+              }
+            } else {
+              // 🔄 LOCAL FALLBACK: Delete from local events
+              const updatedEvents = calendarEvents.filter(event => event.id !== eventToDelete.id);
+              onCalendarEventsChange(updatedEvents);
+              
+              console.log(`[Calendar Edit Schedule] Deleted local time ${eventToDelete.time} for date ${selectedDateForEdit}`);
+            }
+            
+            // 🔄 CHECK IF THIS DATE SHOULD BE REMOVED FROM SCHEDULE
+            const remainingTimesForDate = calendarEvents.filter(e => e.date === selectedDateForEdit && e.id !== eventToDelete.id);
+            
+            if (remainingTimesForDate.length === 0) {
+              // No more times for this date, consider removing from include dates
+              const newIncludeDates = includeDates.filter(date => date !== selectedDateForEdit);
+              setIncludeDates(newIncludeDates);
+              onIncludeExcludeChange?.(newIncludeDates, excludeDates);
+              
+              if (__DEV__) {
+                console.log('[SimpleDatePicker] Removed date from schedule (no times left):', selectedDateForEdit);
+              }
+            }
+            
+            // 🔄 UPDATE WEEKLY SCHEDULE DISPLAY: Reflect deletion in weekly schedule display immediately
+            updateWeeklyScheduleFromCalendar();
+            
+            if (__DEV__) {
+              console.log('[SimpleDatePicker] Deleted SINGLE time from this specific date only:', {
+                date: selectedDateForEdit,
+                time: eventToDelete.time,
+                remainingTimes: remainingTimesForDate.length,
+                affectedOtherDates: false,
+                updateType: 'single-override-only',
+                deletedFromDatabase: !!(userId && goalId && eventToDelete.source === 'override')
+              });
+            }
+          }
+        }
+      ]
+    );
+  }, [selectedDateForEdit, calendarEvents, onCalendarEventsChange, includeDates, excludeDates, onIncludeExcludeChange, userId, goalId]);
+
+  // 🔄 VISIBLE TIMES ONLY: Get times summary based on what's actually visible in calendar (scheduled dates only)
+  const getCalendarEventSummaryForWeekday = useCallback((weekdayIndex: number) => {
+    if (!startDate || !endDate) return { weeklyTimes: [], overrideTimes: [], allTimes: [] };
+    
+    const weeklyTimes: string[] = [];
+    const overrideTimes: string[] = [];
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    
+    // Only process dates that are actually scheduled (isScheduled = true)
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      if (d.getDay() === weekdayIndex) {
+        const dateStr = getLocalYMD(d);
+        
+        // 🔄 SCHEDULE CHECK: Only include times from dates that are actually scheduled
+        const inRange = dateStr >= (startDate || today) && dateStr <= endDate;
+        const baseIncluded = inRange && selectedWeekdays.has(weekdayIndex);
+        const isScheduled = inRange && ((baseIncluded && !excludeDates.includes(dateStr)) || includeDates.includes(dateStr));
+        
+        // Skip this date if it's not scheduled
+        if (!isScheduled) continue;
+        
+        // Get events for this scheduled date
+        const dayEvents = calendarEvents.filter(e => e.date === dateStr);
+        dayEvents.forEach(event => {
+          if (event.time) {
+            if (event.source === 'weekly' && !weeklyTimes.includes(event.time)) {
+              weeklyTimes.push(event.time);
+            } else if (event.source === 'override' && !overrideTimes.includes(event.time)) {
+              overrideTimes.push(event.time);
+            }
+          }
+        });
+      }
+    }
+    
+    const allTimes = [...new Set([...weeklyTimes, ...overrideTimes])].sort();
+    return { 
+      weeklyTimes: weeklyTimes.sort(), 
+      overrideTimes: overrideTimes.sort(), 
+      allTimes 
+    };
+  }, [startDate, endDate, selectedWeekdays, excludeDates, includeDates, calendarEvents, today]);
+
+  // Smart Weekly Schedule Display Update - ONLY for UI display, preserves original weekly pattern
+  const updateWeeklyScheduleFromCalendar = useCallback(() => {
+    if (!startDate || !endDate || !onWeeklyScheduleChange) return;
+    
+    // 🔄 CALENDAR-BASED DISPLAY: Only show times from visible scheduled dates
+    const visibleWeekdays = new Set<number>();
+    const visibleTimeSettings: { [key: number]: string[] } = {};
+    
+    // Build display based on what's actually visible in calendar
+    for (let weekday = 0; weekday < 7; weekday++) {
+      const { allTimes } = getCalendarEventSummaryForWeekday(weekday);
+      if (allTimes.length > 0) {
+        visibleWeekdays.add(weekday);
+        visibleTimeSettings[weekday] = allTimes;
+      }
+    }
+    
+    // Check for actual display changes to prevent unnecessary updates
+    const hasDisplayChanges = 
+      visibleWeekdays.size !== selectedWeekdays.size ||
+      Array.from(visibleWeekdays).some(weekday => !selectedWeekdays.has(weekday)) ||
+      Array.from(selectedWeekdays).some(weekday => !visibleWeekdays.has(weekday)) ||
+      Array.from(visibleWeekdays).some(weekday => {
+        const currentTimes = weeklyTimeSettings[weekday] || [];
+        const newVisibleTimes = visibleTimeSettings[weekday] || [];
+        return currentTimes.length !== newVisibleTimes.length || 
+          currentTimes.some((time, i) => time !== newVisibleTimes[i]);
+      });
+    
+    if (hasDisplayChanges) {
+      // 🔄 DISPLAY UPDATE: Only update what's shown in UI
+      setSelectedWeekdays(visibleWeekdays);
+      setWeeklyTimeSettings(visibleTimeSettings);
+      onWeeklyScheduleChange?.(visibleWeekdays, visibleTimeSettings);
+      
+      if (__DEV__) {
+        console.log('[SimpleDatePicker] Updated Weekly Schedule display based on visible calendar times:', {
+          visibleWeekdays: Array.from(visibleWeekdays),
+          visibleTimeSettings,
+          totalVisibleDays: visibleWeekdays.size
+        });
+      }
+    }
+  }, [startDate, endDate, selectedWeekdays, weeklyTimeSettings, onWeeklyScheduleChange, getCalendarEventSummaryForWeekday]);
+
+  // 🔄 AUTO-UPDATE SUMMARY: Update Weekly Schedule summary when calendarEvents change
+  // Prevent infinite loop by using ref for last processed events
+  const lastProcessedEventsRef = useRef<string>('');
+  useEffect(() => {
+    if (calendarEvents.length > 0 && startDate && endDate) {
+      // Check if calendarEvents actually changed to prevent infinite loops
+      const currentEventsHash = JSON.stringify(calendarEvents.map(e => `${e.date}_${e.time}_${e.source}`).sort());
+      if (currentEventsHash !== lastProcessedEventsRef.current) {
+        lastProcessedEventsRef.current = currentEventsHash;
+        
+        // Automatically update the weekly schedule display based on calendar events
+        // This ensures the summary stays in sync with calendar changes
+        // Use immediate update to prevent UI jitter
+        updateWeeklyScheduleFromCalendar();
+        
+        if (__DEV__) {
+          console.log('[SimpleDatePicker] Auto-updating Weekly Schedule summary based on calendarEvents:', {
+            eventsCount: calendarEvents.length,
+            weeklyEvents: calendarEvents.filter(e => e.source === 'weekly').length,
+            overrideEvents: calendarEvents.filter(e => e.source === 'override').length
+          });
+        }
+      }
+    }
+  }, [calendarEvents, startDate, endDate]);
 
   const clearWeeklySchedule = useCallback(() => {
-    console.log('[WeeklySchedule] Clearing all weekly schedule data');
+    if (__DEV__) console.log('[WeeklySchedule] Clearing all weekly schedule data');
     
     // Clear weekly schedule
     setSelectedWeekdays(new Set());
@@ -841,11 +1274,12 @@ export default function SimpleDatePicker({
       const start = new Date(startDate);
       const end = new Date(endDate);
       
-      // Add all in-range dates to exclude to clear the schedule
+      // 🔧 IMMUTABLE PATTERN: 불변 방식으로 exclude 날짜 수집
       const explicitExcludes: string[] = [];
       for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
         const ds = d.toISOString().split('T')[0];
         if (!explicitExcludes.includes(ds)) {
+          // 배열에 바로 push하지만 이는 새로 만든 로컬 배열이므로 허용
           explicitExcludes.push(ds);
         }
       }
@@ -1067,17 +1501,22 @@ export default function SimpleDatePicker({
             {/* Times per selected day */}
             {Array.from(selectedWeekdays).sort().map((dayIdx) => {
               const weeklyTimes = weeklyTimeSettings[dayIdx] || [];
-              const overrideTimes = getOverrideTimesForWeekday(dayIdx);
-              const hasOverrides = overrideTimes.length > 0;
+              // 🔄 CALENDAR EVENTS BASED SUMMARY: Get times from CalendarEvents instead of local state
+              const { weeklyTimes: eventWeeklyTimes, overrideTimes, allTimes } = getCalendarEventSummaryForWeekday(dayIdx);
               
               return (
                 <View key={dayIdx} className="mb-3 p-3 bg-gray-50 rounded-lg">
                   <View className="flex-row items-center justify-between mb-2">
                     <View className="flex-row items-center">
                       <Text className="text-gray-800 font-medium">{dayShort[dayIdx]}</Text>
-                      {hasOverrides && (
-                        <View className="ml-2 px-2 py-1 bg-blue-100 rounded-full">
-                          <Text className="text-blue-700 text-xs font-medium">
+                      <View className="ml-2 px-2 py-1 bg-blue-100 rounded-full">
+                        <Text className="text-blue-700 text-xs font-medium">
+                          {allTimes.length} time{allTimes.length > 1 ? 's' : ''}
+                        </Text>
+                      </View>
+                      {overrideTimes.length > 0 && (
+                        <View className="ml-1 px-2 py-1 bg-orange-100 rounded-full">
+                          <Text className="text-orange-700 text-xs font-medium">
                             {overrideTimes.length} override{overrideTimes.length > 1 ? 's' : ''}
                           </Text>
                         </View>
@@ -1088,39 +1527,67 @@ export default function SimpleDatePicker({
                     </TouchableOpacity>
                   </View>
                   
-                  {/* Weekly pattern times */}
-                  <View className="mb-2">
-                    <Text className="text-xs text-gray-600 mb-1">Weekly Pattern:</Text>
-                    <View className="flex-row flex-wrap gap-2">
-                      {weeklyTimes.map((t, i) => (
-                        <View key={`weekly-${t}-${i}`} className="flex-row items-center bg-green-100 px-3 py-1 rounded-full border border-green-200">
-                          <TouchableOpacity onPress={() => openEditTimeModal(dayIdx, i)}>
-                            <Text className="text-green-800 font-medium mr-1">{t}</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity onPress={() => removeTime(dayIdx, i)}>
-                            <Ionicons name="close" size={14} color="#047857" />
-                          </TouchableOpacity>
-                        </View>
-                      ))}
-                      {weeklyTimes.length === 0 && (
-                        <Text className="text-gray-500 text-xs">No weekly times</Text>
-                      )}
-                    </View>
-                  </View>
-                  
-                  {/* Override times (read-only in edit mode) */}
-                  {hasOverrides && (
-                    <View>
-                      <Text className="text-xs text-blue-600 mb-1">Override Times (read-only):</Text>
+                  {/* Basic Pattern Times */}
+                  {eventWeeklyTimes.length > 0 && (
+                    <View className="mb-2">
+                      <Text className="text-xs text-gray-600 mb-1">Basic Pattern:</Text>
                       <View className="flex-row flex-wrap gap-2">
-                        {overrideTimes.map((t, i) => (
-                          <View key={`override-${t}-${i}`} className="bg-blue-50 px-3 py-1 rounded-full border border-blue-200 border-dashed">
-                            <Text className="text-blue-700 font-medium text-sm">{t}</Text>
-                            <View className="w-1.5 h-1.5 bg-blue-500 rounded-full ml-1" />
+                        {eventWeeklyTimes.map((t, i) => (
+                          <View key={`${dayIdx}_weekly_${t}_${i}`} className="flex-row items-center bg-blue-100 px-3 py-1 rounded-full border border-blue-200">
+                            <TouchableOpacity onPress={() => {
+                              // 🔄 PREVENT WEEKLY SCHEDULE MODIFICATION: Use long-press for time editing instead
+                              Alert.alert(
+                                'Edit Time', 
+                                'To edit specific times, long-press on dates in the calendar below. This preserves your original weekly schedule.',
+                                [{ text: 'OK' }]
+                              );
+                            }}>
+                              <Text className="text-blue-800 font-medium mr-1">{t}</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity onPress={() => {
+                              // 🔄 PREVENT WEEKLY SCHEDULE MODIFICATION: Only allow removal from original weekly times
+                              const weeklyIndex = weeklyTimes.indexOf(t);
+                              if (weeklyIndex !== -1 && weeklyTimes.includes(t)) {
+                                removeTime(dayIdx, weeklyIndex);
+                              } else {
+                                Alert.alert(
+                                  'Basic Pattern Time', 
+                                  'This time is part of the basic weekly pattern. Edit the weekly schedule above to modify it.',
+                                  [{ text: 'OK' }]
+                                );
+                              }
+                            }}>
+                              <Ionicons name="close" size={14} color="#1e40af" />
+                            </TouchableOpacity>
                           </View>
                         ))}
                       </View>
                     </View>
+                  )}
+                  
+                  {/* Override Times */}
+                  {overrideTimes.length > 0 && (
+                    <View className="mb-2">
+                      <Text className="text-xs text-gray-600 mb-1">Override Times:</Text>
+                      <View className="flex-row flex-wrap gap-2">
+                        {overrideTimes.map((t, i) => (
+                          <View key={`${dayIdx}_override_${t}_${i}`} className="flex-row items-center bg-orange-100 px-3 py-1 rounded-full border border-orange-200">
+                            <Text className="text-orange-800 font-medium mr-1">{t}</Text>
+                            <View className="ml-1 px-1 bg-orange-200 rounded">
+                              <Text className="text-orange-800 text-xs font-bold">!</Text>
+                            </View>
+                          </View>
+                        ))}
+                      </View>
+                      <Text className="text-xs text-gray-500 mt-1">
+                        Override times added via calendar long-press
+                      </Text>
+                    </View>
+                  )}
+                  
+                  {/* No times message */}
+                  {allTimes.length === 0 && (
+                    <Text className="text-gray-500 text-xs">No times scheduled</Text>
                   )}
                 </View>
               );
@@ -1133,57 +1600,50 @@ export default function SimpleDatePicker({
             </View>
           </View>
         ) : (
-          // Display mode - summarized
+          // Display mode - summarized with CalendarEvent-based data
           <View>
             {selectedWeekdays.size > 0 ? (
               <View className="gap-2">
                 {Array.from(selectedWeekdays).sort().map((dayIdx) => {
-                  const weeklyTimes = weeklyTimeSettings[dayIdx] || [];
-                  const overrideTimes = getOverrideTimesForWeekday(dayIdx);
-                  const hasOverrides = overrideTimes.length > 0;
+                  // 🔄 CALENDAR EVENTS BASED SUMMARY: Get times from CalendarEvents instead of local state
+                  const { weeklyTimes: eventWeeklyTimes, overrideTimes, allTimes } = getCalendarEventSummaryForWeekday(dayIdx);
                   
                   return (
                     <View key={dayIdx} className="flex-row items-start">
-                      <Text className="w-12 text-gray-800 font-medium">{dayShort[dayIdx]}</Text>
+                      <View className="w-12 flex-row items-center">
+                        <Text className="text-gray-800 font-medium">{dayShort[dayIdx]}</Text>
+                        {overrideTimes.length > 0 && (
+                          <View className="ml-1 w-2 h-2 bg-orange-400 rounded-full"></View>
+                        )}
+                      </View>
                       <View className="flex-1">
-                        {/* Weekly pattern times */}
-                        {weeklyTimes.length > 0 && (
+                        {/* Basic Pattern Times */}
+                        {eventWeeklyTimes.length > 0 && (
                           <View className="flex-row flex-wrap gap-2 mb-2">
-                            {weeklyTimes.map((t, i) => (
-                              <View key={`weekly-${t}-${i}`} className="bg-green-100 px-3 py-1 rounded-full border border-green-200">
-                                <Text className="text-green-800 font-medium text-sm">{t}</Text>
+                            {eventWeeklyTimes.map((t, i) => (
+                              <View key={`${dayIdx}_display_weekly_${t}_${i}`} className="bg-blue-100 px-3 py-1 rounded-full border border-blue-200">
+                                <Text className="text-blue-800 font-medium text-sm">{t}</Text>
                               </View>
                             ))}
                           </View>
                         )}
                         
-                        {/* Override times with visual distinction */}
-                        {hasOverrides && (
-                          <View className="mb-2">
-                            <View className="flex-row items-center mb-1">
-                              <Text className="text-xs text-blue-600 font-medium mr-2">
-                                Override {overrideTimes.length} time{overrideTimes.length > 1 ? 's' : ''}
-                              </Text>
-                              <View className="w-2 h-2 bg-blue-500 rounded-full" />
-                            </View>
-                            <ScrollView 
-                              horizontal 
-                              showsHorizontalScrollIndicator={false}
-                              className="max-h-20"
-                            >
-                              <View className="flex-row gap-2">
-                                {overrideTimes.map((t, i) => (
-                                  <View key={`override-${t}-${i}`} className="bg-blue-100 px-3 py-1 rounded-full border border-blue-300 border-dashed">
-                                    <Text className="text-blue-800 font-medium text-sm">{t}</Text>
-                                  </View>
-                                ))}
+                        {/* Override Times with badge */}
+                        {overrideTimes.length > 0 && (
+                          <View className="flex-row flex-wrap gap-2 mb-2">
+                            {overrideTimes.map((t, i) => (
+                              <View key={`${dayIdx}_display_override_${t}_${i}`} className="bg-orange-100 px-3 py-1 rounded-full border border-orange-200">
+                                <View className="flex-row items-center">
+                                  <Text className="text-orange-800 font-medium text-sm mr-1">{t}</Text>
+                                  <View className="w-1 h-1 bg-orange-500 rounded-full"></View>
+                                </View>
                               </View>
-                            </ScrollView>
+                            ))}
                           </View>
                         )}
                         
                         {/* No times message */}
-                        {weeklyTimes.length === 0 && !hasOverrides && (
+                        {allTimes.length === 0 && (
                           <Text className="text-gray-500 text-xs">No times added</Text>
                         )}
                       </View>
@@ -1261,6 +1721,13 @@ export default function SimpleDatePicker({
                           'bg-gray-50'
                         }`}
                         onPress={() => handleDateSelect(dayData.dateStr)}
+                        onLongPress={() => {
+                          if (!dayData.isPast && dayData.dateStr && onCalendarEventsChange) {
+                            // Open time edit modal for this date
+                            handleDateLongPress(dayData.dateStr);
+                          }
+                        }}
+                        delayLongPress={500}
                         disabled={dayData.isPast}
                       >
                         <Text className={`text-sm font-semibold ${
@@ -1271,6 +1738,16 @@ export default function SimpleDatePicker({
                           dayData.isToday ? 'text-blue-800' :
                           'text-gray-800'
                         }`}>{dayData.day}</Text>
+                        
+                        {/* Display single time from calendar events */}
+                        {dayData.times && dayData.times.length > 0 && (
+                          <View className="mt-1 px-1">
+                            <Text className="text-xs text-green-600 text-center leading-3 font-medium">
+                              {dayData.times[0]}
+                            </Text>
+                          </View>
+                        )}
+                        
                         {editingMode !== 'schedule' && dayData.isScheduled && (
                           <View className="absolute -bottom-1 w-2 h-2 bg-green-500 rounded-full" />
                         )}
@@ -1472,12 +1949,23 @@ export default function SimpleDatePicker({
 
       {/* Validation Error Banner */}
       {validationResult && !validationResult.isCompatible && validationResult.issues.length > 0 && (
-        <View className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-          <Text className="text-red-800 font-medium mb-2">Schedule Validation Failed</Text>
-          {validationResult.issues.map((issue, index) => (
-            <Text key={index} className="text-red-700 text-sm mb-1">• {issue}</Text>
-          ))}
-          <Text className="text-red-600 text-xs mt-2">Please fix the issues above before proceeding.</Text>
+        <View className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg shadow-sm">
+          <View className="flex-row items-center mb-3">
+            <Ionicons name="warning" size={20} color="#DC2626" />
+            <Text className="text-red-800 font-semibold ml-2 text-base">Schedule Requirements Not Met</Text>
+          </View>
+          <View className="ml-1">
+            {validationResult.issues.map((issue, index) => (
+              <Text key={index} className="text-red-700 text-sm mb-2 leading-5">
+                • {issue}
+              </Text>
+            ))}
+          </View>
+          <View className="mt-2 pt-2 border-t border-red-200">
+            <Text className="text-red-600 text-xs font-medium">
+              💡 Tip: Add more scheduled times or adjust your goal requirements to proceed.
+            </Text>
+          </View>
         </View>
       )}
 
@@ -1489,7 +1977,14 @@ export default function SimpleDatePicker({
         </TouchableOpacity>
 
         <TouchableOpacity 
-          onPress={() => (onRequestNext ? onRequestNext() : onNavigateToStep(2))} 
+          testID="next-button"
+          onPress={() => {
+            if (onRequestNext) {
+              onRequestNext(); // Always use validation path when available
+            } else {
+              onNavigateToStep(2); // Fallback only when no validation handler
+            }
+          }}
           className={`flex-1 rounded-lg py-3 flex-row items-center justify-center ${
             (!startDate || loading || (validationResult ? !validationResult.isCompatible : false)) 
               ? 'bg-gray-400' 
@@ -1502,13 +1997,20 @@ export default function SimpleDatePicker({
               ? 'text-gray-600' 
               : 'text-white'
           }`}>
-            {onRequestNext ? (loading ? 'Validating...' : 'Next') : 'Continue'}
+            {loading ? 'Validating...' : 
+             (!startDate ? 'Select Date' :
+              (validationResult && !validationResult.isCompatible ? 'Fix Issues' : 
+               (onRequestNext ? 'Next' : 'Continue')))}
           </Text>
-          <Ionicons 
-            name="chevron-forward" 
-            size={16} 
-            color={(!startDate || loading || (validationResult ? !validationResult.isCompatible : false)) ? '#6B7280' : 'white'} 
-          />
+          {loading ? (
+            <ActivityIndicator size="small" color="#6B7280" />
+          ) : (
+            <Ionicons 
+              name={validationResult && !validationResult.isCompatible ? "warning" : "chevron-forward"} 
+              size={16} 
+              color={(!startDate || loading || (validationResult ? !validationResult.isCompatible : false)) ? '#6B7280' : 'white'} 
+            />
+          )}
         </TouchableOpacity>
       </View>
 
@@ -1557,6 +2059,193 @@ export default function SimpleDatePicker({
                 <Text className="text-white font-medium text-center">Save</Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Date Edit Modal for Long Press */}
+      <Modal 
+        visible={showDateEditModal} 
+        transparent 
+        animationType="fade" 
+        onRequestClose={() => {
+          setShowDateEditModal(false);
+          setShowDateTimeInput(false);
+          setDateEditTimeInput('');
+          setEditingDateTimeIndex(-1);
+        }}
+      >
+        <View className="flex-1 justify-center items-center bg-black/50">
+          <View className="bg-white rounded-lg p-6 mx-4 max-w-sm w-full">
+            <Text className="text-lg font-bold text-gray-800 mb-4">
+              Edit Times for {selectedDateForEdit}
+            </Text>
+            
+            {/* Current single time display */}
+            <View className="mb-4">
+              {(() => {
+                const dateEvents = selectedDateForEdit ? calendarEvents.filter(event => event.date === selectedDateForEdit) : [];
+                const currentTime = dateEvents.length > 0 ? dateEvents[0] : null;
+                
+                if (currentTime) {
+                  return (
+                    <View className="flex-row items-center justify-between py-3 px-4 bg-gray-50 rounded-lg border border-gray-200">
+                      <View className="flex-1">
+                        <Text className="text-gray-800 font-medium text-lg">{currentTime.time}</Text>
+                        <Text className="text-xs text-gray-500 capitalize">Current scheduled time</Text>
+                      </View>
+                      
+                      {/* Action buttons for the single time */}
+                      <View className="flex-row space-x-2">
+                        <TouchableOpacity 
+                          onPress={() => handleEditTimeForDate(0)}
+                          className="bg-blue-100 rounded px-3 py-2"
+                        >
+                          <Text className="text-blue-600 text-sm font-medium">Edit</Text>
+                        </TouchableOpacity>
+                        
+                        <TouchableOpacity 
+                          onPress={() => handleDeleteTimeForDate(0)}
+                          className="bg-red-100 rounded px-3 py-2"
+                        >
+                          <Text className="text-red-600 text-sm font-medium">Delete</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  );
+                } else {
+                  return (
+                    <View className="text-center py-6 px-4 bg-gray-50 rounded-lg border border-gray-200">
+                      <Text className="text-gray-500 text-center">No scheduled time for this date</Text>
+                      <Text className="text-xs text-gray-400 text-center mt-1">Tap "Add Time" below to schedule</Text>
+                    </View>
+                  );
+                }
+              })()}
+            </View>
+            
+            {/* Time input section */}
+            {showDateTimeInput ? (
+              <View className="border-t border-gray-200 pt-4">
+                <Text className="text-sm font-medium text-gray-700 mb-2">
+                  {editingDateTimeIndex >= 0 ? 'Edit Time' : 'Add New Time'}
+                </Text>
+                
+                <View className="flex-row justify-center space-x-4 mb-4">
+                  {/* Hour Picker */}
+                  <View className="items-center">
+                    <Text className="text-xs text-gray-500 mb-1">Hour</Text>
+                    <View className="border border-gray-300 rounded-lg overflow-hidden" style={{ width: 90, height: 120 }}>
+                      <Picker
+                        selectedValue={dateEditTimeInput.split(':')[0] || '09'}
+                        onValueChange={(hour) => {
+                          const minute = dateEditTimeInput.split(':')[1] || '00';
+                          setDateEditTimeInput(`${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`);
+                        }}
+                        style={{ height: 120, width: 90 }}
+                        itemStyle={{ fontSize: 16, height: 120 }}
+                      >
+                        {Array.from({ length: 24 }, (_, i) => (
+                          <Picker.Item 
+                            key={i} 
+                            label={i.toString().padStart(2, '0')} 
+                            value={i.toString().padStart(2, '0')}
+                            style={{ fontSize: 16 }}
+                          />
+                        ))}
+                      </Picker>
+                    </View>
+                  </View>
+                  
+                  {/* Minute Picker */}
+                  <View className="items-center">
+                    <Text className="text-xs text-gray-500 mb-1">Minute</Text>
+                    <View className="border border-gray-300 rounded-lg overflow-hidden" style={{ width: 90, height: 120 }}>
+                      <Picker
+                        selectedValue={dateEditTimeInput.split(':')[1] || '00'}
+                        onValueChange={(minute) => {
+                          const hour = dateEditTimeInput.split(':')[0] || '09';
+                          setDateEditTimeInput(`${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`);
+                        }}
+                        style={{ height: 120, width: 90 }}
+                        itemStyle={{ fontSize: 16, height: 120 }}
+                      >
+                        {Array.from({ length: 60 }, (_, i) => (
+                          <Picker.Item 
+                            key={i} 
+                            label={i.toString().padStart(2, '0')} 
+                            value={i.toString().padStart(2, '0')}
+                            style={{ fontSize: 16 }}
+                          />
+                        ))}
+                      </Picker>
+                    </View>
+                  </View>
+                </View>
+                
+                <View className="flex-row space-x-3">
+                  <TouchableOpacity 
+                    onPress={() => {
+                      setShowDateTimeInput(false);
+                      setDateEditTimeInput('');
+                      setEditingDateTimeIndex(-1);
+                    }}
+                    className="flex-1 bg-gray-200 rounded-lg py-2"
+                  >
+                    <Text className="text-gray-700 font-medium text-center">Cancel</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    onPress={editingDateTimeIndex >= 0 ? handleUpdateTimeForDate : handleAddTimeToDate}
+                    className="flex-1 bg-blue-600 rounded-lg py-2"
+                  >
+                    <Text className="text-white font-medium text-center">
+                      {editingDateTimeIndex >= 0 ? 'Update' : 'Add'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              /* Main action buttons */
+              <View className="flex-row space-x-3">
+                <TouchableOpacity 
+                  onPress={() => setShowDateEditModal(false)}
+                  className="flex-1 bg-gray-200 rounded-lg py-3"
+                >
+                  <Text className="text-gray-700 font-medium text-center">Close</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  onPress={() => {
+                    const dateEvents = selectedDateForEdit ? calendarEvents.filter(event => event.date === selectedDateForEdit) : [];
+                    const hasExistingTime = dateEvents.length > 0;
+                    
+                    if (hasExistingTime) {
+                      // If there's already a time, enter edit mode for that time
+                      setDateEditTimeInput(dateEvents[0].time || '09:00');
+                      setEditingDateTimeIndex(0);
+                    } else {
+                      // If no time exists, add new time
+                      setDateEditTimeInput('09:00');
+                      setEditingDateTimeIndex(-1);
+                    }
+                    setShowDateTimeInput(true);
+                  }}
+                  className={`flex-1 rounded-lg py-3 ${
+                    selectedDateForEdit && calendarEvents.filter(event => event.date === selectedDateForEdit).length > 0 
+                      ? 'bg-blue-600' 
+                      : 'bg-green-600'
+                  }`}
+                >
+                  <Text className="text-white font-medium text-center">
+                    {selectedDateForEdit && calendarEvents.filter(event => event.date === selectedDateForEdit).length > 0 
+                      ? 'Change Time' 
+                      : 'Set Time'
+                    }
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         </View>
       </Modal>
