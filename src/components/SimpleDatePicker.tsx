@@ -337,31 +337,13 @@ export default function SimpleDatePicker({
       const isScheduled = inRange && ((baseIncluded && !excludeDates.includes(dateStr)) || includeDates.includes(dateStr));
       
         // Get times from calendar events for this date - ONLY ONE TIME PER DATE
-        const dayEvents = effectiveEvents.filter(event => event.date === dateStr && event.time);
-      
-      let dayTimes: string[] = [];
-      if (dayEvents.length > 0) {
-        // Priority: override > weekly, then sort by time and pick first
-        const overrideEvents = dayEvents.filter(e => e.source === 'override');
-        const weeklyEvents = dayEvents.filter(e => e.source === 'weekly');
-        
-        if (overrideEvents.length > 0) {
-          // Prefer override times, sort by time and take first
-          dayTimes = overrideEvents
-            .map(e => e.time!)
-            .sort()
-            .slice(0, 1);
-        } else if (weeklyEvents.length > 0) {
-          // Use weekly times, sort by time and take first
-          dayTimes = weeklyEvents
-            .map(e => e.time!)
-            .sort()
-            .slice(0, 1);
-        }
-      }
+        const eventsForDate = effectiveEvents.filter(e => e.date === dateStr);
+        const override = eventsForDate.find(e => e.source === 'override');
+        const weekly = eventsForDate.find(e => e.source === 'weekly');
+        const timeToShow = override?.time ?? weekly?.time ?? null;
       
       // 🔄 SCHEDULE-BASED TIME DISPLAY: Only show times for scheduled dates
-      const visibleTimes = isScheduled ? dayTimes : [];
+      const visibleTimes = isScheduled && timeToShow ? [timeToShow] : [];
       
       days.push({
         day: d,
@@ -375,7 +357,7 @@ export default function SimpleDatePicker({
         baseIncluded,
         isWithinRange: inRange,
         times: visibleTimes, // Only show times for scheduled dates
-        events: dayEvents // Store all events for potential use
+        events: eventsForDate // Store all events for potential use
       });
     }
     return days;
