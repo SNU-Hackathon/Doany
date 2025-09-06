@@ -946,29 +946,14 @@ export default function SimpleDatePicker({
     
     log('saveTime: saving weekly time', { time, editingDayIndex, editingTimeIndex });
     
-    // 🔧 ONE TIME PER WEEKDAY: Always replace/overwrite the previous time
-    const updatedTimes = [time]; // Always exactly one time per weekday
-    
-    // Calculate updated weekdays - ensure editingDayIndex is included
-    const updatedWeekdays = new Set(selectedWeekdays);
-    updatedWeekdays.add(editingDayIndex);
-    
-    // Calculate updated time settings - replace entire array with single time
-    const newTimeSettings = { ...weeklyTimeSettings, [editingDayIndex]: updatedTimes } as any;
-    
-    log('saveTime: updating states', { 
-      editingDayIndex, 
-      time, 
-      updatedWeekdays: Array.from(updatedWeekdays), 
-      newTimeSettings 
-    });
-    
-    // 🔄 BATCH UPDATE: Update both states together, then notify parent
-    setWeeklyTimeSettings(newTimeSettings);
-    setSelectedWeekdays(updatedWeekdays);
+    // 🔧 ONE TIME PER WEEKDAY: Overwrite instead of push
+    setWeeklyTimeSettings(prev => ({ ...prev, [editingDayIndex]: [time] }));
+    setSelectedWeekdays(prev => new Set(prev).add(editingDayIndex));
     
     // 🔄 IMMEDIATE PARENT NOTIFICATION: No setTimeout needed
     if (onWeeklyScheduleChange) {
+      const updatedWeekdays = new Set(selectedWeekdays).add(editingDayIndex);
+      const newTimeSettings = { ...weeklyTimeSettings, [editingDayIndex]: [time] };
       onWeeklyScheduleChange(updatedWeekdays, newTimeSettings);
       if (__DEV__) {
         console.log('[WeeklySchedule] Immediately notified parent of weekly schedule change for calendar sync');
