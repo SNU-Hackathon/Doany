@@ -918,33 +918,14 @@ export default function SimpleDatePicker({
   }, []);
 
   // Date edit modal functions
-  const handleAddTimeToDate = useCallback(async () => {
-    if (!selectedDateForEdit || !dateEditTimeInput.trim()) return;
+  // Helper function to actually add/replace time for a date
+  const addOrReplaceTimeForDate = useCallback(async () => {
+    if (!selectedDateForEdit || !dateEditTimeInput.trim() || !onCalendarEventsChange) return;
     
-    const timeRegex = /^([0-1][0-9]|2[0-3]):[0-5][0-9]$/;
-    if (!timeRegex.test(dateEditTimeInput)) {
-      Alert.alert('Invalid Time', 'Please use HH:MM format (e.g., 09:00)');
-      return;
-    }
+    log('addOrReplaceTimeForDate: processing override time', { date: selectedDateForEdit, time: dateEditTimeInput });
     
-    if (!onCalendarEventsChange) {
-      Alert.alert('Error', 'Calendar events update function not available');
-      return;
-    }
-    
-    // 🔄 ONE TIME PER DATE: Check if this date already has a time
-    const existingEventsForDate = calendarEvents.filter(e => e.date === selectedDateForEdit);
-    if (existingEventsForDate.length > 0) {
-      Alert.alert(
-        'Replace Existing Time', 
-        `This date already has a scheduled time (${existingEventsForDate[0].time}). Do you want to replace it with ${dateEditTimeInput}?`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Replace', onPress: () => handleUpdateSingleTimeForDate(existingEventsForDate[0], dateEditTimeInput) }
-        ]
-      );
-      return;
-    }
+    // 🔄 ONE TIME PER DATE: Remove any existing events for this date (regardless of source)
+    const otherDateEvents = calendarEvents.filter(e => e.date !== selectedDateForEdit);
     
     // 🔄 DATABASE PERSISTENCE: Save to database if userId and goalId are available
     if (userId && goalId) {
@@ -1022,31 +1003,84 @@ export default function SimpleDatePicker({
         savedToDatabase: !!(userId && goalId)
       });
     }
-    log('handleDateLongPress exit:', { dateStr: selectedDateForEdit, timeInput: dateEditTimeInput });
+    log('addOrReplaceTimeForDate: completed', { date: selectedDateForEdit, time: dateEditTimeInput });
   }, [selectedDateForEdit, dateEditTimeInput, calendarEvents, onCalendarEventsChange, includeDates, excludeDates, onIncludeExcludeChange, userId, goalId]);
+
+  const handleAddTimeToDate = useCallback(async () => {
+    if (!selectedDateForEdit || !dateEditTimeInput.trim()) return;
+    
+    const timeRegex = /^([0-1][0-9]|2[0-3]):[0-5][0-9]$/;
+    if (!timeRegex.test(dateEditTimeInput)) {
+      Alert.alert('Invalid Time', 'Please use HH:MM format (e.g., 09:00)');
+      return;
+    }
+    
+    if (!onCalendarEventsChange) {
+      Alert.alert('Error', 'Calendar events update function not available');
+      return;
+    }
+    
+    log('handleAddTimeToDate: checking for existing events', { date: selectedDateForEdit, time: dateEditTimeInput });
+    
+    // 🔄 ONE TIME PER DATE: Check if this date already has any events
+    const existingEventsForDate = calendarEvents.filter(e => e.date === selectedDateForEdit);
+    
+    // If there are existing events, show confirmation dialog
+    if (existingEventsForDate.length > 0) {
+      const existingTime = existingEventsForDate[0].time || 'no time';
+      const existingSource = existingEventsForDate[0].source || 'unknown';
+      Alert.alert(
+        'Replace Existing Time', 
+        `This date already has a ${existingSource} time (${existingTime}). Do you want to replace it with ${dateEditTimeInput}?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Replace', onPress: () => addOrReplaceTimeForDate() }
+        ]
+      );
+      return;
+    }
+    
+    // No existing events, proceed directly
+    await addOrReplaceTimeForDate();
+  }, [selectedDateForEdit, dateEditTimeInput, calendarEvents, onCalendarEventsChange, addOrReplaceTimeForDate]);
 
   // Helper function to update a single time for a date (called from replace confirmation)
   const handleUpdateSingleTimeForDate = useCallback(async (eventToReplace: CalendarEvent, newTime: string) => {
     if (!selectedDateForEdit || !onCalendarEventsChange) return;
     
+    log('handleUpdateSingleTimeForDate: updating override time', { 
+      date: selectedDateForEdit, 
+      oldTime: eventToReplace.time, 
+      newTime,
+      oldSource: eventToReplace.source 
+    });
+    
+    // 🔄 ONE TIME PER DATE: Remove any existing events for this date (regardless of source)
+    const otherDateEvents = calendarEvents.filter(e => e.date !== selectedDateForEdit);
+    
     // 🔄 DATABASE PERSISTENCE: Update in database if available
     if (userId && goalId) {
       try {
-        // Delete the old time if it exists
-        if (eventToReplace.time && eventToReplace.source === 'override') {
-          // Remove existing and add new event
-          const updatedEvent: Omit<CalendarEvent, 'id' | 'createdAt' | 'updatedAt'> = {
-            date: selectedDateForEdit,
-            time: newTime,
-            goalId: goalId,
-            source: 'override'
-          };
-          await CalendarEventService.createCalendarEvents(goalId, [updatedEvent]);
+        // Delete existing events for this date if they exist
+        const existingEventsForDate = calendarEvents.filter(e => e.date === selectedDateForEdit);
+        if (existingEventsForDate.length > 0) {
+          const toDeleteIds = existingEventsForDate.map(e => e.id).filter(Boolean) as string[];
+          if (toDeleteIds.length > 0) {
+            await CalendarEventService.deleteCalendarEvents(goalId, toDeleteIds);
+          }
         }
+        
+        // Create new override event for this date
+        const newEvent: Omit<CalendarEvent, 'id' | 'createdAt' | 'updatedAt'> = {
+          date: selectedDateForEdit,
+          time: newTime,
+          goalId: goalId,
+          source: 'override'
+        };
+        await CalendarEventService.createCalendarEvents(goalId, [newEvent]);
         
         // Refresh calendar events
         const refreshedEvents = await CalendarEventService.getCalendarEvents(goalId, selectedDateForEdit, selectedDateForEdit);
-        const otherDateEvents = calendarEvents.filter(e => e.date !== selectedDateForEdit);
         const updatedEvents = [...otherDateEvents, ...refreshedEvents];
         onCalendarEventsChange(updatedEvents);
         
@@ -1057,16 +1091,18 @@ export default function SimpleDatePicker({
         return;
       }
     } else {
-      // 🔄 LOCAL FALLBACK: Update local events
-      const otherDateEvents = calendarEvents.filter(e => e.date !== selectedDateForEdit);
-      const updatedEvent: CalendarEvent = {
-        ...eventToReplace,
+      // 🔄 LOCAL FALLBACK: Replace with new override event
+      const newEvent: CalendarEvent = {
+        id: `override-${selectedDateForEdit}-${newTime}-${Date.now()}`,
+        date: selectedDateForEdit,
         time: newTime,
+        goalId: goalId || 'temp-goal-id',
         source: 'override',
+        createdAt: new Date(),
         updatedAt: new Date()
       };
       
-      const updatedEvents = [...otherDateEvents, updatedEvent];
+      const updatedEvents = [...otherDateEvents, newEvent];
       onCalendarEventsChange(updatedEvents);
       
       console.log(`[Calendar Edit Schedule] Updated local single time for date ${selectedDateForEdit} from ${eventToReplace.time} to ${newTime}`);
@@ -1078,6 +1114,8 @@ export default function SimpleDatePicker({
     // Reset input
     setDateEditTimeInput('09:00');
     setShowDateTimeInput(false);
+    
+    log('handleUpdateSingleTimeForDate: completed', { date: selectedDateForEdit, newTime });
   }, [selectedDateForEdit, calendarEvents, onCalendarEventsChange, userId, goalId]);
 
   const handleEditTimeForDate = useCallback((timeIndex: number) => {
