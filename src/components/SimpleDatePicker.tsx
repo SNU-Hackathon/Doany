@@ -1401,7 +1401,7 @@ export default function SimpleDatePicker({
         }
       }
     }
-  }, [calendarEvents, startDate, endDate]);
+  }, [calendarEvents, startDate, endDate, updateWeeklyScheduleFromCalendar]);
 
   const clearWeeklySchedule = useCallback(() => {
     if (__DEV__) console.log('[WeeklySchedule] Clearing all weekly schedule data');
