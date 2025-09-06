@@ -5,6 +5,17 @@
  * 1. 기간이 7일 미만이면 검증 스킵 (불완전 주만 존재)
  * 2. 중복 이벤트 카운트 정책: 동일 날짜·시간 다중 등록은 개수만큼 집계 (기본)
  * 3. 타임존: Asia/Seoul 고정, 날짜 문자열은 YYYY-MM-DD
+ * 
+ * QA: SimpleDatePicker
+ * Manual Test Steps:
+ * 1. Set range to include at least 3 full weeks
+ * 2. Select Mon/Wed/Fri and set 09:00 as weekly time → all Mon/Wed/Fri cells show "09:00"
+ * 3. Long-press a specific Wed, set 07:30 → that cell shows "07:30", others remain 09:00
+ * 4. Click that Wed → all events removed for that date → no time label
+ * 5. Click it again → manual no-time event appears
+ * 6. Change weekly time to 10:30 → all non-override scheduled days switch to 10:30; the overridden date keeps its state if still scheduled
+ * 7. Toggle a date off via click; verify weekly sync doesn't re-add time for that exact date unless you re-enable it
+ * 8. Verify at most one time label per date everywhere
  */
 
 import { Ionicons } from '@expo/vector-icons';
@@ -533,7 +544,13 @@ export default function SimpleDatePicker({
       nextInclude.forEach(d => next.add(new Date(d).getDay()));
       return next;
     });
-    log('handleDateSelect exit:', { dateStr, editingMode });
+    log('handleDateSelect exit:', { 
+      action: 'date_select', 
+      date: dateStr, 
+      editingMode, 
+      calendarEventsCount: calendarEvents.length,
+      eventsForDate: calendarEvents.filter(e => e.date === dateStr).map(e => ({ source: e.source, time: e.time }))
+    });
   };
 
   const handleDurationChange = (value: string) => {
@@ -685,7 +702,14 @@ export default function SimpleDatePicker({
         log('syncWeeklyScheduleToCalendar:local-updated', { weeklyCount: desiredWeekly.length });
       }
     } finally {
-      log('syncWeeklyScheduleToCalendar:done');
+      log('syncWeeklyScheduleToCalendar:done', { 
+        action: 'weekly_sync', 
+        date: `${startDate}_to_${endDate}`, 
+        source: 'weekly',
+        calendarEventsCount: calendarEvents.length,
+        weeklyEventsCount: calendarEvents.filter(e => e.source === 'weekly').length,
+        overrideEventsCount: calendarEvents.filter(e => e.source === 'override').length
+      });
     }
   }, [
     startDate, endDate,
@@ -891,7 +915,14 @@ export default function SimpleDatePicker({
     // 🔄 SYNC CALENDAR: Immediately sync weekly schedule to calendar events
     try {
       await syncWeeklyScheduleToCalendar();
-      log('removeTime: calendar sync completed');
+      log('removeTime: calendar sync completed', { 
+        action: 'weekly_time_remove', 
+        date: `weekday_${dayIndex}`, 
+        dayName, 
+        source: 'weekly',
+        calendarEventsCount: calendarEvents.length,
+        eventsForWeekday: calendarEvents.filter(e => e.source === 'weekly' && new Date(e.date).getDay() === dayIndex).map(e => ({ date: e.date, time: e.time }))
+      });
     } catch (error) {
       err('removeTime: calendar sync failed', error);
     }
@@ -937,7 +968,14 @@ export default function SimpleDatePicker({
     // 🔄 SYNC CALENDAR: Immediately sync weekly schedule to calendar events
     try {
       await syncWeeklyScheduleToCalendar();
-      log('saveTime: calendar sync completed');
+      log('saveTime: calendar sync completed', { 
+        action: 'weekly_time_save', 
+        date: `weekday_${editingDayIndex}`, 
+        time, 
+        source: 'weekly',
+        calendarEventsCount: calendarEvents.length,
+        eventsForWeekday: calendarEvents.filter(e => e.source === 'weekly' && new Date(e.date).getDay() === editingDayIndex).map(e => ({ date: e.date, time: e.time }))
+      });
     } catch (error) {
       err('saveTime: calendar sync failed', error);
     }
@@ -1047,7 +1085,14 @@ export default function SimpleDatePicker({
         savedToDatabase: !!(userId && goalId)
       });
     }
-    log('addOrReplaceTimeForDate: completed', { date: selectedDateForEdit, time: dateEditTimeInput });
+    log('addOrReplaceTimeForDate: completed', { 
+      action: 'long_press_set_time', 
+      date: selectedDateForEdit, 
+      time: dateEditTimeInput, 
+      source: 'override',
+      calendarEventsCount: calendarEvents.length,
+      eventsForDate: calendarEvents.filter(e => e.date === selectedDateForEdit).map(e => ({ source: e.source, time: e.time }))
+    });
   }, [selectedDateForEdit, dateEditTimeInput, calendarEvents, onCalendarEventsChange, includeDates, excludeDates, onIncludeExcludeChange, userId, goalId]);
 
   const handleAddTimeToDate = useCallback(async () => {
