@@ -860,6 +860,7 @@ export default function SimpleDatePicker({
   }, [startDate, endDate, includeDates, excludeDates, onIncludeExcludeChange, dayShort, syncWeeklyScheduleToCalendar]);
 
   const openAddTimeModal = useCallback((dayIndex: number) => {
+    log('openAddTimeModal: opening time picker', { dayIndex });
     setEditingDayIndex(dayIndex);
     setEditingTimeIndex(-1);
     setEditingTimeHour('10');
@@ -929,6 +930,12 @@ export default function SimpleDatePicker({
   }, [dayShort, syncWeeklyScheduleToCalendar]);
 
   const saveTime = useCallback(async () => {
+    // Validate editingDayIndex
+    if (editingDayIndex < 0 || editingDayIndex > 6) {
+      Alert.alert('Invalid Day', 'Please select a valid day');
+      return;
+    }
+    
     const time = `${editingTimeHour.padStart(2, '0')}:${editingTimeMinute.padStart(2, '0')}`;
     const timeRegex = /^([0-1][0-9]|2[0-3]):[0-5][0-9]$/;
     if (!timeRegex.test(time)) {
@@ -948,6 +955,13 @@ export default function SimpleDatePicker({
     // Calculate updated time settings - replace entire array with single time
     const newTimeSettings = { ...weeklyTimeSettings, [editingDayIndex]: updatedTimes } as any;
     
+    log('saveTime: updating states', { 
+      editingDayIndex, 
+      time, 
+      updatedWeekdays: Array.from(updatedWeekdays), 
+      newTimeSettings 
+    });
+    
     // 🔄 BATCH UPDATE: Update both states together, then notify parent
     setWeeklyTimeSettings(newTimeSettings);
     setSelectedWeekdays(updatedWeekdays);
@@ -965,6 +979,8 @@ export default function SimpleDatePicker({
     setEditingDayIndex(-1);
     setEditingTimeIndex(-1);
     
+    log('saveTime: modal closed, starting calendar sync', { time, editingDayIndex });
+    
     // 🔄 SYNC CALENDAR: Immediately sync weekly schedule to calendar events
     try {
       await syncWeeklyScheduleToCalendar();
@@ -979,6 +995,8 @@ export default function SimpleDatePicker({
     } catch (error) {
       err('saveTime: calendar sync failed', error);
     }
+    
+    log('saveTime: function completed successfully', { time, editingDayIndex });
   }, [editingDayIndex, editingTimeIndex, editingTimeHour, editingTimeMinute, selectedWeekdays, weeklyTimeSettings, onWeeklyScheduleChange, syncWeeklyScheduleToCalendar]);
 
   // Long press handler for date editing
