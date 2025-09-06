@@ -529,8 +529,6 @@ export default function SimpleDatePicker({
       setExcludeDates(nextExclude);
       onIncludeExcludeChange?.(nextInclude, nextExclude);
       
-      // 🔄 UPDATE WEEKLY SCHEDULE DISPLAY: Reflect schedule changes in weekly display
-      setTimeout(() => updateWeeklyScheduleFromCalendar(), 100);
       return;
     }
 
@@ -551,12 +549,6 @@ export default function SimpleDatePicker({
     setExcludeDates(nextExclude);
     onIncludeExcludeChange?.(nextInclude, nextExclude);
 
-    // Add weekdays from newly included dates to weekly schedule selection (non-destructive)
-    setSelectedWeekdays(prev => {
-      const next = new Set(prev);
-      nextInclude.forEach(d => next.add(new Date(d).getDay()));
-      return next;
-    });
     log('handleDateSelect exit:', { 
       action: 'date_select', 
       date: dateStr, 
@@ -1072,9 +1064,7 @@ export default function SimpleDatePicker({
       onIncludeExcludeChange?.(newIncludeDates, excludeDates);
     }
     
-    // 🔄 UPDATE WEEKLY SCHEDULE DISPLAY: Reflect override in weekly schedule display
-    // This only updates the DISPLAY, not the underlying weekly pattern
-    setTimeout(() => updateWeeklyScheduleFromCalendar(), 100);
+    // Weekly schedule display is now only updated by user actions and sync function
     
     // Reset input
     setDateEditTimeInput('09:00');
@@ -1201,8 +1191,7 @@ export default function SimpleDatePicker({
       console.log(`[Calendar Edit Schedule] Updated local single time for date ${selectedDateForEdit} from ${eventToReplace.time} to ${newTime}`);
     }
     
-    // Update weekly schedule display immediately to prevent UI jitter
-    updateWeeklyScheduleFromCalendar();
+    // Weekly schedule display is now only updated by user actions and sync function
     
     // Reset input
     setDateEditTimeInput('09:00');
@@ -1316,8 +1305,7 @@ export default function SimpleDatePicker({
               }
             }
             
-            // 🔄 UPDATE WEEKLY SCHEDULE DISPLAY: Reflect deletion in weekly schedule display immediately
-            updateWeeklyScheduleFromCalendar();
+            // Weekly schedule display is now only updated by user actions and sync function
             
             if (__DEV__) {
               console.log('[SimpleDatePicker] Deleted SINGLE time from this specific date only:', {
@@ -1377,54 +1365,8 @@ export default function SimpleDatePicker({
       overrideTimes: overrideTimes.sort(), 
       allTimes 
     };
-  }, [startDate, endDate, selectedWeekdays, excludeDates, includeDates, calendarEvents, today]);
+  }, [startDate, endDate, selectedWeekdays, excludeDates, includeDates, effectiveEvents, today]);
 
-  // Smart Weekly Schedule Display Update - ONLY for UI display, preserves original weekly pattern
-  const updateWeeklyScheduleFromCalendar = useCallback(() => {
-    log('updateWeeklyScheduleFromCalendar entry:', { startDate, endDate, hasCallback: !!onWeeklyScheduleChange });
-    if (!startDate || !endDate || !onWeeklyScheduleChange) return;
-    
-    // 🔄 CALENDAR-BASED DISPLAY: Only show times from visible scheduled dates
-    const visibleWeekdays = new Set<number>();
-    const visibleTimeSettings: { [key: number]: string[] } = {};
-    
-    // Build display based on what's actually visible in calendar
-    for (let weekday = 0; weekday < 7; weekday++) {
-      const { allTimes } = getCalendarEventSummaryForWeekday(weekday);
-      if (allTimes.length > 0) {
-        visibleWeekdays.add(weekday);
-        visibleTimeSettings[weekday] = allTimes;
-      }
-    }
-    
-    // Check for actual display changes to prevent unnecessary updates
-    const hasDisplayChanges = 
-      visibleWeekdays.size !== selectedWeekdays.size ||
-      Array.from(visibleWeekdays).some(weekday => !selectedWeekdays.has(weekday)) ||
-      Array.from(selectedWeekdays).some(weekday => !visibleWeekdays.has(weekday)) ||
-      Array.from(visibleWeekdays).some(weekday => {
-        const currentTimes = weeklyTimeSettings[weekday] || [];
-        const newVisibleTimes = visibleTimeSettings[weekday] || [];
-        return currentTimes.length !== newVisibleTimes.length || 
-          currentTimes.some((time, i) => time !== newVisibleTimes[i]);
-      });
-    
-    if (hasDisplayChanges) {
-      // 🔄 DISPLAY UPDATE: Only update what's shown in UI
-      setSelectedWeekdays(visibleWeekdays);
-      setWeeklyTimeSettings(visibleTimeSettings);
-      onWeeklyScheduleChange?.(visibleWeekdays, visibleTimeSettings);
-      
-      if (__DEV__) {
-        console.log('[SimpleDatePicker] Updated Weekly Schedule display based on visible calendar times:', {
-          visibleWeekdays: Array.from(visibleWeekdays),
-          visibleTimeSettings,
-          totalVisibleDays: visibleWeekdays.size
-        });
-      }
-    }
-    log('updateWeeklyScheduleFromCalendar exit:', { hasDisplayChanges, visibleWeekdaysCount: visibleWeekdays.size });
-  }, [startDate, endDate, selectedWeekdays, weeklyTimeSettings, onWeeklyScheduleChange, getCalendarEventSummaryForWeekday]);
 
   // 🔄 AUTO-UPDATE SUMMARY: Update Weekly Schedule summary when calendarEvents change
   // Prevent infinite loop by using ref for last processed events
@@ -1436,10 +1378,8 @@ export default function SimpleDatePicker({
       if (currentEventsHash !== lastProcessedEventsRef.current) {
         lastProcessedEventsRef.current = currentEventsHash;
         
-        // Automatically update the weekly schedule display based on calendar events
-        // This ensures the summary stays in sync with calendar changes
-        // Use immediate update to prevent UI jitter
-        updateWeeklyScheduleFromCalendar();
+        // Weekly schedule is now only updated by user actions and sync function
+        // No automatic reverse sync from calendar to weekly
         
         if (__DEV__) {
           console.log('[SimpleDatePicker] Auto-updating Weekly Schedule summary based on calendarEvents:', {
@@ -1450,7 +1390,7 @@ export default function SimpleDatePicker({
         }
       }
     }
-  }, [effectiveEvents, startDate, endDate, updateWeeklyScheduleFromCalendar]);
+  }, [effectiveEvents, startDate, endDate]);
 
   const clearWeeklySchedule = useCallback(() => {
     if (__DEV__) console.log('[WeeklySchedule] Clearing all weekly schedule data');
