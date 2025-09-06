@@ -814,9 +814,9 @@ export default function SimpleDatePicker({
     setShowTimePicker(true);
   }, [weeklyTimeSettings]);
 
-  const removeTime = useCallback((dayIndex: number, timeIdx: number) => {
+  const removeTime = useCallback(async (dayIndex: number, timeIdx: number) => {
     const dayName = dayShort[dayIndex];
-    console.log(`[WeeklySchedule] Removing time ${timeIdx} for ${dayName}`);
+    log('removeTime: removing weekly time', { dayIndex, timeIdx, dayName });
     
     setWeeklyTimeSettings(prev => {
       const list = prev[dayIndex] ? [...prev[dayIndex]] : [];
@@ -840,38 +840,20 @@ export default function SimpleDatePicker({
           console.log(`[WeeklySchedule] Removed ${dayName} from weekly schedule (no times left)`);
           return copy;
         });
-        
-        // 🗓️ SYNC CALENDAR: Remove all calendar schedules for this weekday within the range
-        if (startDate && endDate) {
-          const start = new Date(startDate);
-          const end = new Date(endDate);
-          
-          // Add explicit excludes for all in-range dates of this weekday
-          const explicitExcludes: string[] = [];
-          for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-            if (d.getDay() !== dayIndex) continue;
-            const ds = d.toISOString().split('T')[0];
-            if (!explicitExcludes.includes(ds)) {
-              explicitExcludes.push(ds);
-            }
-          }
-          
-          // 🔧 IMMUTABLE PATTERN: concat 사용 (push 금지)
-          setExcludeDates(prev => {
-            const next = [...prev, ...explicitExcludes]
-              .filter((v, i, a) => a.indexOf(v) === i) // Remove duplicates
-              .sort();
-            return next;
-          });
-          
-          console.log(`[Calendar] Added ${explicitExcludes.length} explicit excludes for ${dayName}`);
-        }
       }
       return next;
     });
-  }, [startDate, endDate, dayShort]);
+    
+    // 🔄 SYNC CALENDAR: Immediately sync weekly schedule to calendar events
+    try {
+      await syncWeeklyScheduleToCalendar();
+      log('removeTime: calendar sync completed');
+    } catch (error) {
+      err('removeTime: calendar sync failed', error);
+    }
+  }, [dayShort, syncWeeklyScheduleToCalendar]);
 
-  const saveTime = useCallback(() => {
+  const saveTime = useCallback(async () => {
     const time = `${editingTimeHour.padStart(2, '0')}:${editingTimeMinute.padStart(2, '0')}`;
     const timeRegex = /^([0-1][0-9]|2[0-3]):[0-5][0-9]$/;
     if (!timeRegex.test(time)) {
@@ -879,53 +861,16 @@ export default function SimpleDatePicker({
       return;
     }
     
-    // 🔄 IMMEDIATE SYNC: Calculate updated values immediately for consistent state
-    // 🔧 IMMUTABLE PATTERN: 불변 방식으로 시간 배열 처리
-    const currentTimes = weeklyTimeSettings[editingDayIndex] ? [...weeklyTimeSettings[editingDayIndex]] : [];
-    let updatedTimes: string[];
-    let hasActualChange = false;
+    log('saveTime: saving weekly time', { time, editingDayIndex, editingTimeIndex });
     
-    if (editingTimeIndex === -1) {
-      // Add new time - 🔧 IMMUTABLE: concat 사용 (push 금지)
-      if (!currentTimes.includes(time)) {
-        updatedTimes = [...currentTimes, time].sort();
-        hasActualChange = true;
-        if (__DEV__) {
-          console.log(`[WeeklySchedule] Adding new time ${time} for weekday ${editingDayIndex}`);
-        }
-      } else {
-        updatedTimes = currentTimes;
-      }
-    } else {
-      // Edit existing time - 🔧 IMMUTABLE: map 사용 (직접 수정 금지)
-      if (currentTimes[editingTimeIndex] !== time) {
-        updatedTimes = currentTimes.map((t, idx) => idx === editingTimeIndex ? time : t).sort();
-        hasActualChange = true;
-        if (__DEV__) {
-          console.log(`[WeeklySchedule] Updated time at index ${editingTimeIndex} to ${time} for weekday ${editingDayIndex}`);
-        }
-      } else {
-        updatedTimes = currentTimes;
-      }
-    }
+    // 🔧 ONE TIME PER WEEKDAY: Always replace/overwrite the previous time
+    const updatedTimes = [time]; // Always exactly one time per weekday
     
-    if (!hasActualChange) {
-      if (__DEV__) {
-        console.log(`[WeeklySchedule] No change needed for ${time} on weekday ${editingDayIndex}`);
-      }
-      setShowTimePicker(false);
-      setEditingDayIndex(-1);
-      setEditingTimeIndex(-1);
-      return;
-    }
-    
-    // Calculate updated weekdays immediately
+    // Calculate updated weekdays - ensure editingDayIndex is included
     const updatedWeekdays = new Set(selectedWeekdays);
-    if (updatedTimes.length > 0) {
-      updatedWeekdays.add(editingDayIndex);
-    }
+    updatedWeekdays.add(editingDayIndex);
     
-    // Calculate updated time settings immediately - 🔧 IMMUTABLE: updatedTimes 사용
+    // Calculate updated time settings - replace entire array with single time
     const newTimeSettings = { ...weeklyTimeSettings, [editingDayIndex]: updatedTimes } as any;
     
     // 🔄 BATCH UPDATE: Update both states together, then notify parent
@@ -944,7 +889,15 @@ export default function SimpleDatePicker({
     setShowTimePicker(false);
     setEditingDayIndex(-1);
     setEditingTimeIndex(-1);
-  }, [editingDayIndex, editingTimeIndex, editingTimeHour, editingTimeMinute, selectedWeekdays, weeklyTimeSettings, onWeeklyScheduleChange]);
+    
+    // 🔄 SYNC CALENDAR: Immediately sync weekly schedule to calendar events
+    try {
+      await syncWeeklyScheduleToCalendar();
+      log('saveTime: calendar sync completed');
+    } catch (error) {
+      err('saveTime: calendar sync failed', error);
+    }
+  }, [editingDayIndex, editingTimeIndex, editingTimeHour, editingTimeMinute, selectedWeekdays, weeklyTimeSettings, onWeeklyScheduleChange, syncWeeklyScheduleToCalendar]);
 
   // Long press handler for date editing
   const handleDateLongPress = useCallback((dateStr: string) => {
@@ -2286,7 +2239,7 @@ export default function SimpleDatePicker({
               <TouchableOpacity onPress={() => setShowTimePicker(false)} className="flex-1 bg-gray-200 rounded-lg py-3">
                 <Text className="text-gray-700 font-medium text-center">Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={saveTime} className="flex-1 bg-blue-600 rounded-lg py-3">
+              <TouchableOpacity onPress={() => saveTime()} className="flex-1 bg-blue-600 rounded-lg py-3">
                 <Text className="text-white font-medium text-center">Save</Text>
               </TouchableOpacity>
             </View>
@@ -2522,7 +2475,7 @@ export default function SimpleDatePicker({
               <TouchableOpacity onPress={() => setShowTimePicker(false)} className="flex-1 bg-gray-200 rounded-lg py-3">
                 <Text className="text-gray-700 font-medium text-center">Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={saveTime} className="flex-1 bg-blue-600 rounded-lg py-3">
+              <TouchableOpacity onPress={() => saveTime()} className="flex-1 bg-blue-600 rounded-lg py-3">
                 <Text className="text-white font-medium text-center">Save</Text>
               </TouchableOpacity>
             </View>
