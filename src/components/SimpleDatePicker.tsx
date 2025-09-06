@@ -205,6 +205,19 @@ export default function SimpleDatePicker({
   const [showDateTimeInput, setShowDateTimeInput] = useState(false);
   const [editingDateTimeIndex, setEditingDateTimeIndex] = useState(-1);
 
+  // Local fallback when parent does not provide onCalendarEventsChange
+  const [localCalendarEvents, setLocalCalendarEvents] = useState<CalendarEvent[]>([]);
+
+  const applyEventsChange = (next: CalendarEvent[]) => {
+    if (onCalendarEventsChange) onCalendarEventsChange(next);
+    else setLocalCalendarEvents(next);
+  };
+
+  const effectiveEvents: CalendarEvent[] =
+    (calendarEvents && calendarEvents.length > 0)
+      ? calendarEvents
+      : localCalendarEvents;
+
   // Change-detection to avoid loops
   const prevWeeklyDataRef = useRef<string>('');
   const prevExcludeSigRef = useRef<string>('');
@@ -323,8 +336,8 @@ export default function SimpleDatePicker({
       const baseIncluded = inRange && selectedWeekdays.has(new Date(dateStr).getDay());
       const isScheduled = inRange && ((baseIncluded && !excludeDates.includes(dateStr)) || includeDates.includes(dateStr));
       
-      // Get times from calendar events for this date - ONLY ONE TIME PER DATE
-      const dayEvents = calendarEvents.filter(event => event.date === dateStr && event.time);
+        // Get times from calendar events for this date - ONLY ONE TIME PER DATE
+        const dayEvents = effectiveEvents.filter(event => event.date === dateStr && event.time);
       
       let dayTimes: string[] = [];
       if (dayEvents.length > 0) {
@@ -468,8 +481,8 @@ export default function SimpleDatePicker({
         
         // 🔄 REMOVE CALENDAR EVENTS: When unscheduling a date, remove all its times
         if (onCalendarEventsChange) {
-          const eventsToRemove = calendarEvents.filter(event => event.date === dateStr);
-          const updatedEvents = calendarEvents.filter(event => event.date !== dateStr);
+         const eventsToRemove = effectiveEvents.filter(event => event.date === dateStr);
+         const updatedEvents = effectiveEvents.filter(event => event.date !== dateStr);
           
           // 🔄 DATABASE PERSISTENCE: Delete from database if userId and goalId are available
           if (userId && goalId && eventsToRemove.length > 0) {
@@ -486,7 +499,7 @@ export default function SimpleDatePicker({
             }
           }
           
-          onCalendarEventsChange(updatedEvents);
+          applyEventsChange(updatedEvents);
           
           if (__DEV__) {
             console.log(`[Calendar] Removed all times for unscheduled date: ${dateStr}`);
@@ -548,8 +561,8 @@ export default function SimpleDatePicker({
       action: 'date_select', 
       date: dateStr, 
       editingMode, 
-      calendarEventsCount: calendarEvents.length,
-      eventsForDate: calendarEvents.filter(e => e.date === dateStr).map(e => ({ source: e.source, time: e.time }))
+       calendarEventsCount: effectiveEvents.length,
+       eventsForDate: effectiveEvents.filter(e => e.date === dateStr).map(e => ({ source: e.source, time: e.time }))
     });
   };
 
@@ -631,36 +644,33 @@ export default function SimpleDatePicker({
   // 🔧 PATTERN SEPARATION: Apply weekly pattern (only for existing goals with Weekly 저장 버튼)
   const syncWeeklyScheduleToCalendar = useCallback(async () => {
     try {
-      if (!startDate || !endDate || !onCalendarEventsChange) return;
+      if (!startDate || !endDate) return;
       log('syncWeeklyScheduleToCalendar:start', { startDate, endDate });
 
-      // Build range [start, end]
+      // Build date list
       const start = new Date(startDate);
       const end = new Date(endDate);
       const days: string[] = [];
       for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-        days.push(getLocalYMD(d)); // keep existing YMD helper
+        days.push(getLocalYMD(d));
       }
 
-      // Map overrides by date
+      // Compute overrides map
       const overrideByDate = new Map(
-        calendarEvents
-          .filter(e => e.source === 'override')
+        effectiveEvents.filter(e => e.source === 'override')
           .map(e => [e.date, e])
       );
 
-      // Desired weekly events (no id)
-      const desiredWeekly: Omit<CalendarEvent, 'id' | 'createdAt' | 'updatedAt'>[] = [];
-
+      // Desired weekly instances (at most one per date)
+      const desiredWeekly: Omit<CalendarEvent,'id'|'createdAt'|'updatedAt'>[] = [];
       for (const ds of days) {
-        const dateObj = new Date(ds);
-        const weekday = dateObj.getDay();
+        const weekday = new Date(ds).getDay();
         const baseIncluded = selectedWeekdays.has(weekday);
         const scheduled =
           (baseIncluded && !excludeDates.includes(ds)) ||
           includeDates.includes(ds);
         if (!scheduled) continue;
-        if (overrideByDate.has(ds)) continue; // keep override
+        if (overrideByDate.has(ds)) continue; // keep per-date override
 
         const t = weeklyTimeSettings[weekday]?.[0]; // one time per weekday
         if (!t) continue;
@@ -669,18 +679,19 @@ export default function SimpleDatePicker({
           goalId: goalId ?? '',
           date: ds,
           time: t,
-          source: 'weekly'
+          source: 'weekly',
         } as any);
       }
 
-      // Remove old weekly events in range
-      const keepNonWeekly = calendarEvents.filter(
+      // Remove existing weekly within range, preserve others
+      const keep = effectiveEvents.filter(
         e => !(e.source === 'weekly' && days.includes(e.date))
       );
+      const next = [...keep, ...desiredWeekly as any];
 
-      if (userId && goalId) {
+      if (userId && goalId && CalendarEventService) {
         try {
-          const toDeleteIds = calendarEvents
+          const toDeleteIds = effectiveEvents
             .filter(e => e.source === 'weekly' && days.includes(e.date))
             .map(e => e.id)
             .filter(Boolean) as string[];
@@ -691,38 +702,28 @@ export default function SimpleDatePicker({
             await CalendarEventService.createCalendarEvents(goalId, desiredWeekly as any);
           }
           const refreshed = await CalendarEventService.getCalendarEvents(goalId, startDate, endDate);
-          onCalendarEventsChange(refreshed);
-          log('syncWeeklyScheduleToCalendar:db-updated', { weeklyCount: desiredWeekly.length });
+          applyEventsChange(refreshed);
         } catch (e) {
-          warn('syncWeeklyScheduleToCalendar:db-fallback', e);
-          onCalendarEventsChange([...keepNonWeekly, ...desiredWeekly as any]);
+          warn('syncWeeklyScheduleToCalendar: db failed, falling back', e);
+          applyEventsChange(next);
         }
       } else {
-        onCalendarEventsChange([...keepNonWeekly, ...desiredWeekly as any]);
-        log('syncWeeklyScheduleToCalendar:local-updated', { weeklyCount: desiredWeekly.length });
+        applyEventsChange(next);
       }
     } finally {
-      log('syncWeeklyScheduleToCalendar:done', { 
-        action: 'weekly_sync', 
-        date: `${startDate}_to_${endDate}`, 
-        source: 'weekly',
-        calendarEventsCount: calendarEvents.length,
-        weeklyEventsCount: calendarEvents.filter(e => e.source === 'weekly').length,
-        overrideEventsCount: calendarEvents.filter(e => e.source === 'override').length
-      });
+      log('syncWeeklyScheduleToCalendar:done');
     }
   }, [
     startDate, endDate,
     selectedWeekdays, weeklyTimeSettings,
     includeDates, excludeDates,
-    calendarEvents, onCalendarEventsChange,
-    userId, goalId
+    effectiveEvents, userId, goalId
   ]);
 
   // Helper functions for calendar
   const getTimesForDate = useCallback((dateStr: string): string[] => {
     // Get all calendar events for this specific date
-    const dateEvents = calendarEvents.filter(e => e.date === dateStr && e.time);
+    const dateEvents = effectiveEvents.filter(e => e.date === dateStr && e.time);
     
     if (dateEvents.length === 0) {
       return [];
@@ -749,7 +750,7 @@ export default function SimpleDatePicker({
     }
     
     return finalTimes;
-  }, [calendarEvents]);
+  }, [effectiveEvents]);
 
   const isDateScheduled = useCallback((dateStr: string): boolean => {
     const w = new Date(dateStr).getDay();
@@ -758,7 +759,7 @@ export default function SimpleDatePicker({
     if (!inRange) return false;
     
     // Check for calendar events for this date
-    const hasCalendarEvents = calendarEvents.some(e => e.date === dateStr);
+    const hasCalendarEvents = effectiveEvents.some(e => e.date === dateStr);
     
     // Check for weekly pattern (only if not excluded)
     const baseIncluded = selectedWeekdays.has(w) && !excludeDates.includes(dateStr);
@@ -766,7 +767,7 @@ export default function SimpleDatePicker({
     
     // Scheduled if: has calendar events OR has weekly pattern times
     return hasCalendarEvents || weeklyTimes.length > 0;
-  }, [startDate, endDate, selectedWeekdays, excludeDates, weeklyTimeSettings, calendarEvents]);
+  }, [startDate, endDate, selectedWeekdays, excludeDates, weeklyTimeSettings, effectiveEvents]);
 
   
   const toggleWeekday = useCallback((dayIndex: number) => {
@@ -910,9 +911,9 @@ export default function SimpleDatePicker({
           return copy;
         });
       }
-      return next;
-    });
-    
+            return next;
+          });
+          
     // 🔄 SYNC CALENDAR: Immediately sync weekly schedule to calendar events
     try {
       await syncWeeklyScheduleToCalendar();
@@ -921,8 +922,8 @@ export default function SimpleDatePicker({
         date: `weekday_${dayIndex}`, 
         dayName, 
         source: 'weekly',
-        calendarEventsCount: calendarEvents.length,
-        eventsForWeekday: calendarEvents.filter(e => e.source === 'weekly' && new Date(e.date).getDay() === dayIndex).map(e => ({ date: e.date, time: e.time }))
+        calendarEventsCount: effectiveEvents.length,
+        eventsForWeekday: effectiveEvents.filter(e => e.source === 'weekly' && new Date(e.date).getDay() === dayIndex).map(e => ({ date: e.date, time: e.time }))
       });
     } catch (error) {
       err('removeTime: calendar sync failed', error);
@@ -975,9 +976,9 @@ export default function SimpleDatePicker({
     }
     
     // Close modal
-    setShowTimePicker(false);
-    setEditingDayIndex(-1);
-    setEditingTimeIndex(-1);
+      setShowTimePicker(false);
+      setEditingDayIndex(-1);
+      setEditingTimeIndex(-1);
     
     log('saveTime: modal closed, starting calendar sync', { time, editingDayIndex });
     
@@ -989,8 +990,8 @@ export default function SimpleDatePicker({
         date: `weekday_${editingDayIndex}`, 
         time, 
         source: 'weekly',
-        calendarEventsCount: calendarEvents.length,
-        eventsForWeekday: calendarEvents.filter(e => e.source === 'weekly' && new Date(e.date).getDay() === editingDayIndex).map(e => ({ date: e.date, time: e.time }))
+        calendarEventsCount: effectiveEvents.length,
+        eventsForWeekday: effectiveEvents.filter(e => e.source === 'weekly' && new Date(e.date).getDay() === editingDayIndex).map(e => ({ date: e.date, time: e.time }))
       });
     } catch (error) {
       err('saveTime: calendar sync failed', error);
@@ -1025,7 +1026,7 @@ export default function SimpleDatePicker({
     log('addOrReplaceTimeForDate: processing override time', { date: selectedDateForEdit, time: dateEditTimeInput });
     
     // 🔄 ONE TIME PER DATE: Remove any existing events for this date (regardless of source)
-    const otherDateEvents = calendarEvents.filter(e => e.date !== selectedDateForEdit);
+    const otherDateEvents = effectiveEvents.filter(e => e.date !== selectedDateForEdit);
     
     // 🔄 DATABASE PERSISTENCE: Save to database if userId and goalId are available
     if (userId && goalId) {
@@ -1047,9 +1048,9 @@ export default function SimpleDatePicker({
         );
         
         // Merge with existing events from other dates
-        const otherDateEvents = calendarEvents.filter(e => e.date !== selectedDateForEdit);
+        const otherDateEvents = effectiveEvents.filter(e => e.date !== selectedDateForEdit);
         const updatedEvents = [...otherDateEvents, ...refreshedEvents];
-        onCalendarEventsChange(updatedEvents);
+        applyEventsChange(updatedEvents);
         
         console.log(`[Calendar Edit Schedule] Successfully replaced time for date ${selectedDateForEdit} with ${dateEditTimeInput} (single time per date)`);
       } catch (error) {
@@ -1059,7 +1060,7 @@ export default function SimpleDatePicker({
       }
     } else {
       // 🔄 LOCAL FALLBACK: Replace existing local events for this date
-      const otherDateEvents = calendarEvents.filter(e => e.date !== selectedDateForEdit);
+      const otherDateEvents = effectiveEvents.filter(e => e.date !== selectedDateForEdit);
       const newEvent: CalendarEvent = {
         id: `override-${selectedDateForEdit}-${dateEditTimeInput}-${Date.now()}`,
         date: selectedDateForEdit,
@@ -1072,7 +1073,7 @@ export default function SimpleDatePicker({
       
       // Only keep the new event for this date (single time per date)
       const updatedEvents = [...otherDateEvents, newEvent];
-      onCalendarEventsChange(updatedEvents);
+      applyEventsChange(updatedEvents);
       
       console.log(`[Calendar Edit Schedule] Replaced local time for date ${selectedDateForEdit} with ${dateEditTimeInput} (single time per date)`);
     }
@@ -1108,10 +1109,10 @@ export default function SimpleDatePicker({
       date: selectedDateForEdit, 
       time: dateEditTimeInput, 
       source: 'override',
-      calendarEventsCount: calendarEvents.length,
-      eventsForDate: calendarEvents.filter(e => e.date === selectedDateForEdit).map(e => ({ source: e.source, time: e.time }))
+      calendarEventsCount: effectiveEvents.length,
+      eventsForDate: effectiveEvents.filter(e => e.date === selectedDateForEdit).map(e => ({ source: e.source, time: e.time }))
     });
-  }, [selectedDateForEdit, dateEditTimeInput, calendarEvents, onCalendarEventsChange, includeDates, excludeDates, onIncludeExcludeChange, userId, goalId]);
+  }, [selectedDateForEdit, dateEditTimeInput, effectiveEvents, applyEventsChange, includeDates, excludeDates, onIncludeExcludeChange, userId, goalId]);
 
   const handleAddTimeToDate = useCallback(async () => {
     if (!selectedDateForEdit || !dateEditTimeInput.trim()) return;
@@ -1130,7 +1131,7 @@ export default function SimpleDatePicker({
     log('handleAddTimeToDate: checking for existing events', { date: selectedDateForEdit, time: dateEditTimeInput });
     
     // 🔄 ONE TIME PER DATE: Check if this date already has any events
-    const existingEventsForDate = calendarEvents.filter(e => e.date === selectedDateForEdit);
+    const existingEventsForDate = effectiveEvents.filter(e => e.date === selectedDateForEdit);
     
     // If there are existing events, show confirmation dialog
     if (existingEventsForDate.length > 0) {
@@ -1149,11 +1150,11 @@ export default function SimpleDatePicker({
     
     // No existing events, proceed directly
     await addOrReplaceTimeForDate();
-  }, [selectedDateForEdit, dateEditTimeInput, calendarEvents, onCalendarEventsChange, addOrReplaceTimeForDate]);
+  }, [selectedDateForEdit, dateEditTimeInput, effectiveEvents, addOrReplaceTimeForDate]);
 
   // Helper function to update a single time for a date (called from replace confirmation)
   const handleUpdateSingleTimeForDate = useCallback(async (eventToReplace: CalendarEvent, newTime: string) => {
-    if (!selectedDateForEdit || !onCalendarEventsChange) return;
+    if (!selectedDateForEdit) return;
     
     log('handleUpdateSingleTimeForDate: updating override time', { 
       date: selectedDateForEdit, 
@@ -1163,13 +1164,13 @@ export default function SimpleDatePicker({
     });
     
     // 🔄 ONE TIME PER DATE: Remove any existing events for this date (regardless of source)
-    const otherDateEvents = calendarEvents.filter(e => e.date !== selectedDateForEdit);
+    const otherDateEvents = effectiveEvents.filter(e => e.date !== selectedDateForEdit);
     
     // 🔄 DATABASE PERSISTENCE: Update in database if available
     if (userId && goalId) {
       try {
         // Delete existing events for this date if they exist
-        const existingEventsForDate = calendarEvents.filter(e => e.date === selectedDateForEdit);
+        const existingEventsForDate = effectiveEvents.filter(e => e.date === selectedDateForEdit);
         if (existingEventsForDate.length > 0) {
           const toDeleteIds = existingEventsForDate.map(e => e.id).filter(Boolean) as string[];
           if (toDeleteIds.length > 0) {
@@ -1189,7 +1190,7 @@ export default function SimpleDatePicker({
         // Refresh calendar events
         const refreshedEvents = await CalendarEventService.getCalendarEvents(goalId, selectedDateForEdit, selectedDateForEdit);
         const updatedEvents = [...otherDateEvents, ...refreshedEvents];
-        onCalendarEventsChange(updatedEvents);
+        applyEventsChange(updatedEvents);
         
         console.log(`[Calendar Edit Schedule] Successfully updated single time for date ${selectedDateForEdit} from ${eventToReplace.time} to ${newTime}`);
       } catch (error) {
@@ -1210,7 +1211,7 @@ export default function SimpleDatePicker({
       };
       
       const updatedEvents = [...otherDateEvents, newEvent];
-      onCalendarEventsChange(updatedEvents);
+      applyEventsChange(updatedEvents);
       
       console.log(`[Calendar Edit Schedule] Updated local single time for date ${selectedDateForEdit} from ${eventToReplace.time} to ${newTime}`);
     }
@@ -1223,10 +1224,10 @@ export default function SimpleDatePicker({
     setShowDateTimeInput(false);
     
     log('handleUpdateSingleTimeForDate: completed', { date: selectedDateForEdit, newTime });
-  }, [selectedDateForEdit, calendarEvents, onCalendarEventsChange, userId, goalId]);
+  }, [selectedDateForEdit, effectiveEvents, applyEventsChange, userId, goalId]);
 
   const handleEditTimeForDate = useCallback((timeIndex: number) => {
-    const dateEvents = calendarEvents.filter(event => event.date === selectedDateForEdit);
+    const dateEvents = effectiveEvents.filter(event => event.date === selectedDateForEdit);
     const eventToEdit = dateEvents[timeIndex];
     
     if (!eventToEdit || !eventToEdit.time) return;
@@ -1234,7 +1235,7 @@ export default function SimpleDatePicker({
     setDateEditTimeInput(eventToEdit.time);
     setEditingDateTimeIndex(timeIndex);
     setShowDateTimeInput(true);
-  }, [calendarEvents, selectedDateForEdit]);
+  }, [effectiveEvents, selectedDateForEdit]);
 
   const handleUpdateTimeForDate = useCallback(async () => {
     if (!selectedDateForEdit || !dateEditTimeInput.trim() || editingDateTimeIndex === -1) return;
@@ -1247,7 +1248,7 @@ export default function SimpleDatePicker({
     
     if (!onCalendarEventsChange) return;
     
-    const dateEvents = calendarEvents.filter(event => event.date === selectedDateForEdit);
+    const dateEvents = effectiveEvents.filter(event => event.date === selectedDateForEdit);
     const eventToUpdate = dateEvents[editingDateTimeIndex];
     
     if (!eventToUpdate) return;
@@ -1269,12 +1270,12 @@ export default function SimpleDatePicker({
         updateType: 'single-override-only'
       });
     }
-  }, [selectedDateForEdit, dateEditTimeInput, editingDateTimeIndex, calendarEvents, handleUpdateSingleTimeForDate]);
+  }, [selectedDateForEdit, dateEditTimeInput, editingDateTimeIndex, effectiveEvents, handleUpdateSingleTimeForDate]);
 
   const handleDeleteTimeForDate = useCallback(async (timeIndex: number) => {
-    if (!selectedDateForEdit || !onCalendarEventsChange) return;
+    if (!selectedDateForEdit) return;
     
-    const dateEvents = calendarEvents.filter(event => event.date === selectedDateForEdit);
+    const dateEvents = effectiveEvents.filter(event => event.date === selectedDateForEdit);
     const eventToDelete = dateEvents[timeIndex];
     
     if (!eventToDelete) return;
@@ -1298,9 +1299,9 @@ export default function SimpleDatePicker({
                 
                 // Refresh calendar events after successful database delete
                 const refreshedEvents = await CalendarEventService.getCalendarEvents(goalId, selectedDateForEdit, selectedDateForEdit);
-                const otherDateEvents = calendarEvents.filter(e => e.date !== selectedDateForEdit);
+                const otherDateEvents = effectiveEvents.filter(e => e.date !== selectedDateForEdit);
                 const updatedEvents = [...otherDateEvents, ...refreshedEvents];
-                onCalendarEventsChange(updatedEvents);
+                applyEventsChange(updatedEvents);
                 
                 console.log(`[Calendar Edit Schedule] Successfully deleted override time ${eventToDelete.time} for date ${selectedDateForEdit} from database`);
               } catch (error) {
@@ -1310,14 +1311,14 @@ export default function SimpleDatePicker({
               }
             } else {
               // 🔄 LOCAL FALLBACK: Delete from local events
-              const updatedEvents = calendarEvents.filter(event => event.id !== eventToDelete.id);
-              onCalendarEventsChange(updatedEvents);
+              const updatedEvents = effectiveEvents.filter(event => event.id !== eventToDelete.id);
+              applyEventsChange(updatedEvents);
               
               console.log(`[Calendar Edit Schedule] Deleted local time ${eventToDelete.time} for date ${selectedDateForEdit}`);
             }
             
             // 🔄 CHECK IF THIS DATE SHOULD BE REMOVED FROM SCHEDULE
-            const remainingTimesForDate = calendarEvents.filter(e => e.date === selectedDateForEdit && e.id !== eventToDelete.id);
+            const remainingTimesForDate = effectiveEvents.filter(e => e.date === selectedDateForEdit && e.id !== eventToDelete.id);
             
             if (remainingTimesForDate.length === 0) {
               // No more times for this date, consider removing from include dates
@@ -1347,7 +1348,7 @@ export default function SimpleDatePicker({
         }
       ]
     );
-  }, [selectedDateForEdit, calendarEvents, onCalendarEventsChange, includeDates, excludeDates, onIncludeExcludeChange, userId, goalId]);
+  }, [selectedDateForEdit, effectiveEvents, applyEventsChange, includeDates, excludeDates, onIncludeExcludeChange, userId, goalId]);
 
   // 🔄 VISIBLE TIMES ONLY: Get times summary based on what's actually visible in calendar (scheduled dates only)
   const getCalendarEventSummaryForWeekday = useCallback((weekdayIndex: number) => {
@@ -1372,7 +1373,7 @@ export default function SimpleDatePicker({
         if (!isScheduled) continue;
         
         // Get events for this scheduled date
-        const dayEvents = calendarEvents.filter(e => e.date === dateStr);
+        const dayEvents = effectiveEvents.filter(e => e.date === dateStr);
         dayEvents.forEach(event => {
           if (event.time) {
             if (event.source === 'weekly' && !weeklyTimes.includes(event.time)) {
@@ -1444,9 +1445,9 @@ export default function SimpleDatePicker({
   // Prevent infinite loop by using ref for last processed events
   const lastProcessedEventsRef = useRef<string>('');
   useEffect(() => {
-    if (calendarEvents.length > 0 && startDate && endDate) {
-      // Check if calendarEvents actually changed to prevent infinite loops
-      const currentEventsHash = JSON.stringify(calendarEvents.map(e => `${e.date}_${e.time}_${e.source}`).sort());
+    if (effectiveEvents.length > 0 && startDate && endDate) {
+      // Check if effectiveEvents actually changed to prevent infinite loops
+      const currentEventsHash = JSON.stringify(effectiveEvents.map(e => `${e.date}_${e.time}_${e.source}`).sort());
       if (currentEventsHash !== lastProcessedEventsRef.current) {
         lastProcessedEventsRef.current = currentEventsHash;
         
@@ -1457,14 +1458,14 @@ export default function SimpleDatePicker({
         
         if (__DEV__) {
           console.log('[SimpleDatePicker] Auto-updating Weekly Schedule summary based on calendarEvents:', {
-            eventsCount: calendarEvents.length,
-            weeklyEvents: calendarEvents.filter(e => e.source === 'weekly').length,
-            overrideEvents: calendarEvents.filter(e => e.source === 'override').length
+            eventsCount: effectiveEvents.length,
+            weeklyEvents: effectiveEvents.filter(e => e.source === 'weekly').length,
+            overrideEvents: effectiveEvents.filter(e => e.source === 'override').length
           });
         }
       }
     }
-  }, [calendarEvents, startDate, endDate, updateWeeklyScheduleFromCalendar]);
+  }, [effectiveEvents, startDate, endDate, updateWeeklyScheduleFromCalendar]);
 
   const clearWeeklySchedule = useCallback(() => {
     if (__DEV__) console.log('[WeeklySchedule] Clearing all weekly schedule data');
@@ -1779,8 +1780,8 @@ export default function SimpleDatePicker({
                             <Text className="text-orange-800 font-medium mr-1">{t}</Text>
                             <View className="ml-1 px-1 bg-orange-200 rounded">
                               <Text className="text-orange-800 text-xs font-bold">!</Text>
-                            </View>
-                          </View>
+                      </View>
+                    </View>
                         ))}
                       </View>
                       <Text className="text-xs text-gray-500 mt-1">
@@ -1946,9 +1947,9 @@ export default function SimpleDatePicker({
                         {/* Display single time from calendar events */}
                         {dayData.times && dayData.times.length > 0 && (
                           <View className="mt-1 px-1">
-                            <Text className="text-xs text-green-600 text-center leading-3 font-medium">
+                                <Text className="text-xs text-green-600 text-center leading-3 font-medium">
                               {dayData.times[0]}
-                            </Text>
+                                </Text>
                           </View>
                         )}
                         
@@ -2282,14 +2283,14 @@ export default function SimpleDatePicker({
           <View className="flex-row items-center mb-3">
             <Ionicons name="warning" size={20} color="#DC2626" />
             <Text className="text-red-800 font-semibold ml-2 text-base">Schedule Requirements Not Met</Text>
-          </View>
+              </View>
           <View className="ml-1">
             {validationResult.issues.map((issue, index) => (
               <Text key={index} className="text-red-700 text-sm mb-2 leading-5">
                 • {issue}
               </Text>
-            ))}
-          </View>
+          ))}
+        </View>
           <View className="mt-2 pt-2 border-t border-red-200">
             <Text className="text-red-600 text-xs font-medium">
               💡 Tip: Add more scheduled times or adjust your goal requirements to proceed.
@@ -2413,7 +2414,7 @@ export default function SimpleDatePicker({
             {/* Current single time display */}
             <View className="mb-4">
               {(() => {
-                const dateEvents = selectedDateForEdit ? calendarEvents.filter(event => event.date === selectedDateForEdit) : [];
+                const dateEvents = selectedDateForEdit ? effectiveEvents.filter(event => event.date === selectedDateForEdit) : [];
                 const currentTime = dateEvents.length > 0 ? dateEvents[0] : null;
                 
                 if (currentTime) {
@@ -2458,7 +2459,7 @@ export default function SimpleDatePicker({
               <View className="border-t border-gray-200 pt-4">
                 <Text className="text-sm font-medium text-gray-700 mb-2">
                   {editingDateTimeIndex >= 0 ? 'Edit Time' : 'Add New Time'}
-                </Text>
+              </Text>
                 
                 <View className="flex-row justify-center space-x-4 mb-4">
                   {/* Hour Picker */}
@@ -2546,7 +2547,7 @@ export default function SimpleDatePicker({
                 
                 <TouchableOpacity 
                   onPress={() => {
-                    const dateEvents = selectedDateForEdit ? calendarEvents.filter(event => event.date === selectedDateForEdit) : [];
+                    const dateEvents = selectedDateForEdit ? effectiveEvents.filter(event => event.date === selectedDateForEdit) : [];
                     const hasExistingTime = dateEvents.length > 0;
                     
                     if (hasExistingTime) {
@@ -2584,46 +2585,46 @@ export default function SimpleDatePicker({
         <View className="flex-1 justify-center items-center">
           <View className="bg-white mx-6 rounded-xl p-4 shadow-2xl border border-gray-300 w-80" style={{ elevation: 8 }}>
             <Text className="text-center text-lg font-semibold text-gray-800 mb-3">{editingTimeIndex === -1 ? 'Add Time' : 'Edit Time'}</Text>
-            <View className="flex-row items-start justify-center gap-6">
-              {/* Hour Picker (00-23) */}
-              <View>
-                <Text className="text-center text-sm text-gray-600 mb-1 font-medium">Hour</Text>
-                <View className="rounded-lg border border-gray-300 overflow-hidden" style={{ width: 120 }}>
-                  <Picker
+              <View className="flex-row items-start justify-center gap-6">
+                {/* Hour Picker (00-23) */}
+                <View>
+                  <Text className="text-center text-sm text-gray-600 mb-1 font-medium">Hour</Text>
+                  <View className="rounded-lg border border-gray-300 overflow-hidden" style={{ width: 120 }}>
+                      <Picker
                     selectedValue={editingTimeHour}
                     onValueChange={(v) => setEditingTimeHour(String(v).padStart(2, '0'))}
-                    style={{ height: 150 }}
-                  >
-                    {Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0')).map(h => (
-                      <Picker.Item key={h} label={h} value={h} />
-                    ))}
-                  </Picker>
-                </View>
-              </View>
-              {/* Minute Picker (00-59) */}
-              <View>
-                <Text className="text-center text-sm text-gray-600 mb-1 font-medium">Minute</Text>
-                <View className="rounded-lg border border-gray-300 overflow-hidden" style={{ width: 120 }}>
-                  <Picker
+                      style={{ height: 150 }}
+                    >
+                      {Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0')).map(h => (
+                        <Picker.Item key={h} label={h} value={h} />
+                        ))}
+                      </Picker>
+                    </View>
+                  </View>
+                {/* Minute Picker (00-59) */}
+                <View>
+                  <Text className="text-center text-sm text-gray-600 mb-1 font-medium">Minute</Text>
+                  <View className="rounded-lg border border-gray-300 overflow-hidden" style={{ width: 120 }}>
+                      <Picker
                     selectedValue={editingTimeMinute}
                     onValueChange={(v) => setEditingTimeMinute(String(v).padStart(2, '0'))}
-                    style={{ height: 150 }}
-                  >
-                    {Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0')).map(m => (
-                      <Picker.Item key={m} label={m} value={m} />
-                    ))}
-                  </Picker>
+                      style={{ height: 150 }}
+                    >
+                      {Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0')).map(m => (
+                        <Picker.Item key={m} label={m} value={m} />
+                        ))}
+                      </Picker>
+                    </View>
+                  </View>
                 </View>
-              </View>
-            </View>
-            <View className="flex-row space-x-3 mt-4">
+                            <View className="flex-row space-x-3 mt-4">
               <TouchableOpacity onPress={() => setShowTimePicker(false)} className="flex-1 bg-gray-200 rounded-lg py-3">
-                <Text className="text-gray-700 font-medium text-center">Cancel</Text>
-              </TouchableOpacity>
+                  <Text className="text-gray-700 font-medium text-center">Cancel</Text>
+                </TouchableOpacity>
               <TouchableOpacity onPress={() => saveTime()} className="flex-1 bg-blue-600 rounded-lg py-3">
                 <Text className="text-white font-medium text-center">Save</Text>
-              </TouchableOpacity>
-            </View>
+                    </TouchableOpacity>
+              </View>
           </View>
         </View>
       </Modal>
