@@ -584,27 +584,87 @@ export default function SimpleDatePicker({
   
   // 🔧 PATTERN SEPARATION: Apply weekly pattern (only for existing goals with Weekly 저장 버튼)
   const syncWeeklyScheduleToCalendar = useCallback(async () => {
-    log('syncWeeklyScheduleToCalendar entry:', { startDate, endDate, userId: !!userId, goalId: !!goalId });
-    if (!startDate || !endDate || !userId || !goalId) {
-      // Skip sync for new goals (e.g., in CreateGoalModal)
-      console.log('[SimpleDatePicker] Skipping weekly pattern apply - missing context');
-      log('syncWeeklyScheduleToCalendar exit: skipped - missing context');
-      return;
-    }
-    
     try {
-      // Convert Set to array for the service
-      const weekdaysArray = Array.from(selectedWeekdays);
-      
-      // Apply weekly pattern using standard CalendarEventService
-      console.log('[SimpleDatePicker] Weekly pattern sync - simplified implementation');
-      log('syncWeeklyScheduleToCalendar exit: success');
-    } catch (error) {
-      console.error('[SimpleDatePicker] Failed to apply weekly pattern:', error);
-      err('syncWeeklyScheduleToCalendar exit: error', error);
-      // Don't throw error to avoid breaking the UI
+      if (!startDate || !endDate || !onCalendarEventsChange) return;
+      log('syncWeeklyScheduleToCalendar:start', { startDate, endDate });
+
+      // Build range [start, end]
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      const days: string[] = [];
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        days.push(getLocalYMD(d)); // keep existing YMD helper
+      }
+
+      // Map overrides by date
+      const overrideByDate = new Map(
+        calendarEvents
+          .filter(e => e.source === 'override')
+          .map(e => [e.date, e])
+      );
+
+      // Desired weekly events (no id)
+      const desiredWeekly: Omit<CalendarEvent, 'id' | 'createdAt' | 'updatedAt'>[] = [];
+
+      for (const ds of days) {
+        const dateObj = new Date(ds);
+        const weekday = dateObj.getDay();
+        const baseIncluded = selectedWeekdays.has(weekday);
+        const scheduled =
+          (baseIncluded && !excludeDates.includes(ds)) ||
+          includeDates.includes(ds);
+        if (!scheduled) continue;
+        if (overrideByDate.has(ds)) continue; // keep override
+
+        const t = weeklyTimeSettings[weekday]?.[0]; // one time per weekday
+        if (!t) continue;
+
+        desiredWeekly.push({
+          goalId: goalId ?? '',
+          date: ds,
+          time: t,
+          source: 'weekly'
+        } as any);
+      }
+
+      // Remove old weekly events in range
+      const keepNonWeekly = calendarEvents.filter(
+        e => !(e.source === 'weekly' && days.includes(e.date))
+      );
+
+      if (userId && goalId) {
+        try {
+          const toDeleteIds = calendarEvents
+            .filter(e => e.source === 'weekly' && days.includes(e.date))
+            .map(e => e.id)
+            .filter(Boolean) as string[];
+          if (toDeleteIds.length) {
+            await CalendarEventService.deleteCalendarEvents(goalId, toDeleteIds);
+          }
+          if (desiredWeekly.length) {
+            await CalendarEventService.createCalendarEvents(goalId, desiredWeekly as any);
+          }
+          const refreshed = await CalendarEventService.getCalendarEvents(goalId, startDate, endDate);
+          onCalendarEventsChange(refreshed);
+          log('syncWeeklyScheduleToCalendar:db-updated', { weeklyCount: desiredWeekly.length });
+        } catch (e) {
+          warn('syncWeeklyScheduleToCalendar:db-fallback', e);
+          onCalendarEventsChange([...keepNonWeekly, ...desiredWeekly as any]);
+        }
+      } else {
+        onCalendarEventsChange([...keepNonWeekly, ...desiredWeekly as any]);
+        log('syncWeeklyScheduleToCalendar:local-updated', { weeklyCount: desiredWeekly.length });
+      }
+    } finally {
+      log('syncWeeklyScheduleToCalendar:done');
     }
-  }, [startDate, endDate, selectedWeekdays, weeklyTimeSettings, userId, goalId]);
+  }, [
+    startDate, endDate,
+    selectedWeekdays, weeklyTimeSettings,
+    includeDates, excludeDates,
+    calendarEvents, onCalendarEventsChange,
+    userId, goalId
+  ]);
 
   // Helper functions for calendar
   const getTimesForDate = useCallback((dateStr: string): string[] => {
