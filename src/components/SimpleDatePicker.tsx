@@ -413,7 +413,7 @@ export default function SimpleDatePicker({
 
   // Removed snapping block (we only update header dynamically)
 
-  const handleDateSelect = (dateStr: string) => {
+  const handleDateSelect = async (dateStr: string) => {
     log('handleDateSelect entry:', { dateStr, editingMode, today });
     if (dateStr < today) return; // Don't allow past dates
 
@@ -445,7 +445,24 @@ export default function SimpleDatePicker({
         
         // 🔄 REMOVE CALENDAR EVENTS: When unscheduling a date, remove all its times
         if (onCalendarEventsChange) {
+          const eventsToRemove = calendarEvents.filter(event => event.date === dateStr);
           const updatedEvents = calendarEvents.filter(event => event.date !== dateStr);
+          
+          // 🔄 DATABASE PERSISTENCE: Delete from database if userId and goalId are available
+          if (userId && goalId && eventsToRemove.length > 0) {
+            try {
+              const toDeleteIds = eventsToRemove.map(e => e.id).filter(Boolean) as string[];
+              if (toDeleteIds.length > 0) {
+                await CalendarEventService.deleteCalendarEvents(goalId, toDeleteIds);
+                log('handleDateSelect: deleted events from database', { dateStr, deletedCount: toDeleteIds.length });
+              }
+            } catch (error) {
+              console.error('[Calendar] Error deleting events from database:', error);
+              err('handleDateSelect: database delete failed', error);
+              // Continue with local update even if database delete fails
+            }
+          }
+          
           onCalendarEventsChange(updatedEvents);
           
           if (__DEV__) {
