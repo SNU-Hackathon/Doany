@@ -1992,67 +1992,20 @@ export default function SimpleDatePicker({
         </View>
         <Text className="text-xs text-gray-500 mt-2">Select one or more methods to verify your progress. AI-selected methods are locked.</Text>
 
-        {/* Dynamic automation summary based on weekly schedule and selected methods */}
-        {selectedWeekdays.size > 0 && (
-          <View className="mt-3 bg-gray-50 border border-gray-200 rounded-lg p-3">
-            {(() => {
-              const selected = new Set(verificationMethods || []);
-              const hasTimeMethod = selected.has('time' as any);
-              const hasManualMethod = selected.has('manual' as any);
-              const hasLocationMethod = selected.has('location' as any);
-              const hasPhotoMethod = selected.has('photo' as any);
-              const hasScreenTimeMethod = selected.has('screentime' as any);
-
-              const selectedDays = Array.from(selectedWeekdays).sort();
-              const daysWithTimes = selectedDays.filter(d => (weeklyTimeSettings?.[d] || []).length > 0);
-              const daysWithoutTimes = selectedDays.filter(d => !(weeklyTimeSettings?.[d]) || (weeklyTimeSettings?.[d] || []).length === 0);
-              const hasAnyTimes = daysWithTimes.length > 0;
-              const hasDayWithoutTimes = daysWithoutTimes.length > 0;
-
-              const formatDay = (idx: number) => dayShort[idx];
-              const sampleSlots: string[] = [];
-              daysWithTimes.forEach(d => {
-                (weeklyTimeSettings?.[d] || []).forEach(t => {
-                  if (sampleSlots.length < 6) sampleSlots.push(`${formatDay(d)} ${t}`);
-                });
-              });
-
-              const bullets: string[] = [];
-              if (hasAnyTimes && hasTimeMethod) {
-                const slotPreview = sampleSlots.length > 0 ? ` (e.g., ${sampleSlots.join(', ')}${sampleSlots.length >= 6 ? '…' : ''})` : '';
-                const extras: string[] = [];
-                if (hasLocationMethod) extras.push('Location');
-                if (hasPhotoMethod) extras.push('Photo');
-                if (hasScreenTimeMethod) extras.push('Screen Time');
-                // Do not include Manual here; manual is covered for days without times below
-                if (extras.length > 0) {
-                  bullets.push(`At scheduled times${slotPreview}: ${extras.join(' + ')} verification will run automatically.`);
-                } else {
-                  bullets.push(`At scheduled times${slotPreview}: Time-based verification will run.`);
-                }
-              }
-
-              if (hasDayWithoutTimes && hasManualMethod) {
-                const dayList = daysWithoutTimes.map(formatDay).join(', ');
-                bullets.push(`On selected days without times (${dayList}): Manual check-in is required.`);
-              }
-
-              if (bullets.length === 0) {
-                // Generic fallback when no clear automation applies
-                return (
-                  <Text className="text-gray-600 text-xs">Configure times to enable automatic verifications on those slots.</Text>
-                );
-              }
-
-              return bullets.map((line, idx) => (
-                <View key={idx} className="flex-row items-start mb-1">
+        {/* Verification Summary */}
+        {(() => {
+          const note = generateVerificationNote();
+          return note && (
+            <View className="mt-3 bg-gray-50 border border-gray-200 rounded-lg p-3">
+              {note.split('\n').map((line, i) => (
+                <View key={i} className="flex-row items-start mb-1">
                   <Text className="text-gray-500 text-xs mr-1">•</Text>
                   <Text className="text-gray-700 text-xs flex-1">{line}</Text>
                 </View>
-              ));
-            })()}
-          </View>
-        )}
+              ))}
+            </View>
+          );
+        })()}
 
         {/* AI Success Criteria */}
         {!!aiSuccessCriteria && (
