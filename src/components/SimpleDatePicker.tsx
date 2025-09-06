@@ -154,7 +154,6 @@ export default function SimpleDatePicker({
   const [excludeDates, setExcludeDates] = useState<string[]>(initialExcludeDates);
 
   // Calendar state
-  const [overrideEvents, setOverrideEvents] = useState<CalendarEvent[]>([]);
 
 
   // Ensure an initial endDate exists so that the current period is active
@@ -314,15 +313,28 @@ export default function SimpleDatePicker({
       const isScheduled = inRange && ((baseIncluded && !excludeDates.includes(dateStr)) || includeDates.includes(dateStr));
       
       // Get times from calendar events for this date - ONLY ONE TIME PER DATE
-      const dayEvents = calendarEvents.filter(event => event.date === dateStr);
-      const allDayTimes = dayEvents
-        .map(event => event.time)
-        .filter(time => time) // Remove null/undefined times
-        .sort()
-        .filter((time, index, array) => array.indexOf(time) === index); // Remove duplicates
+      const dayEvents = calendarEvents.filter(event => event.date === dateStr && event.time);
       
-      // 🔄 SINGLE TIME PER DATE: Show only the first (most recent) time
-      const dayTimes = allDayTimes.length > 0 ? [allDayTimes[0]] : [];
+      let dayTimes: string[] = [];
+      if (dayEvents.length > 0) {
+        // Priority: override > weekly, then sort by time and pick first
+        const overrideEvents = dayEvents.filter(e => e.source === 'override');
+        const weeklyEvents = dayEvents.filter(e => e.source === 'weekly');
+        
+        if (overrideEvents.length > 0) {
+          // Prefer override times, sort by time and take first
+          dayTimes = overrideEvents
+            .map(e => e.time!)
+            .sort()
+            .slice(0, 1);
+        } else if (weeklyEvents.length > 0) {
+          // Use weekly times, sort by time and take first
+          dayTimes = weeklyEvents
+            .map(e => e.time!)
+            .sort()
+            .slice(0, 1);
+        }
+      }
       
       // 🔄 SCHEDULE-BASED TIME DISPLAY: Only show times for scheduled dates
       const visibleTimes = isScheduled ? dayTimes : [];
@@ -685,20 +697,35 @@ export default function SimpleDatePicker({
 
   // Helper functions for calendar
   const getTimesForDate = useCallback((dateStr: string): string[] => {
-    const w = new Date(dateStr).getDay();
-    const inRange = endDate && dateStr >= (startDate || today) && dateStr <= endDate;
-    const baseIncluded = inRange && selectedWeekdays.has(w) && !excludeDates.includes(dateStr);
+    // Get all calendar events for this specific date
+    const dateEvents = calendarEvents.filter(e => e.date === dateStr && e.time);
     
-    // Get weekly times for this weekday
-    const weeklyTimes = baseIncluded ? (weeklyTimeSettings[w] || weeklyTimeSettings[String(w)] || []) : [];
+    if (dateEvents.length === 0) {
+      return [];
+    }
     
-    // Get per-date times for this specific date
-    const overrideTimes = overrideEvents.filter(e => e.date === dateStr && e.time).map(e => e.time!);
+    // Priority: override > weekly, then sort by time and pick first
+    const overrideEvents = dateEvents.filter(e => e.source === 'override');
+    const weeklyEvents = dateEvents.filter(e => e.source === 'weekly');
     
-    // If override times exist, use ONLY the first one; otherwise use first weekly time
-    const finalTimes = overrideTimes.length > 0 ? overrideTimes : weeklyTimes;
-    return finalTimes.length > 0 ? [finalTimes[0]] : [];
-  }, [startDate, endDate, selectedWeekdays, excludeDates, weeklyTimeSettings, overrideEvents]);
+    let finalTimes: string[] = [];
+    
+    if (overrideEvents.length > 0) {
+      // Prefer override times, sort by time and take first
+      finalTimes = overrideEvents
+        .map(e => e.time!)
+        .sort()
+        .slice(0, 1);
+    } else if (weeklyEvents.length > 0) {
+      // Use weekly times, sort by time and take first
+      finalTimes = weeklyEvents
+        .map(e => e.time!)
+        .sort()
+        .slice(0, 1);
+    }
+    
+    return finalTimes;
+  }, [calendarEvents]);
 
   const isDateScheduled = useCallback((dateStr: string): boolean => {
     const w = new Date(dateStr).getDay();
@@ -706,16 +733,16 @@ export default function SimpleDatePicker({
     
     if (!inRange) return false;
     
-    // Check for override events (with or without time)
-    const hasOverride = overrideEvents.some(e => e.date === dateStr);
+    // Check for calendar events for this date
+    const hasCalendarEvents = calendarEvents.some(e => e.date === dateStr);
     
     // Check for weekly pattern (only if not excluded)
     const baseIncluded = selectedWeekdays.has(w) && !excludeDates.includes(dateStr);
     const weeklyTimes = baseIncluded ? (weeklyTimeSettings[w] || weeklyTimeSettings[String(w)] || []) : [];
     
-    // Scheduled if: has override OR has weekly pattern times
-    return hasOverride || weeklyTimes.length > 0;
-  }, [startDate, endDate, selectedWeekdays, excludeDates, weeklyTimeSettings, overrideEvents]);
+    // Scheduled if: has calendar events OR has weekly pattern times
+    return hasCalendarEvents || weeklyTimes.length > 0;
+  }, [startDate, endDate, selectedWeekdays, excludeDates, weeklyTimeSettings, calendarEvents]);
 
   
   const toggleWeekday = useCallback((dayIndex: number) => {
