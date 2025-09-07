@@ -34,6 +34,7 @@
  * ✅ Hypothesis #2: Local fallback already implemented - effectiveEvents unified read source
  * ✅ Hypothesis #3: Weekly→calendar materialization already implemented - syncWeeklyScheduleToCalendar function
  * ✅ Hypothesis #4: Fixed bad back-propagation - removed Weekly mutation from include/exclude changes
+ * ✅ Hypothesis #5: Long-press already works without guards - one-time-per-date normalization implemented
  */
 
 import { Ionicons } from '@expo/vector-icons';
