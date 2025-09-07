@@ -36,6 +36,7 @@
  * ✅ Hypothesis #4: Fixed bad back-propagation - removed Weekly mutation from include/exclude changes
  * ✅ Hypothesis #5: Long-press already works without guards - one-time-per-date normalization implemented
  * ✅ Hypothesis #6: Implemented navigation button handlers using existing refs/layout
+ * ✅ Hypothesis #7: Replaced duplicate calendar in Verification with clean bullet summary
  */
 
 import { Ionicons } from '@expo/vector-icons';
@@ -2248,134 +2249,17 @@ export default function SimpleDatePicker({
           </View>
         )}
 
-        {/* Calendar */}
-        <View className="mb-6">
-          {/* Calendar header */}
-          <View className="mb-4">
-            <Text className="text-lg font-semibold text-gray-800 mb-2">Calendar</Text>
-            <View className="flex-row space-x-2 mb-4">
-              <TouchableOpacity
-                onPress={() => setEditingMode('period')}
-                className={`px-4 py-2 rounded-lg ${editingMode === 'period' ? 'bg-blue-600' : 'bg-gray-200'}`}
-              >
-                <Text className={`font-medium ${editingMode === 'period' ? 'text-white' : 'text-gray-700'}`}>
-                  Edit Period
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => setEditingMode('schedule')}
-                className={`px-4 py-2 rounded-lg ${editingMode === 'schedule' ? 'bg-green-600' : 'bg-gray-200'}`}
-              >
-                <Text className={`font-medium ${editingMode === 'schedule' ? 'text-white' : 'text-gray-700'}`}>
-                  Edit Schedule
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-          
-          {/* Calendar grid */}
-          {(() => {
-            const currentDisplayMonth = new Date();
-            const year = currentDisplayMonth.getFullYear();
-            const month = currentDisplayMonth.getMonth();
-            const firstDay = new Date(year, month, 1);
-            const lastDay = new Date(year, month + 1, 0);
-            const startingDay = firstDay.getDay();
-            const days: any[] = [];
-
-            // Add empty cells for days before the first day
-            for (let i = 0; i < startingDay; i++) days.push(null);
-
-            // Add actual days
-            for (let day = 1; day <= lastDay.getDate(); day++) {
-              const dateStr = getLocalYMD(new Date(year, month, day));
-              const inRange = !!(endDate && dateStr >= (startDate || today) && dateStr <= endDate);
-              const times = getTimesForDate(dateStr);
-              const isScheduled = isDateScheduled(dateStr);
-              
-              days.push({
-                day,
-                dateStr,
-                isToday: dateStr === today,
-                isPast: dateStr < today,
-                isSelected: dateStr === startDate || (endDate && dateStr === endDate),
-                isInRange: inRange,
-                isScheduled,
-                times: times
-              });
-            }
-
-            return (
-              <View>
-                {/* Day headers */}
-                <View className="flex-row mb-2">
-                  {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((day) => (
-                    <View key={day} className="flex-1">
-                      <Text className="text-center text-sm font-semibold text-gray-600">{day}</Text>
-                    </View>
-                  ))}
-                </View>
-                
-                {/* Calendar grid */}
-                <View className="flex-row flex-wrap">
-                  {days.map((dayData: any, index: number) => (
-                    <View key={index} className="w-[14.28%] p-1" style={{ aspectRatio: 1 }}>
-                      {dayData ? (
-                        <TouchableOpacity
-                            className={`flex-1 justify-between items-center rounded relative py-1 ${
-                              dayData.isPast ? 'bg-gray-100' :
-                              editingMode === 'schedule' && dayData.isScheduled ? 'bg-green-200' :
-                              dayData.isSelected ? 'bg-blue-600' :
-                              dayData.isInRange ? 'bg-blue-100' :
-                              dayData.isToday ? 'bg-blue-50' :
-                              'bg-gray-50'
-                            }`}
-                            onPress={() => handleDateSelect(dayData.dateStr)}
-                            onLongPress={() => {
-                              if (!dayData.isPast && dayData.dateStr) {
-                                handleDateLongPress(dayData.dateStr);
-                              }
-                            }}
-                            delayLongPress={400}
-                            disabled={dayData.isPast}
-                          >
-                            <Text className={`text-sm font-semibold ${
-                              dayData.isPast ? 'text-gray-400' :
-                              editingMode === 'schedule' && dayData.isScheduled ? 'text-green-900' :
-                              dayData.isSelected ? 'text-white' :
-                              dayData.isInRange ? 'text-blue-600' :
-                              dayData.isToday ? 'text-blue-800' :
-                              'text-gray-800'
-                            }`}>{dayData.day}</Text>
-                            
-                            {/* Time display */}
-                            {dayData.times && dayData.times.length > 0 && (
-                              <Text className={`text-xs font-medium ${
-                                dayData.isPast ? 'text-gray-400' :
-                                editingMode === 'schedule' && dayData.isScheduled ? 'text-green-700' :
-                                dayData.isSelected ? 'text-white' :
-                                dayData.isInRange ? 'text-green-600' :
-                                dayData.isToday ? 'text-green-700' :
-                                'text-green-600'
-                              }`}>
-                                {dayData.times[0]}
-                              </Text>
-                            )}
-                            
-                            {dayData.isToday && (
-                              <View pointerEvents="none" className="absolute inset-0 rounded border-2 border-blue-600" />
-                            )}
-                          </TouchableOpacity>
-                      ) : (
-                        <View className="flex-1" />
-                      )}
-                    </View>
-                  ))}
-                </View>
+        {/* Verification Summary */}
+        {generateVerificationNote && (
+          <View className="mt-3 bg-gray-50 border border-gray-200 rounded-lg p-3">
+            {generateVerificationNote().split('\n').map((line, i) => (
+              <View key={i} className="flex-row items-start mb-1">
+                <Text className="text-gray-500 text-xs mr-1">•</Text>
+                <Text className="text-gray-700 text-xs flex-1">{line}</Text>
               </View>
-            );
-          })()}
-        </View>
+            ))}
+          </View>
+        )}
 
         {/* Target Location selection (when Location method selected) */}
         {(verificationMethods || []).includes('location' as any) && (
