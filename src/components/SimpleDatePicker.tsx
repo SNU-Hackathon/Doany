@@ -33,6 +33,7 @@
  * ✅ Hypothesis #1: Applied microtask deferral for parent callbacks
  * ✅ Hypothesis #2: Local fallback already implemented - effectiveEvents unified read source
  * ✅ Hypothesis #3: Weekly→calendar materialization already implemented - syncWeeklyScheduleToCalendar function
+ * ✅ Hypothesis #4: Fixed bad back-propagation - removed Weekly mutation from include/exclude changes
  */
 
 import { Ionicons } from '@expo/vector-icons';
@@ -672,24 +673,7 @@ export default function SimpleDatePicker({
       setExcludeDates(nextExclude);
       defer(() => onIncludeExcludeChange?.(nextInclude, nextExclude));
 
-      // Reflect include dates back to weekly schedule selection (non-destructive)
-      setSelectedWeekdays(prev => {
-        const next = new Set<number>();
-        // Only keep weekdays that have at least one included date still in range
-        nextInclude.forEach(d => next.add(new Date(d).getDay()));
-        return next;
-      });
-      // Clear times for weekdays no longer selected
-      setWeeklyTimeSettings(prev => {
-        const keepDays = new Set<number>();
-        nextInclude.forEach(d => keepDays.add(new Date(d).getDay()));
-        const copy: any = {};
-        Object.keys(prev).forEach(k => {
-          const di = parseInt(k, 10);
-          if (keepDays.has(di)) copy[di] = prev[di];
-        });
-        return copy;
-      });
+      // Do not mutate Weekly from include/exclude. Weekly is edited only in Weekly editor.
     }
   };
 
@@ -709,22 +693,7 @@ export default function SimpleDatePicker({
       setExcludeDates(nextExclude);
       defer(() => onIncludeExcludeChange?.(nextInclude, nextExclude));
 
-      // Reflect include dates back to weekly schedule selection (non-destructive)
-      setSelectedWeekdays(prev => {
-        const next = new Set<number>();
-        nextInclude.forEach(d => next.add(new Date(d).getDay()));
-        return next;
-      });
-      setWeeklyTimeSettings(prev => {
-        const keepDays = new Set<number>();
-        nextInclude.forEach(d => keepDays.add(new Date(d).getDay()));
-        const copy: any = {};
-        Object.keys(prev).forEach(k => {
-          const di = parseInt(k, 10);
-          if (keepDays.has(di)) copy[di] = prev[di];
-        });
-        return copy;
-      });
+      // Do not mutate Weekly from include/exclude. Weekly is edited only in Weekly editor.
     }
   };
 
