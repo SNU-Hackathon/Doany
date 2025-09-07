@@ -16,6 +16,10 @@
  * 6. Change weekly time to 10:30 → all non-override scheduled days switch to 10:30; the overridden date keeps its state if still scheduled
  * 7. Toggle a date off via click; verify weekly sync doesn't re-add time for that exact date unless you re-enable it
  * 8. Verify at most one time label per date everywhere
+ * 
+ * DEBUGGING: setState during render warning
+ * Stack trace to be captured:
+ * [PLACEHOLDER - Run app and reproduce warning to capture exact stack trace]
  */
 
 import { Ionicons } from '@expo/vector-icons';
@@ -365,27 +369,21 @@ export default function SimpleDatePicker({
 
   const monthsInView = useMemo(() => {
     const list: Date[] = [];
-    if (startDate && endDate) {
-      const start = new Date(startDate);
-      const end = new Date(endDate);
-      const cur = new Date(start.getFullYear(), start.getMonth(), 1);
-      const endMonth = new Date(end.getFullYear(), end.getMonth(), 1);
-      while (cur <= endMonth) {
-        list.push(new Date(cur));
-        cur.setMonth(cur.getMonth() + 1);
-      }
-    } else {
-      const anchor = currentMonth || new Date();
-      const start = new Date(anchor);
-      start.setMonth(anchor.getMonth() - 5);
-      for (let i = 0; i < 12; i++) {
-        const m = new Date(start);
-        m.setMonth(start.getMonth() + i);
-        list.push(m);
-      }
+    
+    // Always show a wide range of months for better navigation
+    // Use startDate as anchor if available, otherwise use current date
+    const anchor = startDate ? new Date(startDate) : (currentMonth || new Date());
+    const start = new Date(anchor);
+    start.setMonth(anchor.getMonth() - 24); // Show 24 months before
+    
+    for (let i = 0; i < 60; i++) { // Show 60 months total (5 years)
+      const m = new Date(start);
+      m.setMonth(start.getMonth() + i);
+      list.push(m);
     }
+    
     return list;
-  }, [startDate, endDate, currentMonth]);
+  }, [startDate, currentMonth]);
 
   // Fixed header month tracking and measurements
   const calendarScrollRef = useRef<ScrollView | null>(null);
@@ -399,6 +397,51 @@ export default function SimpleDatePicker({
     if (monthsInView.length > 0) setHeaderMonth(monthsInView[0]);
   }, [monthsInView]);
 
+  // Smart scroll: go to startDate month if set, otherwise current month
+  useEffect(() => {
+    if (calendarScrollRef.current && monthsInView.length > 0) {
+      // Determine target month: startDate if set, otherwise current date
+      const targetDate = startDate ? new Date(startDate) : new Date();
+      const targetMonthIndex = monthsInView.findIndex(month => 
+        month.getMonth() === targetDate.getMonth() && 
+        month.getFullYear() === targetDate.getFullYear()
+      );
+      
+      if (targetMonthIndex !== -1) {
+        // Use requestAnimationFrame to avoid setState during render
+        const scrollToTarget = () => {
+          requestAnimationFrame(() => {
+            if (calendarScrollRef.current) {
+              const layouts = monthsLayoutRef.current;
+              if (layouts && layouts[targetMonthIndex]) {
+                // Use actual layout position
+                calendarScrollRef.current.scrollTo({
+                  y: layouts[targetMonthIndex].y,
+                  animated: false
+                });
+              } else {
+                // Fallback to approximate calculation
+                const monthHeight = 280; // Approximate height of one month
+                const scrollY = targetMonthIndex * monthHeight;
+                calendarScrollRef.current.scrollTo({
+                  y: scrollY,
+                  animated: false
+                });
+              }
+            }
+          });
+        };
+        
+        // Try immediately, then retry after a short delay
+        scrollToTarget();
+        const timeoutId = setTimeout(scrollToTarget, 200);
+        
+        // Cleanup timeout on unmount
+        return () => clearTimeout(timeoutId);
+      }
+    }
+  }, [monthsInView, startDate]);
+
   const onMonthLayout = (index: number, y: number, h: number) => {
     const arr = monthsLayoutRef.current.slice();
     arr[index] = { y, h };
@@ -409,23 +452,68 @@ export default function SimpleDatePicker({
   const updateHeaderForScroll = (scrollY: number) => {
     const layouts = monthsLayoutRef.current;
     if (!layouts || layouts.length === 0) return;
+    
     const viewStart = scrollY;
     const viewEnd = scrollY + VIEWPORT_HEIGHT;
+    const viewCenter = scrollY + (VIEWPORT_HEIGHT / 2);
+    
     let bestIdx = 0;
-    let bestOverlap = -1;
+    let bestScore = -1;
+    
     layouts.forEach((ly, idx) => {
       if (!ly) return;
       const lyStart = ly.y;
       const lyEnd = ly.y + ly.h;
+      const lyCenter = ly.y + (ly.h / 2);
+      
+      // Calculate overlap with viewport
       const overlap = Math.max(0, Math.min(viewEnd, lyEnd) - Math.max(viewStart, lyStart));
-      if (overlap > bestOverlap) {
-        bestOverlap = overlap;
+      
+      // Calculate distance from viewport center
+      const distanceFromCenter = Math.abs(viewCenter - lyCenter);
+      
+      // Score based on overlap and proximity to center
+      // Higher overlap and closer to center = better score
+      const score = overlap - (distanceFromCenter * 0.1);
+      
+      if (score > bestScore) {
+        bestScore = score;
         bestIdx = idx;
       }
     });
+    
     const m = monthsInView[bestIdx];
     if (m && (!headerMonth || headerMonth.getMonth() !== m.getMonth() || headerMonth.getFullYear() !== m.getFullYear())) {
       setHeaderMonth(m);
+    }
+  };
+
+  // Function to scroll to a specific month
+  const scrollToTargetMonth = (targetDate: Date) => {
+    if (!calendarScrollRef.current || monthsInView.length === 0) return;
+    
+    const targetMonthIndex = monthsInView.findIndex(month => 
+      month.getMonth() === targetDate.getMonth() && 
+      month.getFullYear() === targetDate.getFullYear()
+    );
+    
+    if (targetMonthIndex !== -1) {
+      const layouts = monthsLayoutRef.current;
+      if (layouts && layouts[targetMonthIndex]) {
+        // Use actual layout position for precise scrolling
+        calendarScrollRef.current.scrollTo({
+          y: layouts[targetMonthIndex].y,
+          animated: true
+        });
+      } else {
+        // Fallback to approximate calculation
+        const monthHeight = 280; // Approximate height of one month
+        const scrollY = targetMonthIndex * monthHeight;
+        calendarScrollRef.current.scrollTo({
+          y: scrollY,
+          animated: true
+        });
+      }
     }
   };
 
@@ -836,11 +924,23 @@ export default function SimpleDatePicker({
 
   const openAddTimeModal = useCallback((dayIndex: number) => {
     log('openAddTimeModal: opening time picker', { dayIndex });
+    
+    // Validate dayIndex before setting state
+    if (dayIndex < 0 || dayIndex > 6) {
+      console.error('[WeeklySchedule] Invalid dayIndex in openAddTimeModal:', dayIndex);
+      Alert.alert('Invalid Day', 'Please select a valid day');
+      return;
+    }
+    
     setEditingDayIndex(dayIndex);
     setEditingTimeIndex(-1);
     setEditingTimeHour('10');
     setEditingTimeMinute('00');
-    setShowTimePicker(true);
+    
+    // Use setTimeout to ensure state updates are complete before opening modal
+    setTimeout(() => {
+      setShowTimePicker(true);
+    }, 0);
   }, []);
 
   const openEditTimeModal = useCallback((dayIndex: number, timeIdx: number) => {
@@ -905,9 +1005,20 @@ export default function SimpleDatePicker({
   }, [dayShort, syncWeeklyScheduleToCalendar]);
 
   const saveTime = useCallback(async () => {
-    // Validate editingDayIndex
+    // Validate editingDayIndex with more detailed logging
+    console.log('[WeeklySchedule] saveTime called with editingDayIndex:', editingDayIndex);
+    console.log('[WeeklySchedule] Current state:', { editingDayIndex, editingTimeHour, editingTimeMinute });
+    
     if (editingDayIndex < 0 || editingDayIndex > 6) {
+      console.error('[WeeklySchedule] Invalid editingDayIndex:', editingDayIndex);
       Alert.alert('Invalid Day', 'Please select a valid day');
+      return;
+    }
+    
+    // Additional validation to ensure we have valid time values
+    if (!editingTimeHour || !editingTimeMinute) {
+      console.error('[WeeklySchedule] Missing time values:', { editingTimeHour, editingTimeMinute });
+      Alert.alert('Invalid Time', 'Please set a valid time');
       return;
     }
     
@@ -921,13 +1032,14 @@ export default function SimpleDatePicker({
     log('saveTime: saving weekly time', { time, editingDayIndex, editingTimeIndex });
     
     // 🔧 ONE TIME PER WEEKDAY: Overwrite instead of push
-    setWeeklyTimeSettings(prev => ({ ...prev, [editingDayIndex]: [time] }));
-    setSelectedWeekdays(prev => new Set(prev).add(editingDayIndex));
+    const updatedWeekdays = new Set(selectedWeekdays).add(editingDayIndex);
+    const newTimeSettings = { ...weeklyTimeSettings, [editingDayIndex]: [time] };
+    
+    setWeeklyTimeSettings(newTimeSettings);
+    setSelectedWeekdays(updatedWeekdays);
     
     // 🔄 IMMEDIATE PARENT NOTIFICATION: No setTimeout needed
     if (onWeeklyScheduleChange) {
-      const updatedWeekdays = new Set(selectedWeekdays).add(editingDayIndex);
-      const newTimeSettings = { ...weeklyTimeSettings, [editingDayIndex]: [time] };
       onWeeklyScheduleChange(updatedWeekdays, newTimeSettings);
       if (__DEV__) {
         console.log('[WeeklySchedule] Immediately notified parent of weekly schedule change for calendar sync');
@@ -957,7 +1069,7 @@ export default function SimpleDatePicker({
     }
     
     log('saveTime: function completed successfully', { time, editingDayIndex });
-  }, [editingDayIndex, editingTimeIndex, editingTimeHour, editingTimeMinute, selectedWeekdays, weeklyTimeSettings, onWeeklyScheduleChange, syncWeeklyScheduleToCalendar]);
+  }, [editingDayIndex, editingTimeIndex, editingTimeHour, editingTimeMinute, onWeeklyScheduleChange, syncWeeklyScheduleToCalendar, effectiveEvents]);
 
   // Long press handler for date editing
   const handleDateLongPress = useCallback((dateStr: string) => {
@@ -967,7 +1079,12 @@ export default function SimpleDatePicker({
     if (!dateStr) return;
     
     try {
+      // Get current time for this date
+      const dateEvents = effectiveEvents.filter(event => event.date === dateStr);
+      const currentTime = dateEvents.length > 0 ? (dateEvents[0].time || '09:00') : '09:00';
+      
       setSelectedDateForEdit(dateStr);
+      setDateEditTimeInput(currentTime);
       setShowDateEditModal(true);
       
       // Add haptic feedback (skip for now)
@@ -975,12 +1092,12 @@ export default function SimpleDatePicker({
     } catch (error) {
       console.error('[SimpleDatePicker] Error in handleDateLongPress:', error);
     }
-  }, []);
+  }, [effectiveEvents]);
 
   // Date edit modal functions
   // Helper function to actually add/replace time for a date
   const addOrReplaceTimeForDate = useCallback(async () => {
-    if (!selectedDateForEdit || !dateEditTimeInput.trim() || !onCalendarEventsChange) return;
+    if (!selectedDateForEdit || !dateEditTimeInput.trim()) return;
     
     log('addOrReplaceTimeForDate: processing override time', { date: selectedDateForEdit, time: dateEditTimeInput });
     
@@ -1091,6 +1208,13 @@ export default function SimpleDatePicker({
       source: 'override',
     } as any);
     
+    // 🔄 ADD TO INCLUDE DATES: Ensure the date is included in Weekly Schedule
+    if (!includeDates.includes(selectedDateForEdit)) {
+      const newIncludeDates = [...includeDates, selectedDateForEdit];
+      setIncludeDates(newIncludeDates);
+      onIncludeExcludeChange?.(newIncludeDates, excludeDates);
+    }
+    
     if (userId && goalId && CalendarEventService) {
       try {
         // Delete existing events for this date
@@ -1141,6 +1265,13 @@ export default function SimpleDatePicker({
     
     // 🔄 ONE TIME PER DATE: Remove any existing events for this date (regardless of source)
     const otherDateEvents = effectiveEvents.filter(e => e.date !== selectedDateForEdit);
+    
+    // 🔄 ADD TO INCLUDE DATES: Ensure the date is included in Weekly Schedule
+    if (!includeDates.includes(selectedDateForEdit)) {
+      const newIncludeDates = [...includeDates, selectedDateForEdit];
+      setIncludeDates(newIncludeDates);
+      onIncludeExcludeChange?.(newIncludeDates, excludeDates);
+    }
     
     // 🔄 DATABASE PERSISTENCE: Update in database if available
     if (userId && goalId) {
@@ -1395,28 +1526,112 @@ export default function SimpleDatePicker({
 
 
   // 🔄 AUTO-UPDATE SUMMARY: Update Weekly Schedule summary when calendarEvents change
-  // Prevent infinite loop by using ref for last processed events
-  const lastProcessedEventsRef = useRef<string>('');
-  useEffect(() => {
-    if (effectiveEvents.length > 0 && startDate && endDate) {
-      // Check if effectiveEvents actually changed to prevent infinite loops
-      const currentEventsHash = JSON.stringify(effectiveEvents.map(e => `${e.date}_${e.time}_${e.source}`).sort());
-      if (currentEventsHash !== lastProcessedEventsRef.current) {
-        lastProcessedEventsRef.current = currentEventsHash;
-        
-        // Weekly schedule is now only updated by user actions and sync function
-        // No automatic reverse sync from calendar to weekly
-        
-        if (__DEV__) {
-          console.log('[SimpleDatePicker] Auto-updating Weekly Schedule summary based on calendarEvents:', {
-            eventsCount: effectiveEvents.length,
-            weeklyEvents: effectiveEvents.filter(e => e.source === 'weekly').length,
-            overrideEvents: effectiveEvents.filter(e => e.source === 'override').length
-          });
+  // Update Weekly summary from effectiveEvents with lightweight checksum
+  const eventsHash = useMemo(() =>
+    effectiveEvents.map(e => `${e.date}|${e.time ?? ''}|${e.source}`).sort().join(';'),
+  [effectiveEvents]);
+  const lastEventsHash = useRef<string>('');
+  
+  // Flag to prevent infinite sync loops
+  const isUpdatingFromCalendar = useRef(false);
+
+  // Function to update Weekly summary from effectiveEvents
+  const updateWeeklyScheduleFromCalendar = useCallback(() => {
+    if (!startDate || !endDate || isUpdatingFromCalendar.current) return;
+    
+    isUpdatingFromCalendar.current = true;
+    log('updateWeeklyScheduleFromCalendar:start', { eventsCount: effectiveEvents.length });
+    
+    // Build date range
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const days: string[] = [];
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      days.push(getLocalYMD(d));
+    }
+    
+    // Analyze events to determine weekly schedule
+    const weeklyByWeekday = new Map<number, Set<string>>();
+    const allWeekdaysWithEvents = new Set<number>();
+    const newIncludeDates: string[] = [];
+    const newExcludeDates: string[] = [];
+    
+    // Process all events in the date range
+    effectiveEvents.forEach(event => {
+      if (!days.includes(event.date)) return;
+      
+      const weekday = new Date(event.date).getDay();
+      allWeekdaysWithEvents.add(weekday);
+      
+      if (event.source === 'weekly') {
+        // Weekly event - add to weekday schedule
+        if (!weeklyByWeekday.has(weekday)) {
+          weeklyByWeekday.set(weekday, new Set());
+        }
+        if (event.time) {
+          weeklyByWeekday.get(weekday)!.add(event.time);
+        }
+      } else if (event.source === 'override') {
+        // Override event - add to include dates
+        if (!newIncludeDates.includes(event.date)) {
+          newIncludeDates.push(event.date);
         }
       }
-    }
+    });
+    
+    // Update selected weekdays based on ALL events (both weekly and override)
+    const newSelectedWeekdays = new Set(Array.from(allWeekdaysWithEvents));
+    
+    // Update weekly time settings
+    const newWeeklyTimeSettings: { [key: number]: string[] } = {};
+    weeklyByWeekday.forEach((times, weekday) => {
+      newWeeklyTimeSettings[weekday] = Array.from(times).sort();
+    });
+    
+    // Update states only if they actually changed
+    setSelectedWeekdays(prev => {
+      const prevArray = Array.from(prev).sort();
+      const newArray = Array.from(newSelectedWeekdays).sort();
+      return arraysEqual(prevArray.map(String), newArray.map(String)) ? prev : newSelectedWeekdays;
+    });
+    
+    setWeeklyTimeSettings(prev => {
+      const prevKeys = Object.keys(prev).map(Number).sort();
+      const newKeys = Object.keys(newWeeklyTimeSettings).map(Number).sort();
+      if (!arraysEqual(prevKeys.map(String), newKeys.map(String))) return newWeeklyTimeSettings;
+      
+      for (const key of newKeys) {
+        if (!arraysEqual(prev[key] || [], newWeeklyTimeSettings[key] || [])) {
+          return newWeeklyTimeSettings;
+        }
+      }
+      return prev;
+    });
+    
+    setIncludeDates(prev => {
+      const sortedPrev = [...prev].sort();
+      const sortedNew = [...newIncludeDates].sort();
+      return arraysEqual(sortedPrev, sortedNew) ? prev : newIncludeDates;
+    });
+    
+    log('updateWeeklyScheduleFromCalendar:done', {
+      selectedWeekdays: Array.from(newSelectedWeekdays),
+      weeklyTimeSettings: newWeeklyTimeSettings,
+      includeDates: newIncludeDates
+    });
+    
+    // Reset flag after a short delay to allow state updates to complete
+    setTimeout(() => {
+      isUpdatingFromCalendar.current = false;
+    }, 100);
   }, [effectiveEvents, startDate, endDate]);
+
+  useEffect(() => {
+    if (eventsHash !== lastEventsHash.current) {
+      lastEventsHash.current = eventsHash;
+      updateWeeklyScheduleFromCalendar();
+    }
+  }, [eventsHash, updateWeeklyScheduleFromCalendar]);
 
   const clearWeeklySchedule = useCallback(() => {
     if (__DEV__) console.log('[WeeklySchedule] Clearing all weekly schedule data');
@@ -1665,40 +1880,44 @@ export default function SimpleDatePicker({
                   <View className="flex-row items-center justify-between mb-2">
                     <View className="flex-row items-center">
                       <Text className="text-gray-800 font-medium">{dayShort[dayIdx]}</Text>
-                      <View className="ml-2 px-2 py-1 bg-blue-100 rounded-full">
-                        <Text className="text-blue-700 text-xs font-medium">
+                      <View className="ml-2 px-2 py-1 bg-gray-100 rounded-full">
+                        <Text className="text-gray-700 text-xs font-medium">
                           {allTimes.length} time{allTimes.length > 1 ? 's' : ''}
                         </Text>
                       </View>
-                      {overrideTimes.length > 0 && (
-                        <View className="ml-1 px-2 py-1 bg-orange-100 rounded-full">
-                          <Text className="text-orange-700 text-xs font-medium">
-                            {overrideTimes.length} override{overrideTimes.length > 1 ? 's' : ''}
-                          </Text>
-                        </View>
-                      )}
                     </View>
-                    <TouchableOpacity onPress={() => openAddTimeModal(dayIdx)} className="px-3 py-1 bg-blue-100 rounded">
+                    <TouchableOpacity 
+                      onPress={() => {
+                        console.log('[WeeklySchedule] Add time button pressed for dayIdx:', dayIdx);
+                        if (dayIdx >= 0 && dayIdx <= 6) {
+                          openAddTimeModal(dayIdx);
+                        } else {
+                          console.error('[WeeklySchedule] Invalid dayIdx in Add time button:', dayIdx);
+                          Alert.alert('Invalid Day', 'Please select a valid day');
+                        }
+                      }} 
+                      className="px-3 py-1 bg-blue-100 rounded"
+                    >
                       <Text className="text-blue-700 text-xs font-semibold">Add time</Text>
                     </TouchableOpacity>
                   </View>
                   
-                  {/* Basic Pattern Times */}
-                  {eventWeeklyTimes.length > 0 && (
+                  {/* All Times */}
+                  {allTimes.length > 0 && (
                     <View className="mb-2">
-                      <Text className="text-xs text-gray-600 mb-1">Basic Pattern:</Text>
+                      <Text className="text-xs text-gray-600 mb-1">Scheduled Times:</Text>
                       <View className="flex-row flex-wrap gap-2">
-                        {eventWeeklyTimes.map((t, i) => (
-                          <View key={`${dayIdx}_weekly_${t}_${i}`} className="flex-row items-center bg-blue-100 px-3 py-1 rounded-full border border-blue-200">
+                        {allTimes.map((t, i) => (
+                          <View key={`${dayIdx}_time_${t}_${i}`} className="flex-row items-center bg-gray-100 px-3 py-1 rounded-full border border-gray-200">
                             <TouchableOpacity onPress={() => {
                               // 🔄 PREVENT WEEKLY SCHEDULE MODIFICATION: Use long-press for time editing instead
                               Alert.alert(
                                 'Edit Time', 
-                                'To edit specific times, long-press on dates in the calendar below. This preserves your original weekly schedule.',
+                                'To edit specific times, long-press on dates in the calendar below.',
                                 [{ text: 'OK' }]
                               );
                             }}>
-                              <Text className="text-blue-800 font-medium mr-1">{t}</Text>
+                              <Text className="text-gray-800 font-medium mr-1">{t}</Text>
                             </TouchableOpacity>
                             <TouchableOpacity onPress={() => {
                               // 🔄 PREVENT WEEKLY SCHEDULE MODIFICATION: Only allow removal from original weekly times
@@ -1707,37 +1926,17 @@ export default function SimpleDatePicker({
                                 removeTime(dayIdx, weeklyIndex);
                               } else {
                                 Alert.alert(
-                                  'Basic Pattern Time', 
-                                  'This time is part of the basic weekly pattern. Edit the weekly schedule above to modify it.',
+                                  'Time Management', 
+                                  'This time is managed through the calendar. Use long-press on calendar dates to modify.',
                                   [{ text: 'OK' }]
                                 );
                               }
                             }}>
-                              <Ionicons name="close" size={14} color="#1e40af" />
+                              <Ionicons name="close" size={14} color="#374151" />
                             </TouchableOpacity>
                           </View>
                         ))}
                       </View>
-                    </View>
-                  )}
-                  
-                  {/* Override Times */}
-                  {overrideTimes.length > 0 && (
-                    <View className="mb-2">
-                      <Text className="text-xs text-gray-600 mb-1">Override Times:</Text>
-                      <View className="flex-row flex-wrap gap-2">
-                        {overrideTimes.map((t, i) => (
-                          <View key={`${dayIdx}_override_${t}_${i}`} className="flex-row items-center bg-orange-100 px-3 py-1 rounded-full border border-orange-200">
-                            <Text className="text-orange-800 font-medium mr-1">{t}</Text>
-                            <View className="ml-1 px-1 bg-orange-200 rounded">
-                              <Text className="text-orange-800 text-xs font-bold">!</Text>
-                      </View>
-                    </View>
-                        ))}
-                      </View>
-                      <Text className="text-xs text-gray-500 mt-1">
-                        Override times added via calendar long-press
-                      </Text>
                     </View>
                   )}
                   
@@ -1768,31 +1967,14 @@ export default function SimpleDatePicker({
                     <View key={dayIdx} className="flex-row items-start">
                       <View className="w-12 flex-row items-center">
                         <Text className="text-gray-800 font-medium">{dayShort[dayIdx]}</Text>
-                        {overrideTimes.length > 0 && (
-                          <View className="ml-1 w-2 h-2 bg-orange-400 rounded-full"></View>
-                        )}
                       </View>
                       <View className="flex-1">
-                        {/* Basic Pattern Times */}
-                        {eventWeeklyTimes.length > 0 && (
+                        {/* All Times */}
+                        {allTimes.length > 0 && (
                           <View className="flex-row flex-wrap gap-2 mb-2">
-                            {eventWeeklyTimes.map((t, i) => (
-                              <View key={`${dayIdx}_display_weekly_${t}_${i}`} className="bg-blue-100 px-3 py-1 rounded-full border border-blue-200">
-                                <Text className="text-blue-800 font-medium text-sm">{t}</Text>
-                              </View>
-                            ))}
-                          </View>
-                        )}
-                        
-                        {/* Override Times with badge */}
-                        {overrideTimes.length > 0 && (
-                          <View className="flex-row flex-wrap gap-2 mb-2">
-                            {overrideTimes.map((t, i) => (
-                              <View key={`${dayIdx}_display_override_${t}_${i}`} className="bg-orange-100 px-3 py-1 rounded-full border border-orange-200">
-                                <View className="flex-row items-center">
-                                  <Text className="text-orange-800 font-medium text-sm mr-1">{t}</Text>
-                                  <View className="w-1 h-1 bg-orange-500 rounded-full"></View>
-                                </View>
+                            {allTimes.map((t, i) => (
+                              <View key={`${dayIdx}_display_${t}_${i}`} className="bg-gray-100 px-3 py-1 rounded-full border border-gray-200">
+                                <Text className="text-gray-800 font-medium text-sm">{t}</Text>
                               </View>
                             ))}
                           </View>
@@ -1832,12 +2014,31 @@ export default function SimpleDatePicker({
       })()}
 
       {/* Calendar */}
-      <View className="mb-6" style={{ height: VIEWPORT_HEIGHT }}>
+      <View className="mb-3" style={{ height: VIEWPORT_HEIGHT * 0.7 }}>
         {/* Fixed month/year header and single day-of-week row */}
         <View className="mb-2">
-          <Text className="text-center text-lg font-bold text-gray-800">
-            {(headerMonth || monthsInView[0] || new Date()).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-          </Text>
+          <View className="flex-row items-center justify-between mb-2">
+            <TouchableOpacity 
+              onPress={() => scrollToTargetMonth(startDate ? new Date(startDate) : new Date())}
+              className="px-3 py-1 bg-blue-100 rounded-full"
+            >
+              <Text className="text-blue-700 text-xs font-semibold">
+                {startDate ? 'Start Date' : 'Today'}
+              </Text>
+            </TouchableOpacity>
+            
+            <Text className="text-center text-lg font-bold text-gray-800">
+              {(headerMonth || monthsInView[0] || new Date()).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+            </Text>
+            
+            <TouchableOpacity 
+              onPress={() => scrollToTargetMonth(new Date())}
+              className="px-3 py-1 bg-gray-100 rounded-full"
+            >
+              <Text className="text-gray-700 text-xs font-semibold">Today</Text>
+            </TouchableOpacity>
+          </View>
+          
           <View className="flex-row mt-2">
             {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((day) => (
               <View key={day} className="flex-1">
@@ -1849,11 +2050,16 @@ export default function SimpleDatePicker({
         <ScrollView
           ref={calendarScrollRef}
           onScroll={(e) => updateHeaderForScroll(e.nativeEvent.contentOffset.y)}
-          scrollEventThrottle={16}
+          scrollEventThrottle={4}
           showsVerticalScrollIndicator={false}
           bounces={false}
           alwaysBounceVertical={false}
           overScrollMode="never"
+          decelerationRate="normal"
+          scrollEnabled={true}
+          nestedScrollEnabled={true}
+          removeClippedSubviews={false}
+          keyboardShouldPersistTaps="handled"
         >
         {monthsInView.map((m, idx) => {
           const monthKey = `${m.getFullYear()}-${m.getMonth()}`;
@@ -1862,6 +2068,7 @@ export default function SimpleDatePicker({
             <View
               key={monthKey}
               onLayout={(e) => onMonthLayout(idx, e.nativeEvent.layout.y, e.nativeEvent.layout.height)}
+              className="mb-4"
             >
               <View className="flex-row flex-wrap">
                 {days.map((dayData: any, index: number) => (
@@ -1878,7 +2085,7 @@ export default function SimpleDatePicker({
                         }`}
                         onPress={() => handleDateSelect(dayData.dateStr)}
                         onLongPress={() => {
-                          if (!dayData.isPast && dayData.dateStr && onCalendarEventsChange) {
+                          if (!dayData.isPast && dayData.dateStr) {
                             // Open time edit modal for this date
                             handleDateLongPress(dayData.dateStr);
                           }
@@ -1924,7 +2131,7 @@ export default function SimpleDatePicker({
       </View>
 
       {/* Calendar Legend */}
-          <View className="flex-row justify-center space-x-6 mt-3">
+          <View className="flex-row justify-center space-x-6 mt-2">
           <View className="flex-row items-center">
             <View className="w-3 h-3 bg-blue-600 rounded mr-2" />
             <Text className="text-xs text-gray-600">Selected range</Text>
@@ -1936,7 +2143,7 @@ export default function SimpleDatePicker({
         </View>
 
         {/* Mode toggles under calendar */}
-        <View className="flex-row gap-3 mt-4">
+        <View className="flex-row gap-3 mt-2">
           <TouchableOpacity
             onPress={() => setEditingMode('period')}
             className={`flex-1 rounded-lg py-3 ${editingMode === 'period' ? 'bg-blue-600' : 'bg-blue-100'}`}
@@ -1954,11 +2161,11 @@ export default function SimpleDatePicker({
 
       {/* Selected Summary */}
       {startDate && (
-        <View className="mb-6 p-4 bg-gray-50 rounded-lg">
-          <Text className="text-gray-700 font-semibold text-lg mb-2">Selected:</Text>
-          <Text className="text-gray-600 text-base">Start: {new Date(startDate).toLocaleDateString()}</Text>
+        <View className="mb-3 p-3 bg-gray-50 rounded-lg">
+          <Text className="text-gray-700 font-semibold text-base mb-1">Selected:</Text>
+          <Text className="text-gray-600 text-sm">Start: {new Date(startDate).toLocaleDateString()}</Text>
           {endDate && (
-            <Text className="text-gray-600 text-base">End: {new Date(endDate).toLocaleDateString()}</Text>
+            <Text className="text-gray-600 text-sm">End: {new Date(endDate).toLocaleDateString()}</Text>
           )}
         </View>
       )}
@@ -2106,7 +2313,11 @@ export default function SimpleDatePicker({
                               'bg-gray-50'
                             }`}
                             onPress={() => handleDateSelect(dayData.dateStr)}
-                            onLongPress={() => handleDateLongPress(dayData.dateStr)}
+                            onLongPress={() => {
+                              if (!dayData.isPast && dayData.dateStr) {
+                                handleDateLongPress(dayData.dateStr);
+                              }
+                            }}
                             delayLongPress={400}
                             disabled={dayData.isPast}
                           >
@@ -2304,18 +2515,16 @@ export default function SimpleDatePicker({
         animationType="fade" 
         onRequestClose={() => {
           setShowDateEditModal(false);
-          setShowDateTimeInput(false);
           setDateEditTimeInput('');
-          setEditingDateTimeIndex(-1);
         }}
       >
         <View className="flex-1 justify-center items-center bg-black/50">
           <View className="bg-white rounded-lg p-6 mx-4 max-w-sm w-full">
-            <Text className="text-lg font-bold text-gray-800 mb-4">
-              Edit Times for {selectedDateForEdit}
+            <Text className="text-lg font-bold text-gray-800 mb-4 text-center">
+              {selectedDateForEdit ? `Set Time for ${selectedDateForEdit}` : 'Set Time'}
             </Text>
             
-            {/* Current single time display */}
+            {/* Current time display */}
             <View className="mb-4">
               {(() => {
                 const dateEvents = selectedDateForEdit ? effectiveEvents.filter(event => event.date === selectedDateForEdit) : [];
@@ -2323,163 +2532,102 @@ export default function SimpleDatePicker({
                 
                 if (currentTime) {
                   return (
-                    <View className="flex-row items-center justify-between py-3 px-4 bg-gray-50 rounded-lg border border-gray-200">
-                      <View className="flex-1">
-                        <Text className="text-gray-800 font-medium text-lg">{currentTime.time}</Text>
-                        <Text className="text-xs text-gray-500 capitalize">Current scheduled time</Text>
-                      </View>
-                      
-                      {/* Action buttons for the single time */}
-                      <View className="flex-row space-x-2">
-                        <TouchableOpacity 
-                          onPress={() => handleEditTimeForDate(0)}
-                          className="bg-blue-100 rounded px-3 py-2"
-                        >
-                          <Text className="text-blue-600 text-sm font-medium">Edit</Text>
-                        </TouchableOpacity>
-                        
-                        <TouchableOpacity 
-                          onPress={() => handleDeleteTimeForDate(0)}
-                          className="bg-red-100 rounded px-3 py-2"
-                        >
-                          <Text className="text-red-600 text-sm font-medium">Delete</Text>
-                        </TouchableOpacity>
-                      </View>
+                    <View className="py-3 px-4 bg-blue-50 rounded-lg border border-blue-200">
+                      <Text className="text-blue-800 font-medium text-center">Current: {currentTime.time}</Text>
                     </View>
                   );
                 } else {
                   return (
-                    <View className="text-center py-6 px-4 bg-gray-50 rounded-lg border border-gray-200">
-                      <Text className="text-gray-500 text-center">No scheduled time for this date</Text>
-                      <Text className="text-xs text-gray-400 text-center mt-1">Tap &quot;Add Time&quot; below to schedule</Text>
+                    <View className="py-3 px-4 bg-gray-50 rounded-lg border border-gray-200">
+                      <Text className="text-gray-500 text-center">No time set</Text>
                     </View>
                   );
                 }
               })()}
             </View>
             
-            {/* Time input section */}
-            {showDateTimeInput ? (
-              <View className="border-t border-gray-200 pt-4">
-                <Text className="text-sm font-medium text-gray-700 mb-2">
-                  {editingDateTimeIndex >= 0 ? 'Edit Time' : 'Add New Time'}
-              </Text>
+            {/* Time picker */}
+            <View className="mb-6">
+              <Text className="text-sm font-medium text-gray-700 mb-3 text-center">Select Time</Text>
                 
-                <View className="flex-row justify-center space-x-4 mb-4">
-                  {/* Hour Picker */}
-                  <View className="items-center">
-                    <Text className="text-xs text-gray-500 mb-1">Hour</Text>
-                    <View className="border border-gray-300 rounded-lg overflow-hidden" style={{ width: 90, height: 120 }}>
-                      <Picker
-                        selectedValue={dateEditTimeInput.split(':')[0] || '09'}
-                        onValueChange={(hour) => {
-                          const minute = dateEditTimeInput.split(':')[1] || '00';
-                          setDateEditTimeInput(`${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`);
-                        }}
-                        style={{ height: 120, width: 90 }}
-                        itemStyle={{ fontSize: 16, height: 120 }}
-                      >
-                        {Array.from({ length: 24 }, (_, i) => (
-                          <Picker.Item 
-                            key={i} 
-                            label={i.toString().padStart(2, '0')} 
-                            value={i.toString().padStart(2, '0')}
-                            style={{ fontSize: 16 }}
-                          />
-                        ))}
-                      </Picker>
-                    </View>
-                  </View>
-                  
-                  {/* Minute Picker */}
-                  <View className="items-center">
-                    <Text className="text-xs text-gray-500 mb-1">Minute</Text>
-                    <View className="border border-gray-300 rounded-lg overflow-hidden" style={{ width: 90, height: 120 }}>
-                      <Picker
-                        selectedValue={dateEditTimeInput.split(':')[1] || '00'}
-                        onValueChange={(minute) => {
-                          const hour = dateEditTimeInput.split(':')[0] || '09';
-                          setDateEditTimeInput(`${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`);
-                        }}
-                        style={{ height: 120, width: 90 }}
-                        itemStyle={{ fontSize: 16, height: 120 }}
-                      >
-                        {Array.from({ length: 60 }, (_, i) => (
-                          <Picker.Item 
-                            key={i} 
-                            label={i.toString().padStart(2, '0')} 
-                            value={i.toString().padStart(2, '0')}
-                            style={{ fontSize: 16 }}
-                          />
-                        ))}
-                      </Picker>
-                    </View>
+              <View className="flex-row justify-center space-x-4 mb-4">
+                {/* Hour Picker */}
+                <View className="items-center">
+                  <Text className="text-xs text-gray-500 mb-1">Hour</Text>
+                  <View className="border border-gray-300 rounded-lg overflow-hidden" style={{ width: 90, height: 120 }}>
+                    <Picker
+                      selectedValue={dateEditTimeInput.split(':')[0] || '09'}
+                      onValueChange={(hour) => {
+                        const minute = dateEditTimeInput.split(':')[1] || '00';
+                        setDateEditTimeInput(`${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`);
+                      }}
+                      style={{ height: 120, width: 90 }}
+                      itemStyle={{ fontSize: 16, height: 120 }}
+                    >
+                      {Array.from({ length: 24 }, (_, i) => (
+                        <Picker.Item 
+                          key={i} 
+                          label={i.toString().padStart(2, '0')} 
+                          value={i.toString().padStart(2, '0')}
+                          style={{ fontSize: 16 }}
+                        />
+                      ))}
+                    </Picker>
                   </View>
                 </View>
                 
-                <View className="flex-row space-x-3">
-                  <TouchableOpacity 
-                    onPress={() => {
-                      setShowDateTimeInput(false);
-                      setDateEditTimeInput('');
-                      setEditingDateTimeIndex(-1);
-                    }}
-                    className="flex-1 bg-gray-200 rounded-lg py-2"
-                  >
-                    <Text className="text-gray-700 font-medium text-center">Cancel</Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity 
-                    onPress={editingDateTimeIndex >= 0 ? handleUpdateTimeForDate : handleAddTimeToDate}
-                    className="flex-1 bg-blue-600 rounded-lg py-2"
-                  >
-                    <Text className="text-white font-medium text-center">
-                      {editingDateTimeIndex >= 0 ? 'Update' : 'Add'}
-                    </Text>
-                  </TouchableOpacity>
+                {/* Minute Picker */}
+                <View className="items-center">
+                  <Text className="text-xs text-gray-500 mb-1">Minute</Text>
+                  <View className="border border-gray-300 rounded-lg overflow-hidden" style={{ width: 90, height: 120 }}>
+                    <Picker
+                      selectedValue={dateEditTimeInput.split(':')[1] || '00'}
+                      onValueChange={(minute) => {
+                        const hour = dateEditTimeInput.split(':')[0] || '09';
+                        setDateEditTimeInput(`${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`);
+                      }}
+                      style={{ height: 120, width: 90 }}
+                      itemStyle={{ fontSize: 16, height: 120 }}
+                    >
+                      {Array.from({ length: 60 }, (_, i) => (
+                        <Picker.Item 
+                          key={i} 
+                          label={i.toString().padStart(2, '0')} 
+                          value={i.toString().padStart(2, '0')}
+                          style={{ fontSize: 16 }}
+                        />
+                      ))}
+                    </Picker>
+                  </View>
                 </View>
               </View>
-            ) : (
-              /* Main action buttons */
-              <View className="flex-row space-x-3">
-                <TouchableOpacity 
-                  onPress={() => setShowDateEditModal(false)}
-                  className="flex-1 bg-gray-200 rounded-lg py-3"
-                >
-                  <Text className="text-gray-700 font-medium text-center">Close</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity 
-                  onPress={() => {
-                    const dateEvents = selectedDateForEdit ? effectiveEvents.filter(event => event.date === selectedDateForEdit) : [];
-                    const hasExistingTime = dateEvents.length > 0;
-                    
-                    if (hasExistingTime) {
-                      // If there's already a time, enter edit mode for that time
-                      setDateEditTimeInput(dateEvents[0].time || '09:00');
-                      setEditingDateTimeIndex(0);
-                    } else {
-                      // If no time exists, add new time
-                      setDateEditTimeInput('09:00');
-                      setEditingDateTimeIndex(-1);
-                    }
-                    setShowDateTimeInput(true);
-                  }}
-                  className={`flex-1 rounded-lg py-3 ${
-                    selectedDateForEdit && calendarEvents.filter(event => event.date === selectedDateForEdit).length > 0 
-                      ? 'bg-blue-600' 
-                      : 'bg-green-600'
-                  }`}
-                >
-                  <Text className="text-white font-medium text-center">
-                    {selectedDateForEdit && calendarEvents.filter(event => event.date === selectedDateForEdit).length > 0 
-                      ? 'Change Time' 
-                      : 'Set Time'
-                    }
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            )}
+            </View>
+            
+            {/* Action buttons */}
+            <View className="flex-row space-x-3">
+              <TouchableOpacity 
+                onPress={() => {
+                  setShowDateEditModal(false);
+                  setDateEditTimeInput('');
+                }}
+                className="flex-1 bg-gray-200 rounded-lg py-3"
+              >
+                <Text className="text-gray-700 font-medium text-center">Cancel</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                onPress={() => {
+                  if (selectedDateForEdit && dateEditTimeInput) {
+                    handleAddTimeToDate();
+                    setShowDateEditModal(false);
+                    setDateEditTimeInput('');
+                  }
+                }}
+                className="flex-1 bg-blue-600 rounded-lg py-3"
+              >
+                <Text className="text-white font-medium text-center">Set Time</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -2535,4 +2683,3 @@ export default function SimpleDatePicker({
     </View>
   );
 }
-
