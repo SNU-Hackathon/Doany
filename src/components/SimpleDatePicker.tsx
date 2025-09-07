@@ -28,6 +28,10 @@
  *  93 |   endDate: initialEndDate,
  *  94 |   onStartDateChange,
  *  95 |   onEndDateChange,
+ * 
+ * HYPOTHESIS STATUS:
+ * ✅ Hypothesis #1: Applied microtask deferral for parent callbacks
+ * ✅ Hypothesis #2: Local fallback already implemented - effectiveEvents unified read source
  */
 
 import { Ionicons } from '@expo/vector-icons';
