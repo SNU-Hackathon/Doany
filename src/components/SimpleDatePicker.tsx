@@ -18,8 +18,16 @@
  * 8. Verify at most one time label per date everywhere
  * 
  * DEBUGGING: setState during render warning
- * Stack trace to be captured:
- * [PLACEHOLDER - Run app and reproduce warning to capture exact stack trace]
+ * Stack trace captured:
+ * ERROR  Warning: Cannot update a component (`CreateGoalModalContent`) while rendering a different component (`SimpleDatePicker`). To locate the bad setState() call inside `SimpleDatePicker`, follow the stack trace as described in https://react.dev/link/setstate-in-render
+ * 
+ *  90 |
+ *  91 | export default function SimpleDatePicker({
+ * > 92 |   startDate: initialStartDate,
+ *     |                              ^
+ *  93 |   endDate: initialEndDate,
+ *  94 |   onStartDateChange,
+ *  95 |   onEndDateChange,
  */
 
 import { Ionicons } from '@expo/vector-icons';
@@ -44,6 +52,9 @@ import MapPreview from './MapPreview';
 const log = (...args: any[]) => console.log('[SimpleDatePicker]', ...args);
 const warn = (...args: any[]) => console.warn('[SimpleDatePicker]', ...args);
 const err = (...args: any[]) => console.error('[SimpleDatePicker]', ...args);
+
+// microtask deferral to avoid parent updates during render
+const defer = (fn: () => void) => queueMicrotask(fn);
 
 export interface DateSelection {
   mode: 'duration';
@@ -123,6 +134,8 @@ export default function SimpleDatePicker({
   calendarEvents = [],
   onCalendarEventsChange
 }: SimpleDatePickerProps) {
+  // Parent notifications must happen post-commit.
+  
   /**
    * 로컬 날짜를 YYYY-MM-DD 형식으로 변환
    * 
@@ -179,7 +192,7 @@ export default function SimpleDatePicker({
       setEndDate(range.endDate);
       // Defer parent updates to the next tick to avoid render-phase warnings
       setTimeout(() => {
-        onEndDateChange(range.endDate);
+        defer(() => onEndDateChange(range.endDate));
         // Clamp existing include/exclude to the initialized range
         const clampToRange = (dates: string[]) => dates.filter(d => d >= startDate && d <= range.endDate);
         const nextInclude = clampToRange(includeDates).sort();
@@ -189,7 +202,7 @@ export default function SimpleDatePicker({
         if (includeChanged || excludeChanged) {
           setIncludeDates(nextInclude);
           setExcludeDates(nextExclude);
-          onIncludeExcludeChange?.(nextInclude, nextExclude);
+          defer(() => onIncludeExcludeChange?.(nextInclude, nextExclude));
         }
       }, 0);
     }
@@ -236,6 +249,16 @@ export default function SimpleDatePicker({
       onWeeklyScheduleChange(weekdays, timeSettings);
     }
   }, [onWeeklyScheduleChange]);
+
+  // OPTIONAL: prefer effect-based parent notification (safer)
+  useEffect(() => {
+    if (!startDate) return;
+    onStartDateChange && onStartDateChange(startDate);
+  }, [startDate]);
+  useEffect(() => {
+    if (!endDate) return;
+    onEndDateChange && onEndDateChange(endDate);
+  }, [endDate]);
 
   useEffect(() => {
     if (!didMountRef.current) {
@@ -597,19 +620,19 @@ export default function SimpleDatePicker({
 
       setIncludeDates(nextInclude);
       setExcludeDates(nextExclude);
-      onIncludeExcludeChange?.(nextInclude, nextExclude);
+      defer(() => onIncludeExcludeChange?.(nextInclude, nextExclude));
       
       return;
     }
 
     // Period edit mode
     setStartDate(dateStr);
-    onStartDateChange(dateStr);
+    defer(() => onStartDateChange(dateStr));
 
     const value = parseInt(durationValue) || 1;
     const range = convertDurationToRange(dateStr, durationType, value);
     setEndDate(range.endDate);
-    onEndDateChange(range.endDate);
+    defer(() => onEndDateChange(range.endDate));
 
     // Clean include/exclude now that range updated
     const clampToRange = (dates: string[]) => dates.filter(d => d >= dateStr && d <= range.endDate);
@@ -617,7 +640,7 @@ export default function SimpleDatePicker({
     const nextExclude = clampToRange(excludeDates).sort();
     setIncludeDates(nextInclude);
     setExcludeDates(nextExclude);
-    onIncludeExcludeChange?.(nextInclude, nextExclude);
+    defer(() => onIncludeExcludeChange?.(nextInclude, nextExclude));
 
     log('handleDateSelect exit:', { 
       action: 'date_select', 
@@ -634,7 +657,7 @@ export default function SimpleDatePicker({
       const numValue = parseInt(value) || 1;
       const range = convertDurationToRange(startDate, durationType, numValue);
       setEndDate(range.endDate);
-      onEndDateChange(range.endDate);
+      defer(() => onEndDateChange(range.endDate));
 
       // Clean include/exclude to new range
       const clampToRange = (dates: string[]) => dates.filter(d => d >= startDate && d <= range.endDate);
@@ -642,7 +665,7 @@ export default function SimpleDatePicker({
       const nextExclude = clampToRange(excludeDates).sort();
       setIncludeDates(nextInclude);
       setExcludeDates(nextExclude);
-      onIncludeExcludeChange?.(nextInclude, nextExclude);
+      defer(() => onIncludeExcludeChange?.(nextInclude, nextExclude));
 
       // Reflect include dates back to weekly schedule selection (non-destructive)
       setSelectedWeekdays(prev => {
@@ -671,7 +694,7 @@ export default function SimpleDatePicker({
       const numValue = parseInt(durationValue) || 1;
       const range = convertDurationToRange(startDate, type, numValue);
       setEndDate(range.endDate);
-      onEndDateChange(range.endDate);
+      defer(() => onEndDateChange(range.endDate));
 
       // Clean include/exclude to new range
       const clampToRange = (dates: string[]) => dates.filter(d => d >= startDate && d <= range.endDate);
@@ -679,7 +702,7 @@ export default function SimpleDatePicker({
       const nextExclude = clampToRange(excludeDates).sort();
       setIncludeDates(nextInclude);
       setExcludeDates(nextExclude);
-      onIncludeExcludeChange?.(nextInclude, nextExclude);
+      defer(() => onIncludeExcludeChange?.(nextInclude, nextExclude));
 
       // Reflect include dates back to weekly schedule selection (non-destructive)
       setSelectedWeekdays(prev => {
@@ -885,7 +908,7 @@ export default function SimpleDatePicker({
             
             setIncludeDates(nextInclude);
             setExcludeDates(nextExclude);
-            onIncludeExcludeChange?.(nextInclude, nextExclude);
+            defer(() => onIncludeExcludeChange?.(nextInclude, nextExclude));
             
             console.log(`[Calendar] Updated calendar: removed ${dayShort[dayIndex]} schedules, added ${explicitExcludes.length} explicit excludes`);
           }
@@ -909,7 +932,7 @@ export default function SimpleDatePicker({
             });
             
             setExcludeDates(nextExclude);
-            onIncludeExcludeChange?.(includeDates, nextExclude);
+            defer(() => onIncludeExcludeChange?.(includeDates, nextExclude));
             
             console.log(`[Calendar] Updated calendar: enabled ${dayShort[dayIndex]} schedules by removing excludes`);
           }
@@ -1160,7 +1183,7 @@ export default function SimpleDatePicker({
       // 🔧 IMMUTABLE PATTERN: concat 사용 (push 금지)
       const newIncludeDates = [...includeDates, dateToAdd].sort();
       setIncludeDates(newIncludeDates);
-      onIncludeExcludeChange?.(newIncludeDates, excludeDates);
+      defer(() => onIncludeExcludeChange?.(newIncludeDates, excludeDates));
     }
     
     // Weekly schedule display is now only updated by user actions and sync function
@@ -1212,7 +1235,7 @@ export default function SimpleDatePicker({
     if (!includeDates.includes(selectedDateForEdit)) {
       const newIncludeDates = [...includeDates, selectedDateForEdit];
       setIncludeDates(newIncludeDates);
-      onIncludeExcludeChange?.(newIncludeDates, excludeDates);
+      defer(() => onIncludeExcludeChange?.(newIncludeDates, excludeDates));
     }
     
     if (userId && goalId && CalendarEventService) {
@@ -1270,7 +1293,7 @@ export default function SimpleDatePicker({
     if (!includeDates.includes(selectedDateForEdit)) {
       const newIncludeDates = [...includeDates, selectedDateForEdit];
       setIncludeDates(newIncludeDates);
-      onIncludeExcludeChange?.(newIncludeDates, excludeDates);
+      defer(() => onIncludeExcludeChange?.(newIncludeDates, excludeDates));
     }
     
     // 🔄 DATABASE PERSISTENCE: Update in database if available
@@ -1455,7 +1478,7 @@ export default function SimpleDatePicker({
               // No more times for this date, consider removing from include dates
               const newIncludeDates = includeDates.filter(date => date !== selectedDateForEdit);
               setIncludeDates(newIncludeDates);
-              onIncludeExcludeChange?.(newIncludeDates, excludeDates);
+              defer(() => onIncludeExcludeChange?.(newIncludeDates, excludeDates));
               
               if (__DEV__) {
                 console.log('[SimpleDatePicker] Removed date from schedule (no times left):', selectedDateForEdit);
@@ -1658,13 +1681,13 @@ export default function SimpleDatePicker({
       // Clear include dates and add all dates to exclude
       setIncludeDates([]);
       setExcludeDates(explicitExcludes);
-      onIncludeExcludeChange?.([], explicitExcludes);
+      defer(() => onIncludeExcludeChange?.([], explicitExcludes));
       
       console.log(`[Calendar] Cleared all calendar schedules, added ${explicitExcludes.length} explicit excludes`);
     } else {
       // No date range defined, just clear include dates
       setIncludeDates([]);
-      onIncludeExcludeChange?.([], excludeDates);
+      defer(() => onIncludeExcludeChange?.([], excludeDates));
       console.log('[Calendar] Cleared include dates (no date range defined)');
     }
     
