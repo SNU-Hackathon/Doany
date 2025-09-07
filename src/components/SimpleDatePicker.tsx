@@ -35,6 +35,7 @@
  * ✅ Hypothesis #3: Weekly→calendar materialization already implemented - syncWeeklyScheduleToCalendar function
  * ✅ Hypothesis #4: Fixed bad back-propagation - removed Weekly mutation from include/exclude changes
  * ✅ Hypothesis #5: Long-press already works without guards - one-time-per-date normalization implemented
+ * ✅ Hypothesis #6: Implemented navigation button handlers using existing refs/layout
  */
 
 import { Ionicons } from '@expo/vector-icons';
@@ -315,10 +316,7 @@ export default function SimpleDatePicker({
     setExcludeDates(prev => (arraysEqual(prev, next) ? prev : next));
   }, [initialExcludeDates]);
 
-  // Calendar navigation functions (unused in vertical scroll mode, kept for compatibility)
-  const goToPreviousMonth = () => {};
-  const goToNextMonth = () => {};
-  const goToYear = (_year: number) => {};
+  // Calendar navigation functions (moved after monthsInView declaration)
 
   // Generate calendar days for current month
   const generateCalendarDays = () => {
@@ -414,6 +412,28 @@ export default function SimpleDatePicker({
     
     return list;
   }, [startDate, currentMonth]);
+
+  // Calendar navigation functions
+  const scrollToMonth = useCallback((d: Date) => {
+    const idx = monthsInView.findIndex(m => m.getFullYear() === d.getFullYear() && m.getMonth() === d.getMonth());
+    if (idx < 0) return;
+    const ly = monthsLayoutRef.current?.[idx];
+    if (!ly) return;
+    calendarScrollRef.current?.scrollTo({ y: ly.y, animated: true });
+    setHeaderMonth?.(monthsInView[idx]);
+  }, [monthsInView]);
+
+  const goToPreviousMonth = () => {
+    const base = headerMonth ?? new Date();
+    scrollToMonth(new Date(base.getFullYear(), base.getMonth() - 1, 1));
+  };
+  const goToNextMonth = () => {
+    const base = headerMonth ?? new Date();
+    scrollToMonth(new Date(base.getFullYear(), base.getMonth() + 1, 1));
+  };
+  const goToToday = () => scrollToMonth(new Date());
+  const goToStart = () => startDate && scrollToMonth(new Date(startDate));
+  const goToYear = (_year: number) => {};
 
   // Fixed header month tracking and measurements
   const calendarScrollRef = useRef<ScrollView | null>(null);
