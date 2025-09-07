@@ -355,6 +355,20 @@ export default function SimpleDatePicker({
     return days;
   };
 
+  // Precompute winning time per date: override > weekly
+  const dateTimeMap = useMemo(() => {
+    const map = new Map<string, string | null>();
+    for (const e of effectiveEvents) {
+      const curr = map.get(e.date);
+      if (e.source === 'override') {
+        map.set(e.date, e.time ?? null);
+      } else if (e.source === 'weekly') {
+        if (!curr) map.set(e.date, e.time ?? null);
+      }
+    }
+    return map;
+  }, [effectiveEvents]);
+
   // Generate calendar days for a given month (for vertical rendering)
   const generateCalendarDaysFor = (monthDate: Date) => {
     const y = monthDate.getFullYear();
@@ -370,13 +384,8 @@ export default function SimpleDatePicker({
       const baseIncluded = inRange && selectedWeekdays.has(new Date(dateStr).getDay());
       const isScheduled = inRange && ((baseIncluded && !excludeDates.includes(dateStr)) || includeDates.includes(dateStr));
       
-        // Get times from calendar events for this date - ONLY ONE TIME PER DATE
-        const eventsForDate = effectiveEvents.filter(e => e.date === dateStr);
-        const override = eventsForDate.find(e => e.source === 'override');
-        const weekly = eventsForDate.find(e => e.source === 'weekly');
-        const timeToShow = override?.time ?? weekly?.time ?? null;
-      
-      // 🔄 SCHEDULE-BASED TIME DISPLAY: Only show times for scheduled dates
+      // SCHEDULE-BASED TIME DISPLAY via precomputed map (single label)
+      const timeToShow = dateTimeMap.get(dateStr) ?? null;
       const visibleTimes = isScheduled && timeToShow ? [timeToShow] : [];
       
       days.push({
@@ -390,28 +399,20 @@ export default function SimpleDatePicker({
         isScheduled,
         baseIncluded,
         isWithinRange: inRange,
-        times: visibleTimes, // Only show times for scheduled dates
-        events: eventsForDate // Store all events for potential use
+        times: visibleTimes // Only show times for scheduled dates (do not attach big arrays)
       });
     }
     return days;
   };
 
+  // Render window: anchor-6 ... anchor ... anchor+6 (13 months total)
   const monthsInView = useMemo(() => {
     const list: Date[] = [];
-    
-    // Always show a wide range of months for better navigation
-    // Use startDate as anchor if available, otherwise use current date
     const anchor = startDate ? new Date(startDate) : (currentMonth || new Date());
-    const start = new Date(anchor);
-    start.setMonth(anchor.getMonth() - 24); // Show 24 months before
-    
-    for (let i = 0; i < 60; i++) { // Show 60 months total (5 years)
-      const m = new Date(start);
-      m.setMonth(start.getMonth() + i);
-      list.push(m);
+    const start = new Date(anchor.getFullYear(), anchor.getMonth() - 6, 1);
+    for (let i = 0; i < 13; i++) {
+      list.push(new Date(start.getFullYear(), start.getMonth() + i, 1));
     }
-    
     return list;
   }, [startDate, currentMonth]);
 
@@ -501,43 +502,28 @@ export default function SimpleDatePicker({
     // Height is fixed; no need to set from layout
   };
 
+  // Throttle by rAF + binary search by y to pick month near viewport center
+  const ticking = useRef(false);
   const updateHeaderForScroll = (scrollY: number) => {
-    const layouts = monthsLayoutRef.current;
-    if (!layouts || layouts.length === 0) return;
-    
-    const viewStart = scrollY;
-    const viewEnd = scrollY + VIEWPORT_HEIGHT;
-    const viewCenter = scrollY + (VIEWPORT_HEIGHT / 2);
-    
-    let bestIdx = 0;
-    let bestScore = -1;
-    
-    layouts.forEach((ly, idx) => {
-      if (!ly) return;
-      const lyStart = ly.y;
-      const lyEnd = ly.y + ly.h;
-      const lyCenter = ly.y + (ly.h / 2);
-      
-      // Calculate overlap with viewport
-      const overlap = Math.max(0, Math.min(viewEnd, lyEnd) - Math.max(viewStart, lyStart));
-      
-      // Calculate distance from viewport center
-      const distanceFromCenter = Math.abs(viewCenter - lyCenter);
-      
-      // Score based on overlap and proximity to center
-      // Higher overlap and closer to center = better score
-      const score = overlap - (distanceFromCenter * 0.1);
-      
-      if (score > bestScore) {
-        bestScore = score;
-        bestIdx = idx;
+    if (ticking.current) return;
+    ticking.current = true;
+    requestAnimationFrame(() => {
+      const layouts = monthsLayoutRef.current;
+      if (layouts && layouts.length) {
+        const center = scrollY + VIEWPORT_HEIGHT / 2;
+        let lo = 0, hi = layouts.length - 1, ans = 0;
+        while (lo <= hi) {
+          const mid = (lo + hi) >> 1;
+          const y = layouts[mid]?.y ?? 0;
+          if (y <= center) { ans = mid; lo = mid + 1; } else { hi = mid - 1; }
+        }
+        const m = monthsInView[ans];
+        if (m && (!headerMonth || headerMonth.getMonth() !== m.getMonth() || headerMonth.getFullYear() !== m.getFullYear())) {
+          setHeaderMonth(m);
+        }
       }
+      ticking.current = false;
     });
-    
-    const m = monthsInView[bestIdx];
-    if (m && (!headerMonth || headerMonth.getMonth() !== m.getMonth() || headerMonth.getFullYear() !== m.getFullYear())) {
-      setHeaderMonth(m);
-    }
   };
 
   // Function to scroll to a specific month
@@ -724,77 +710,84 @@ export default function SimpleDatePicker({
   const dayShort = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   
   // 🔧 PATTERN SEPARATION: Apply weekly pattern (only for existing goals with Weekly 저장 버튼)
-  const syncWeeklyScheduleToCalendar = useCallback(async () => {
-    try {
-      if (!startDate || !endDate) return;
-      log('syncWeeklyScheduleToCalendar:start', { startDate, endDate });
+  const _syncWeekly = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const syncWeeklyScheduleToCalendar = useCallback((immediate = false) => {
+    const run = async () => {
+      try {
+        if (!startDate || !endDate) return;
+        log('syncWeeklyScheduleToCalendar:start', { startDate, endDate });
 
-      // Build date list
-      const start = new Date(startDate);
-      const end = new Date(endDate);
-      const days: string[] = [];
-      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-        days.push(getLocalYMD(d));
-      }
+        // Build date list
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        const days: string[] = [];
+        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+          days.push(getLocalYMD(d));
+        }
 
-      // Compute overrides map
-      const overrideByDate = new Map(
-        effectiveEvents.filter(e => e.source === 'override')
-          .map(e => [e.date, e])
-      );
+        // Compute overrides map
+        const overrideByDate = new Map(
+          effectiveEvents.filter(e => e.source === 'override')
+            .map(e => [e.date, e])
+        );
 
-      // Desired weekly instances (at most one per date)
-      const desiredWeekly: Omit<CalendarEvent,'id'|'createdAt'|'updatedAt'>[] = [];
-      for (const ds of days) {
-        const weekday = new Date(ds).getDay();
-        const baseIncluded = selectedWeekdays.has(weekday);
-        const scheduled =
-          (baseIncluded && !excludeDates.includes(ds)) ||
-          includeDates.includes(ds);
-        if (!scheduled) continue;
-        if (overrideByDate.has(ds)) continue; // keep per-date override
+        // Desired weekly instances (at most one per date)
+        const desiredWeekly: Omit<CalendarEvent,'id'|'createdAt'|'updatedAt'>[] = [];
+        for (const ds of days) {
+          const weekday = new Date(ds).getDay();
+          const baseIncluded = selectedWeekdays.has(weekday);
+          const scheduled =
+            (baseIncluded && !excludeDates.includes(ds)) ||
+            includeDates.includes(ds);
+          if (!scheduled) continue;
+          if (overrideByDate.has(ds)) continue; // keep per-date override
 
-        const t = weeklyTimeSettings[weekday]?.[0]; // one time per weekday
-        if (!t) continue;
+          const t = weeklyTimeSettings[weekday]?.[0]; // one time per weekday
+          if (!t) continue;
 
-        desiredWeekly.push({
-          goalId: goalId ?? '',
-          date: ds,
-          time: t,
-          source: 'weekly',
-        } as any);
-      }
+          desiredWeekly.push({
+            goalId: goalId ?? '',
+            date: ds,
+            time: t,
+            source: 'weekly',
+          } as any);
+        }
 
-      // Remove existing weekly within range, preserve others
-      const keep = effectiveEvents.filter(
-        e => !(e.source === 'weekly' && days.includes(e.date))
-      );
-      const next = [...keep, ...desiredWeekly as any];
+        // Remove existing weekly within range, preserve others
+        const keep = effectiveEvents.filter(
+          e => !(e.source === 'weekly' && days.includes(e.date))
+        );
+        const next = [...keep, ...desiredWeekly as any];
 
-      if (userId && goalId && CalendarEventService) {
-        try {
-          const toDeleteIds = effectiveEvents
-            .filter(e => e.source === 'weekly' && days.includes(e.date))
-            .map(e => e.id)
-            .filter(Boolean) as string[];
-          if (toDeleteIds.length) {
-            await CalendarEventService.deleteCalendarEvents(goalId, toDeleteIds);
+        if (userId && goalId && CalendarEventService) {
+          try {
+            const toDeleteIds = effectiveEvents
+              .filter(e => e.source === 'weekly' && days.includes(e.date))
+              .map(e => e.id)
+              .filter(Boolean) as string[];
+            if (toDeleteIds.length) {
+              await CalendarEventService.deleteCalendarEvents(goalId, toDeleteIds);
+            }
+            if (desiredWeekly.length) {
+              await CalendarEventService.createCalendarEvents(goalId, desiredWeekly as any);
+            }
+            const refreshed = await CalendarEventService.getCalendarEvents(goalId, startDate, endDate);
+            applyEventsChange(refreshed);
+          } catch (e) {
+            warn('syncWeeklyScheduleToCalendar: db failed, falling back', e);
+            applyEventsChange(next);
           }
-          if (desiredWeekly.length) {
-            await CalendarEventService.createCalendarEvents(goalId, desiredWeekly as any);
-          }
-          const refreshed = await CalendarEventService.getCalendarEvents(goalId, startDate, endDate);
-          applyEventsChange(refreshed);
-        } catch (e) {
-          warn('syncWeeklyScheduleToCalendar: db failed, falling back', e);
+        } else {
           applyEventsChange(next);
         }
-      } else {
-        applyEventsChange(next);
-      }
-    } finally {
-      log('syncWeeklyScheduleToCalendar:done');
+      } finally { log('syncWeeklyScheduleToCalendar:done'); }
+    };
+    if (immediate) {
+      if (_syncWeekly.current) clearTimeout(_syncWeekly.current);
+      run(); return;
     }
+    if (_syncWeekly.current) clearTimeout(_syncWeekly.current);
+    _syncWeekly.current = setTimeout(run, 200);
   }, [
     startDate, endDate,
     selectedWeekdays, weeklyTimeSettings,
@@ -1009,19 +1002,15 @@ export default function SimpleDatePicker({
           });
           
     // 🔄 SYNC CALENDAR: Immediately sync weekly schedule to calendar events
-    try {
-      await syncWeeklyScheduleToCalendar();
-      log('removeTime: calendar sync completed', { 
-        action: 'weekly_time_remove', 
-        date: `weekday_${dayIndex}`, 
-        dayName, 
-        source: 'weekly',
-        calendarEventsCount: effectiveEvents.length,
-        eventsForWeekday: effectiveEvents.filter(e => e.source === 'weekly' && new Date(e.date).getDay() === dayIndex).map(e => ({ date: e.date, time: e.time }))
-      });
-    } catch (error) {
-      err('removeTime: calendar sync failed', error);
-    }
+    syncWeeklyScheduleToCalendar();
+    log('removeTime: calendar sync scheduled', { 
+      action: 'weekly_time_remove', 
+      date: `weekday_${dayIndex}`, 
+      dayName, 
+      source: 'weekly',
+      calendarEventsCount: effectiveEvents.length,
+      eventsForWeekday: effectiveEvents.filter(e => e.source === 'weekly' && new Date(e.date).getDay() === dayIndex).map(e => ({ date: e.date, time: e.time }))
+    });
   }, [dayShort, syncWeeklyScheduleToCalendar]);
 
   const saveTime = useCallback(async () => {
@@ -1074,19 +1063,15 @@ export default function SimpleDatePicker({
     log('saveTime: modal closed, starting calendar sync', { time, editingDayIndex });
     
     // 🔄 SYNC CALENDAR: Immediately sync weekly schedule to calendar events
-    try {
-      await syncWeeklyScheduleToCalendar();
-      log('saveTime: calendar sync completed', { 
-        action: 'weekly_time_save', 
-        date: `weekday_${editingDayIndex}`, 
-        time, 
-        source: 'weekly',
-        calendarEventsCount: effectiveEvents.length,
-        eventsForWeekday: effectiveEvents.filter(e => e.source === 'weekly' && new Date(e.date).getDay() === editingDayIndex).map(e => ({ date: e.date, time: e.time }))
-      });
-    } catch (error) {
-      err('saveTime: calendar sync failed', error);
-    }
+    syncWeeklyScheduleToCalendar();
+    log('saveTime: calendar sync scheduled', { 
+      action: 'weekly_time_save', 
+      date: `weekday_${editingDayIndex}`, 
+      time, 
+      source: 'weekly',
+      calendarEventsCount: effectiveEvents.length,
+      eventsForWeekday: effectiveEvents.filter(e => e.source === 'weekly' && new Date(e.date).getDay() === editingDayIndex).map(e => ({ date: e.date, time: e.time }))
+    });
     
     log('saveTime: function completed successfully', { time, editingDayIndex });
   }, [editingDayIndex, editingTimeIndex, editingTimeHour, editingTimeMinute, onWeeklyScheduleChange, syncWeeklyScheduleToCalendar, effectiveEvents]);
@@ -1123,55 +1108,40 @@ export default function SimpleDatePicker({
     
     // 🔄 ONE TIME PER DATE: Remove any existing events for this date (regardless of source)
     const otherDateEvents = effectiveEvents.filter(e => e.date !== selectedDateForEdit);
+    const newEvent: CalendarEvent = {
+      id: `override-${selectedDateForEdit}-${dateEditTimeInput}-${Date.now()}`,
+      date: selectedDateForEdit,
+      time: dateEditTimeInput,
+      goalId: goalId || 'temp-goal-id',
+      source: 'override',
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    const next = [...otherDateEvents, newEvent];
     
-    // 🔄 DATABASE PERSISTENCE: Save to database if userId and goalId are available
+    // 1) Optimistic UI update
+    applyEventsChange(next);
+    // 2) Background sync
     if (userId && goalId) {
-      try {
-        // Create new override event for this date
-        const newEvent: Omit<CalendarEvent, 'id' | 'createdAt' | 'updatedAt'> = {
-          date: selectedDateForEdit,
-          time: dateEditTimeInput,
-          goalId: goalId,
-          source: 'override'
-        };
-        await CalendarEventService.createCalendarEvents(goalId, [newEvent]);
-        
-        // Refresh calendar events after successful database save
-        const refreshedEvents = await CalendarEventService.getCalendarEvents(
-          goalId, 
-          selectedDateForEdit,
-          selectedDateForEdit
-        );
-        
-        // Merge with existing events from other dates
-        const otherDateEvents = effectiveEvents.filter(e => e.date !== selectedDateForEdit);
-        const updatedEvents = [...otherDateEvents, ...refreshedEvents];
-        applyEventsChange(updatedEvents);
-        
-        console.log(`[Calendar Edit Schedule] Successfully replaced time for date ${selectedDateForEdit} with ${dateEditTimeInput} (single time per date)`);
-      } catch (error) {
-        console.error('[Calendar Edit Schedule] Error saving override time to database:', error);
-        Alert.alert('Error', 'Failed to save time to database. Please try again.');
-        return;
-      }
-    } else {
-      // 🔄 LOCAL FALLBACK: Replace existing local events for this date
-      const otherDateEvents = effectiveEvents.filter(e => e.date !== selectedDateForEdit);
-      const newEvent: CalendarEvent = {
-        id: `override-${selectedDateForEdit}-${dateEditTimeInput}-${Date.now()}`,
-        date: selectedDateForEdit,
-        time: dateEditTimeInput,
-        goalId: goalId || 'temp-goal-id',
-        source: 'override',
-        createdAt: new Date(),
-        updatedAt: new Date()
-      };
-      
-      // Only keep the new event for this date (single time per date)
-      const updatedEvents = [...otherDateEvents, newEvent];
-      applyEventsChange(updatedEvents);
-      
-      console.log(`[Calendar Edit Schedule] Replaced local time for date ${selectedDateForEdit} with ${dateEditTimeInput} (single time per date)`);
+      (async () => {
+        try {
+          await CalendarEventService.createCalendarEvents(goalId, [{
+            date: selectedDateForEdit,
+            time: dateEditTimeInput,
+            goalId: goalId,
+            source: 'override'
+          }]);
+          const refreshedEvents = await CalendarEventService.getCalendarEvents(
+            goalId, 
+            selectedDateForEdit,
+            selectedDateForEdit
+          );
+          const others = next.filter(e => e.date !== selectedDateForEdit);
+          applyEventsChange([...others, ...refreshedEvents]);
+        } catch (e) {
+          warn('addOrReplaceTimeForDate bg sync failed', e);
+        }
+      })();
     }
     
     // 🔄 INDEPENDENT DATE MANAGEMENT: Only affect this specific date
@@ -1235,40 +1205,25 @@ export default function SimpleDatePicker({
       defer(() => onIncludeExcludeChange?.(newIncludeDates, excludeDates));
     }
     
+    // 1) Optimistic UI update
+    applyEventsChange(next);
+    // 2) Background sync
     if (userId && goalId && CalendarEventService) {
-      try {
-        // Delete existing events for this date
-        const existingEventsForDate = effectiveEvents.filter(e => e.date === selectedDateForEdit);
-        if (existingEventsForDate.length > 0) {
-          const toDeleteIds = existingEventsForDate.map(e => e.id).filter(Boolean) as string[];
-          if (toDeleteIds.length > 0) {
-            await CalendarEventService.deleteCalendarEvents(goalId, toDeleteIds);
-          }
+      (async () => {
+        try {
+          const existing = effectiveEvents.filter(e => e.date === selectedDateForEdit);
+          const toDeleteIds = existing.map(e => e.id).filter(Boolean) as string[];
+          if (toDeleteIds.length) await CalendarEventService.deleteCalendarEvents(goalId, toDeleteIds);
+          await CalendarEventService.createCalendarEvents(goalId, [{
+            goalId, date: selectedDateForEdit, time: dateEditTimeInput, source: 'override'
+          }] as any);
+          const refreshed = await CalendarEventService.getCalendarEvents(goalId, selectedDateForEdit, selectedDateForEdit);
+          const others = next.filter(e => e.date !== selectedDateForEdit);
+          applyEventsChange([...others, ...refreshed]);
+        } catch (e) {
+          warn('handleAddTimeToDate bg sync failed', e);
         }
-        
-        // Create new override event
-        const newEvent = {
-          goalId: goalId,
-          date: selectedDateForEdit,
-          time: dateEditTimeInput,
-          source: 'override',
-        };
-        await CalendarEventService.createCalendarEvents(goalId, [newEvent] as any);
-        
-        // Refetch and update
-        const refreshed = await CalendarEventService.getCalendarEvents(goalId, selectedDateForEdit, selectedDateForEdit);
-        const otherDateEvents = effectiveEvents.filter(e => e.date !== selectedDateForEdit);
-        const updatedEvents = [...otherDateEvents, ...refreshed];
-        applyEventsChange(updatedEvents);
-        
-        log('handleAddTimeToDate: database update completed', { date: selectedDateForEdit, time: dateEditTimeInput });
-      } catch (error) {
-        warn('handleAddTimeToDate: database failed, using local fallback', error);
-        applyEventsChange(next);
-      }
-    } else {
-      applyEventsChange(next);
-      log('handleAddTimeToDate: local update completed', { date: selectedDateForEdit, time: dateEditTimeInput });
+      })();
     }
   }, [selectedDateForEdit, dateEditTimeInput, effectiveEvents, applyEventsChange, userId, goalId]);
 
@@ -1383,40 +1338,25 @@ export default function SimpleDatePicker({
       source: 'override',
     } as any);
     
+    // 1) Optimistic UI update
+    applyEventsChange(next);
+    // 2) Background sync
     if (userId && goalId && CalendarEventService) {
-      try {
-        // Delete existing events for this date
-        const existingEventsForDate = effectiveEvents.filter(e => e.date === selectedDateForEdit);
-        if (existingEventsForDate.length > 0) {
-          const toDeleteIds = existingEventsForDate.map(e => e.id).filter(Boolean) as string[];
-          if (toDeleteIds.length > 0) {
-            await CalendarEventService.deleteCalendarEvents(goalId, toDeleteIds);
-          }
+      (async () => {
+        try {
+          const existing = effectiveEvents.filter(e => e.date === selectedDateForEdit);
+          const toDeleteIds = existing.map(e => e.id).filter(Boolean) as string[];
+          if (toDeleteIds.length) await CalendarEventService.deleteCalendarEvents(goalId, toDeleteIds);
+          await CalendarEventService.createCalendarEvents(goalId, [{
+            goalId, date: selectedDateForEdit, time: dateEditTimeInput, source: 'override'
+          }] as any);
+          const refreshed = await CalendarEventService.getCalendarEvents(goalId, selectedDateForEdit, selectedDateForEdit);
+          const others = next.filter(e => e.date !== selectedDateForEdit);
+          applyEventsChange([...others, ...refreshed]);
+        } catch (e) {
+          warn('handleUpdateTimeForDate bg sync failed', e);
         }
-        
-        // Create new override event
-        const newEvent = {
-          goalId: goalId,
-          date: selectedDateForEdit,
-          time: dateEditTimeInput,
-          source: 'override',
-        };
-        await CalendarEventService.createCalendarEvents(goalId, [newEvent] as any);
-        
-        // Refetch and update
-        const refreshed = await CalendarEventService.getCalendarEvents(goalId, selectedDateForEdit, selectedDateForEdit);
-        const otherDateEvents = effectiveEvents.filter(e => e.date !== selectedDateForEdit);
-        const updatedEvents = [...otherDateEvents, ...refreshed];
-        applyEventsChange(updatedEvents);
-        
-        log('handleUpdateTimeForDate: database update completed', { date: selectedDateForEdit, time: dateEditTimeInput });
-      } catch (error) {
-        warn('handleUpdateTimeForDate: database failed, using local fallback', error);
-        applyEventsChange(next);
-      }
-    } else {
-      applyEventsChange(next);
-      log('handleUpdateTimeForDate: local update completed', { date: selectedDateForEdit, time: dateEditTimeInput });
+      })();
     }
     
     // Reset editing state
@@ -2018,20 +1958,6 @@ export default function SimpleDatePicker({
         )}
       </View>
 
-      {/* How verification works - English only note */}
-      {(() => {
-        const verificationNote = generateVerificationNote();
-        if (!verificationNote) return null;
-        
-        return (
-          <View className="mb-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
-            <Text className="text-gray-700 font-semibold text-sm mb-2">How verification works</Text>
-            <Text className="text-gray-600 text-xs leading-4" style={{ lineHeight: 16 }}>
-              {verificationNote}
-            </Text>
-          </View>
-        );
-      })()}
 
       {/* Calendar */}
       <View className="mb-3" style={{ height: VIEWPORT_HEIGHT * 0.7 }}>
@@ -2047,9 +1973,18 @@ export default function SimpleDatePicker({
               </Text>
             </TouchableOpacity>
             
-            <Text className="text-center text-lg font-bold text-gray-800">
-              {(headerMonth || monthsInView[0] || new Date()).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-            </Text>
+            {(() => {
+              const hm = headerMonth || monthsInView[0] || new Date();
+              const headerTitle = useMemo(
+                () => hm.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+                [hm.getFullYear(), hm.getMonth()]
+              );
+              return (
+                <Text className="text-center text-lg font-bold text-gray-800">
+                  {headerTitle}
+                </Text>
+              );
+            })()}
             
             <TouchableOpacity 
               onPress={() => scrollToTargetMonth(new Date())}
@@ -2070,7 +2005,7 @@ export default function SimpleDatePicker({
         <ScrollView
           ref={calendarScrollRef}
           onScroll={(e) => updateHeaderForScroll(e.nativeEvent.contentOffset.y)}
-          scrollEventThrottle={4}
+          scrollEventThrottle={16}
           showsVerticalScrollIndicator={false}
           bounces={false}
           alwaysBounceVertical={false}
@@ -2250,17 +2185,6 @@ export default function SimpleDatePicker({
           </View>
         )}
 
-        {/* Verification Summary */}
-        {generateVerificationNote && (
-          <View className="mt-3 bg-gray-50 border border-gray-200 rounded-lg p-3">
-            {generateVerificationNote().split('\n').map((line, i) => (
-              <View key={i} className="flex-row items-start mb-1">
-                <Text className="text-gray-500 text-xs mr-1">•</Text>
-                <Text className="text-gray-700 text-xs flex-1">{line}</Text>
-              </View>
-            ))}
-          </View>
-        )}
 
         {/* Target Location selection (when Location method selected) */}
         {(verificationMethods || []).includes('location' as any) && (
@@ -2362,54 +2286,6 @@ export default function SimpleDatePicker({
         </TouchableOpacity>
       </View>
 
-      {/* Time Picker Modal */}
-      <Modal visible={showTimePicker} transparent animationType="fade" onRequestClose={() => setShowTimePicker(false)}>
-        <View className="flex-1 justify-end">
-          <View className="bg-white mx-6 mb-10 rounded-2xl p-4 shadow-lg border border-gray-200">
-            <Text className="text-center text-lg font-semibold text-gray-800 mb-3">{editingTimeIndex === -1 ? 'Add Time' : 'Edit Time'}</Text>
-            <View className="flex-row items-start justify-center gap-6">
-              {/* Hour Picker (00-23) */}
-              <View>
-                <Text className="text-center text-xs text-gray-500 mb-1">Hour</Text>
-                <View className="rounded-lg border border-gray-200 overflow-hidden" style={{ width: 120 }}>
-                  <Picker
-                    selectedValue={editingTimeHour}
-                    onValueChange={(v) => setEditingTimeHour(String(v).padStart(2, '0'))}
-                    style={{ height: 150 }}
-                  >
-                    {Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0')).map(h => (
-                      <Picker.Item key={h} label={h} value={h} />
-                    ))}
-                  </Picker>
-                </View>
-              </View>
-              {/* Minute Picker (00-59) */}
-              <View>
-                <Text className="text-center text-xs text-gray-500 mb-1">Minute</Text>
-                <View className="rounded-lg border border-gray-200 overflow-hidden" style={{ width: 120 }}>
-                  <Picker
-                    selectedValue={editingTimeMinute}
-                    onValueChange={(v) => setEditingTimeMinute(String(v).padStart(2, '0'))}
-                    style={{ height: 150 }}
-                  >
-                    {Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0')).map(m => (
-                      <Picker.Item key={m} label={m} value={m} />
-                    ))}
-                  </Picker>
-                </View>
-              </View>
-            </View>
-            <View className="flex-row space-x-3 mt-4">
-              <TouchableOpacity onPress={() => setShowTimePicker(false)} className="flex-1 bg-gray-200 rounded-lg py-3">
-                <Text className="text-gray-700 font-medium text-center">Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => saveTime()} className="flex-1 bg-blue-600 rounded-lg py-3">
-                <Text className="text-white font-medium text-center">Save</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
 
       {/* Date Edit Modal for Long Press */}
       <Modal 
