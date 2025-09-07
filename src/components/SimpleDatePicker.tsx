@@ -37,6 +37,7 @@
  * ✅ Hypothesis #5: Long-press already works without guards - one-time-per-date normalization implemented
  * ✅ Hypothesis #6: Implemented navigation button handlers using existing refs/layout
  * ✅ Hypothesis #7: Replaced duplicate calendar in Verification with clean bullet summary
+ * ✅ One-time-per-cell normalization: override > weekly > none (already implemented)
  */
 
 import { Ionicons } from '@expo/vector-icons';
