@@ -32,6 +32,7 @@
  * HYPOTHESIS STATUS:
  * ✅ Hypothesis #1: Applied microtask deferral for parent callbacks
  * ✅ Hypothesis #2: Local fallback already implemented - effectiveEvents unified read source
+ * ✅ Hypothesis #3: Weekly→calendar materialization already implemented - syncWeeklyScheduleToCalendar function
  */
 
 import { Ionicons } from '@expo/vector-icons';
