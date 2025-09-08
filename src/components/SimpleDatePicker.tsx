@@ -56,6 +56,7 @@ import {
 import { convertDurationToRange } from '../features/goals/aiDraft';
 import { CalendarEventService } from '../services/calendarEventService';
 import { CalendarEvent, GoalSpec, TargetLocation, VerificationType } from '../types';
+import { getLocalYMD } from '../utils/dateUtils';
 import MapPreview from './MapPreview';
 
 // Localized logger helpers
@@ -146,22 +147,6 @@ export default function SimpleDatePicker({
 }: SimpleDatePickerProps) {
   // Parent notifications must happen post-commit.
   
-  /**
-   * 로컬 날짜를 YYYY-MM-DD 형식으로 변환
-   * 
-   * 타임존 규칙: Asia/Seoul 고정
-   * 날짜 문자열: YYYY-MM-DD 형식
-   * 
-   * @param d Date 객체
-   * @returns YYYY-MM-DD 형식의 날짜 문자열
-   */
-  const getLocalYMD = (d: Date) => {
-    // Asia/Seoul 타임존 기준으로 날짜 계산
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${dd}`;
-  };
   const today = getLocalYMD(new Date());
 
   const [startDate, setStartDate] = useState(initialStartDate || today);
@@ -202,7 +187,6 @@ export default function SimpleDatePicker({
       setEndDate(range.endDate);
       // Defer parent updates to the next tick to avoid render-phase warnings
       setTimeout(() => {
-        defer(() => onEndDateChange(range.endDate));
         // Clamp existing include/exclude to the initialized range
         const clampToRange = (dates: string[]) => dates.filter(d => d >= startDate && d <= range.endDate);
         const nextInclude = clampToRange(includeDates).sort();
@@ -337,7 +321,7 @@ export default function SimpleDatePicker({
       const dateStr = getLocalYMD(new Date(year, month, day));
       const inRange = !!(endDate && dateStr >= (startDate || today) && dateStr <= endDate);
       const baseIncluded = inRange && selectedWeekdays.has(new Date(dateStr).getDay());
-      const isScheduled = inRange && ((baseIncluded && !excludeDates.includes(dateStr)) || includeDates.includes(dateStr));
+      const isScheduled = inRange && ((baseIncluded && !excludeSet.has(dateStr)) || includeSet.has(dateStr));
       days.push({
         day,
         dateStr,
@@ -369,8 +353,12 @@ export default function SimpleDatePicker({
     return map;
   }, [effectiveEvents]);
 
-  // Generate calendar days for a given month (for vertical rendering)
-  const generateCalendarDaysFor = (monthDate: Date) => {
+  // Set/Map 캐시 for O(1) lookups
+  const includeSet = useMemo(() => new Set(includeDates), [includeDates]);
+  const excludeSet = useMemo(() => new Set(excludeDates), [excludeDates]);
+
+  // Generate calendar days for a given month (memoized)
+  const generateCalendarDaysFor = useCallback((monthDate: Date) => {
     const y = monthDate.getFullYear();
     const m = monthDate.getMonth();
     const firstDay = new Date(y, m, 1);
@@ -381,12 +369,14 @@ export default function SimpleDatePicker({
     for (let d = 1; d <= lastDay.getDate(); d++) {
       const dateStr = getLocalYMD(new Date(y, m, d));
       const inRange = !!(endDate && dateStr >= (startDate || today) && dateStr <= endDate);
-      const baseIncluded = inRange && selectedWeekdays.has(new Date(dateStr).getDay());
-      const isScheduled = inRange && ((baseIncluded && !excludeDates.includes(dateStr)) || includeDates.includes(dateStr));
-      
-      // SCHEDULE-BASED TIME DISPLAY via precomputed map (single label)
-      const timeToShow = dateTimeMap.get(dateStr) ?? null;
-      const visibleTimes = isScheduled && timeToShow ? [timeToShow] : [];
+      const wd = new Date(dateStr).getDay();
+      const baseIncluded = inRange && selectedWeekdays.has(wd);
+      const isScheduled = inRange && ((baseIncluded && !excludeSet.has(dateStr)) || includeSet.has(dateStr));
+
+      // 👇 time label (override > weekly > UI-fallback) — see step 4, keep here too
+      const weeklyDefault = weeklyTimeSettings[wd]?.[0] ?? null;
+      const timeToShow = dateTimeMap.get(dateStr) ?? (isScheduled ? weeklyDefault : null);
+      const visibleTimes = timeToShow ? [timeToShow] : [];
       
       days.push({
         day: d,
@@ -395,15 +385,15 @@ export default function SimpleDatePicker({
         isPast: dateStr < today,
         isSelected: dateStr === startDate || (endDate && dateStr === endDate),
         isInRange: endDate && dateStr > startDate && dateStr < endDate,
-        isWeekdayGoal: endDate && dateStr >= startDate && dateStr <= endDate && selectedWeekdays.has(new Date(dateStr).getDay()),
+        isWeekdayGoal: endDate && dateStr >= startDate && dateStr <= endDate && selectedWeekdays.has(wd),
         isScheduled,
         baseIncluded,
         isWithinRange: inRange,
-        times: visibleTimes // Only show times for scheduled dates (do not attach big arrays)
+        times: visibleTimes
       });
     }
     return days;
-  };
+  }, [startDate, endDate, today, selectedWeekdays, includeSet, excludeSet, dateTimeMap, weeklyTimeSettings]);
 
   // Render window: anchor-6 ... anchor ... anchor+6 (13 months total)
   const monthsInView = useMemo(() => {
@@ -566,7 +556,7 @@ export default function SimpleDatePicker({
       console.log(`[Calendar] Toggling schedule for date: ${dateStr}`);
       
       const baseIncluded = selectedWeekdays.has(new Date(dateStr).getDay()) && (!!endDate ? (dateStr >= (startDate || today) && dateStr <= endDate) : true);
-      const currentlyScheduled = ((baseIncluded && !excludeDates.includes(dateStr)) || includeDates.includes(dateStr));
+      const currentlyScheduled = ((baseIncluded && !excludeSet.has(dateStr)) || includeSet.has(dateStr));
       const dayName = dayShort[new Date(dateStr).getDay()];
 
       console.log(`[Calendar] Date ${dateStr} (${dayName}): baseIncluded=${baseIncluded}, currentlyScheduled=${currentlyScheduled}`);
@@ -642,12 +632,10 @@ export default function SimpleDatePicker({
 
     // Period edit mode
     setStartDate(dateStr);
-    defer(() => onStartDateChange(dateStr));
 
     const value = parseInt(durationValue) || 1;
     const range = convertDurationToRange(dateStr, durationType, value);
     setEndDate(range.endDate);
-    defer(() => onEndDateChange(range.endDate));
 
     // Clean include/exclude now that range updated
     const clampToRange = (dates: string[]) => dates.filter(d => d >= dateStr && d <= range.endDate);
@@ -672,7 +660,6 @@ export default function SimpleDatePicker({
       const numValue = parseInt(value) || 1;
       const range = convertDurationToRange(startDate, durationType, numValue);
       setEndDate(range.endDate);
-      defer(() => onEndDateChange(range.endDate));
 
       // Clean include/exclude to new range
       const clampToRange = (dates: string[]) => dates.filter(d => d >= startDate && d <= range.endDate);
@@ -692,7 +679,6 @@ export default function SimpleDatePicker({
       const numValue = parseInt(durationValue) || 1;
       const range = convertDurationToRange(startDate, type, numValue);
       setEndDate(range.endDate);
-      defer(() => onEndDateChange(range.endDate));
 
       // Clean include/exclude to new range
       const clampToRange = (dates: string[]) => dates.filter(d => d >= startDate && d <= range.endDate);
@@ -737,8 +723,8 @@ export default function SimpleDatePicker({
           const weekday = new Date(ds).getDay();
           const baseIncluded = selectedWeekdays.has(weekday);
           const scheduled =
-            (baseIncluded && !excludeDates.includes(ds)) ||
-            includeDates.includes(ds);
+            (baseIncluded && !excludeSet.has(ds)) ||
+            includeSet.has(ds);
           if (!scheduled) continue;
           if (overrideByDate.has(ds)) continue; // keep per-date override
 
@@ -837,12 +823,12 @@ export default function SimpleDatePicker({
     const hasCalendarEvents = effectiveEvents.some(e => e.date === dateStr);
     
     // Check for weekly pattern (only if not excluded)
-    const baseIncluded = selectedWeekdays.has(w) && !excludeDates.includes(dateStr);
+    const baseIncluded = selectedWeekdays.has(w) && !excludeSet.has(dateStr);
     const weeklyTimes = baseIncluded ? (weeklyTimeSettings[w] || weeklyTimeSettings[String(w)] || []) : [];
     
     // Scheduled if: has calendar events OR has weekly pattern times
     return hasCalendarEvents || weeklyTimes.length > 0;
-  }, [startDate, endDate, selectedWeekdays, excludeDates, weeklyTimeSettings, effectiveEvents]);
+  }, [startDate, endDate, selectedWeekdays, excludeSet, weeklyTimeSettings, effectiveEvents]);
 
   
   const toggleWeekday = useCallback((dayIndex: number) => {
@@ -1047,14 +1033,6 @@ export default function SimpleDatePicker({
     setWeeklyTimeSettings(newTimeSettings);
     setSelectedWeekdays(updatedWeekdays);
     
-    // 🔄 IMMEDIATE PARENT NOTIFICATION: No setTimeout needed
-    if (onWeeklyScheduleChange) {
-      onWeeklyScheduleChange(updatedWeekdays, newTimeSettings);
-      if (__DEV__) {
-        console.log('[WeeklySchedule] Immediately notified parent of weekly schedule change for calendar sync');
-      }
-    }
-    
     // Close modal
       setShowTimePicker(false);
       setEditingDayIndex(-1);
@@ -1074,7 +1052,7 @@ export default function SimpleDatePicker({
     });
     
     log('saveTime: function completed successfully', { time, editingDayIndex });
-  }, [editingDayIndex, editingTimeIndex, editingTimeHour, editingTimeMinute, onWeeklyScheduleChange, syncWeeklyScheduleToCalendar, effectiveEvents]);
+  }, [editingDayIndex, editingTimeIndex, editingTimeHour, editingTimeMinute, syncWeeklyScheduleToCalendar, effectiveEvents]);
 
   // Long press handler for date editing
   const handleDateLongPress = useCallback((dateStr: string) => {
@@ -1146,7 +1124,7 @@ export default function SimpleDatePicker({
     
     // 🔄 INDEPENDENT DATE MANAGEMENT: Only affect this specific date
     const dateToAdd = selectedDateForEdit;
-    if (!includeDates.includes(dateToAdd)) {
+    if (!includeSet.has(dateToAdd)) {
       // 🔧 IMMUTABLE PATTERN: concat 사용 (push 금지)
       const newIncludeDates = [...includeDates, dateToAdd].sort();
       setIncludeDates(newIncludeDates);
@@ -1199,7 +1177,7 @@ export default function SimpleDatePicker({
     } as any);
     
     // 🔄 ADD TO INCLUDE DATES: Ensure the date is included in Weekly Schedule
-    if (!includeDates.includes(selectedDateForEdit)) {
+    if (!includeSet.has(selectedDateForEdit)) {
       const newIncludeDates = [...includeDates, selectedDateForEdit];
       setIncludeDates(newIncludeDates);
       defer(() => onIncludeExcludeChange?.(newIncludeDates, excludeDates));
@@ -1242,7 +1220,7 @@ export default function SimpleDatePicker({
     const otherDateEvents = effectiveEvents.filter(e => e.date !== selectedDateForEdit);
     
     // 🔄 ADD TO INCLUDE DATES: Ensure the date is included in Weekly Schedule
-    if (!includeDates.includes(selectedDateForEdit)) {
+    if (!includeSet.has(selectedDateForEdit)) {
       const newIncludeDates = [...includeDates, selectedDateForEdit];
       setIncludeDates(newIncludeDates);
       defer(() => onIncludeExcludeChange?.(newIncludeDates, excludeDates));
@@ -1457,7 +1435,7 @@ export default function SimpleDatePicker({
         // 🔄 SCHEDULE CHECK: Only include times from dates that are actually scheduled
         const inRange = dateStr >= (startDate || today) && dateStr <= endDate;
         const baseIncluded = inRange && selectedWeekdays.has(weekdayIndex);
-        const isScheduled = inRange && ((baseIncluded && !excludeDates.includes(dateStr)) || includeDates.includes(dateStr));
+        const isScheduled = inRange && ((baseIncluded && !excludeSet.has(dateStr)) || includeSet.has(dateStr));
         
         // Skip this date if it's not scheduled
         if (!isScheduled) continue;

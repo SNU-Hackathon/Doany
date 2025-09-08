@@ -103,3 +103,15 @@ export function isValidYYYYMMDD(dateStr: string): boolean {
   return !isNaN(date.getTime()) && date.toISOString().slice(0, 10) === dateStr;
 }
 
+/**
+ * Convert Date object to local YYYY-MM-DD string (timezone-safe)
+ * @param d Date object
+ * @returns YYYY-MM-DD string in local timezone
+ */
+export const getLocalYMD = (d: Date) => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+};
+

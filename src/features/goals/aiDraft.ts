@@ -1,5 +1,7 @@
 // AI Goal Draft State Management
 
+import { getLocalYMD } from '../../utils/dateUtils';
+
 export type VerificationMethod = "location" | "time" | "screentime" | "photo" | "manual";
 
 export interface AIGoalDraft {
@@ -127,28 +129,26 @@ export function validateAIGoal(draft: AIGoalDraft): {
  * Convert duration selection to proper date range
  */
 export function convertDurationToRange(
-  startDate: string, 
-  durationType: 'days' | 'weeks' | 'months', 
+  startYmd: string, 
+  type: 'days' | 'weeks' | 'months', 
   value: number
 ): { startDate: string; endDate: string } {
-  const start = new Date(startDate);
-  const end = new Date(start);
+  const start = new Date(startYmd);
+  const end = new Date(startYmd);
 
-  switch (durationType) {
-    case 'days':
-      end.setDate(start.getDate() + value);
-      break;
-    case 'weeks':
-      end.setDate(start.getDate() + (value * 7));
-      break;
-    case 'months':
-      end.setMonth(start.getMonth() + value);
-      break;
+  if (type === 'days') {
+    end.setDate(end.getDate() + (value - 1));
+  }
+  if (type === 'weeks') {
+    end.setDate(end.getDate() + (value * 7 - 1));
+  }
+  if (type === 'months') {
+    end.setMonth(end.getMonth() + value, end.getDate());
   }
 
-  return {
-    startDate: start.toISOString().split('T')[0], // YYYY-MM-DD
-    endDate: end.toISOString().split('T')[0]
+  return { 
+    startDate: getLocalYMD(start), 
+    endDate: getLocalYMD(end) 
   };
 }
 
