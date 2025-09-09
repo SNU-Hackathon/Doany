@@ -8,6 +8,7 @@
  */
 
 import { collection, doc, getDocs, orderBy, query, serverTimestamp, where, writeBatch } from 'firebase/firestore';
+import { v4 as uuidv4 } from 'uuid';
 import { CalendarEvent } from '../types';
 import { db } from './firebase';
 
@@ -76,7 +77,8 @@ export class CalendarEventService {
           date: data.date,
           time: data.time,
           goalId: data.goalId,
-          source: data.source,
+          source: data.source as 'single' | 'pattern',
+          groupId: data.groupId,
           createdAt: data.createdAt?.toDate(),
           updatedAt: data.updatedAt?.toDate()
         });
@@ -112,6 +114,7 @@ export class CalendarEventService {
           date: event.date,
           time: event.time,
           source: event.source, // Preserve source field
+          groupId: event.groupId, // Preserve groupId field
           updatedAt: serverTimestamp()
         });
       });
@@ -154,150 +157,48 @@ export class CalendarEventService {
   }
 
   /**
-   * Convert weekly schedule to calendar events
+   * Create pattern events for a goal (replaces weekly schedule)
    * @param goalId Goal ID
-   * @param weeklyWeekdays Array of weekday indices (0=Sun, 1=Mon, etc.)
-   * @param weeklyTimeSettings Object mapping weekday indices to time arrays
-   * @param startDate Start date (YYYY-MM-DD)
-   * @param endDate End date (YYYY-MM-DD)
+   * @param options Pattern creation options
    */
-  static convertWeeklyScheduleToEvents(
-    goalId: string,
-    weeklyWeekdays: number[],
-    weeklyTimeSettings: Record<string | number, string[]>,
-    startDate: string,
-    endDate: string
-  ): Omit<CalendarEvent, 'id' | 'createdAt' | 'updatedAt'>[] {
-    const events: Omit<CalendarEvent, 'id' | 'createdAt' | 'updatedAt'>[] = [];
+  static async createPatternEvents(goalId: string, options: {
+    startDate: string; 
+    endDate: string;
+    weekdays: number[];  // 0~6
+    time: string;        // 'HH:mm'
+  }): Promise<string> {
+    const groupId = uuidv4();
+    const { startDate, endDate, weekdays, time } = options;
+
     const start = new Date(startDate);
     const end = new Date(endDate);
-    
+    const ymd = (d: Date) => d.toISOString().slice(0,10);
+
+    const events: Omit<CalendarEvent, 'id' | 'createdAt' | 'updatedAt'>[] = [];
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-      const weekday = d.getDay();
-      const dateStr = d.toISOString().split('T')[0];
-      
-      if (weeklyWeekdays.includes(weekday)) {
-        const times = weeklyTimeSettings[weekday] || weeklyTimeSettings[String(weekday)] || [];
-        
-        if (times.length > 0) {
-          // Create event for each time slot
-          times.forEach((time: string) => {
-            events.push({
-              date: dateStr,
-              time: time,
-              goalId,
-              source: 'weekly'
-            });
-          });
-        } else {
-          // Create event without specific time
-          events.push({
-            date: dateStr,
-            goalId,
-            source: 'weekly'
-          });
-        }
+      if (weekdays.includes(d.getDay())) {
+        events.push({
+          goalId,
+          date: ymd(d),
+          time,
+          source: 'pattern',
+          groupId,
+        });
       }
     }
-    
-    return events;
+    if (events.length) await this.createCalendarEvents(goalId, events);
+    return groupId;
   }
 
   /**
-   * Convert include/exclude dates to calendar events
+   * Delete pattern group events
    * @param goalId Goal ID
-   * @param includeDates Array of dates to include (YYYY-MM-DD)
-   * @param excludeDates Array of dates to exclude (YYYY-MM-DD)
+   * @param groupId Pattern group ID
    */
-  static convertIncludeExcludeToEvents(
-    goalId: string,
-    includeDates: string[],
-    excludeDates: string[]
-  ): Omit<CalendarEvent, 'id' | 'createdAt' | 'updatedAt'>[] {
-    const events: Omit<CalendarEvent, 'id' | 'createdAt' | 'updatedAt'>[] = [];
-    
-    // Add include dates
-    includeDates.forEach(date => {
-      events.push({
-        date,
-        goalId,
-        source: 'override'
-      });
-    });
-    
-    // Add exclude dates (with source 'override' for tracking)
-    excludeDates.forEach(date => {
-      events.push({
-        date,
-        goalId,
-        source: 'override'
-      });
-    });
-    
-    return events;
-  }
-
-  /**
-   * Synchronize weekly schedule with calendar events
-   * This function updates calendar events when weekly schedule changes
-   * Preserves existing override events (merge policy)
-   * @param goalId Goal ID
-   * @param weeklyWeekdays Array of weekday indices (0=Sun, 1=Mon, etc.)
-   * @param weeklyTimeSettings Object mapping weekday indices to time arrays
-   * @param startDate Start date (YYYY-MM-DD)
-   * @param endDate End date (YYYY-MM-DD)
-   */
-  static async syncWeeklyScheduleToCalendar(
-    goalId: string,
-    weeklyWeekdays: number[],
-    weeklyTimeSettings: Record<string | number, string[]>,
-    startDate: string,
-    endDate: string
-  ): Promise<void> {
-    try {
-      // Get existing calendar events in the date range
-      const existingEvents = await CalendarEventService.getCalendarEvents(goalId, startDate, endDate);
-      
-      // Separate weekly and override events
-      const existingWeekly = existingEvents.filter(e => e.source === 'weekly');
-      const existingOverride = existingEvents.filter(e => e.source === 'override');
-      
-      // Generate new weekly events from the pattern
-      const newWeeklyEvents = CalendarEventService.convertWeeklyScheduleToEvents(
-        goalId,
-        weeklyWeekdays,
-        weeklyTimeSettings,
-        startDate,
-        endDate
-      );
-      
-      // Prepare batch operations
-      const batch = writeBatch(db);
-      
-      // Delete existing weekly events (they will be replaced)
-      existingWeekly.forEach(event => {
-        const eventRef = doc(collection(db, 'users', goalId, 'calendarEvents'), event.id);
-        batch.delete(eventRef);
-      });
-      
-      // Create new weekly events
-      newWeeklyEvents.forEach(event => {
-        const eventRef = doc(collection(db, 'users', goalId, 'calendarEvents'));
-        batch.set(eventRef, {
-          ...event,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        });
-      });
-      
-      // Commit the batch
-      await batch.commit();
-      
-      console.log(`[CalendarEventService] Synced weekly schedule: ${existingWeekly.length} old weekly events replaced with ${newWeeklyEvents.length} new weekly events, ${existingOverride.length} override events preserved`);
-    } catch (error) {
-      console.error('[CalendarEventService] Error syncing weekly schedule:', error);
-      throw new Error(`Failed to sync weekly schedule: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
+  static async deletePatternGroup(goalId: string, groupId: string): Promise<void> {
+    const all = await this.getCalendarEvents(goalId);
+    const ids = all.filter(e => e.groupId === groupId).map(e => e.id).filter(Boolean) as string[];
+    if (ids.length) await this.deleteCalendarEvents(goalId, ids);
   }
 
   /**
@@ -310,12 +211,12 @@ export class CalendarEventService {
     goalId: string, 
     startDate?: string, 
     endDate?: string
-  ): Promise<{ weekly: CalendarEvent[], override: CalendarEvent[] }> {
+  ): Promise<{ single: CalendarEvent[], pattern: CalendarEvent[] }> {
     const events = await CalendarEventService.getCalendarEvents(goalId, startDate, endDate);
     
     return {
-      weekly: events.filter(e => e.source === 'weekly'),
-      override: events.filter(e => e.source === 'override')
+      single: events.filter(e => e.source === 'single'),
+      pattern: events.filter(e => e.source === 'pattern')
     };
   }
 }

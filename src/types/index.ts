@@ -201,12 +201,15 @@ export interface ScreenTimeData {
 }
 
 // Calendar event type for unified schedule management
+export type CalendarEventSource = 'single' | 'pattern';
+
 export interface CalendarEvent {
-  id: string;          // uuid
+  id?: string;         // uuid (optional for new events)
   date: string;        // YYYY-MM-DD (Asia/Seoul 기준)
-  time?: string;       // "HH:mm"
+  time: string;        // "HH:mm" (required)
   goalId: string;
-  source: 'weekly' | 'override';
+  source: CalendarEventSource; // 'single' | 'pattern'
+  groupId?: string;    // 패턴 생성 묶음 id (없으면 단일 이벤트)
   createdAt?: Date;
   updatedAt?: Date;
 }
