@@ -393,6 +393,12 @@ export default function SimpleDatePicker({
     log('handleDateSelect entry:', { dateStr, editingMode, today });
     if (dateStr < today) return; // Don't allow past dates
 
+    // Check if date is within the selected period (only for schedule mode)
+    if (editingMode === 'schedule' && !isDateInPeriod(dateStr)) {
+      if (__DEV__) console.log('[SimpleDatePicker] Cannot schedule outside period:', dateStr);
+      return; // Don't allow scheduling outside the period
+    }
+
     if (editingMode === 'schedule') {
       // 🔄 SCHEDULE MODE: Toggle calendar events for this date
       console.log(`[Calendar] Toggling schedule for date: ${dateStr}`);
@@ -470,22 +476,83 @@ export default function SimpleDatePicker({
     });
   };
 
-  const handleDurationChange = (value: string) => {
+  const handleDurationChange = async (value: string) => {
     setDurationValue(value);
     if (startDate && value) {
       const numValue = parseInt(value) || 1;
       const range = convertDurationToRange(startDate, durationType, numValue);
       setEndDate(range.endDate);
+
+      // Remove events outside the new period
+      const newEndDate = range.endDate;
+      const eventsOutsidePeriod = effectiveEvents.filter(event =>
+        event.date < startDate || event.date > newEndDate
+      );
+
+      if (eventsOutsidePeriod.length > 0) {
+        if (__DEV__) {
+          console.log('[SimpleDatePicker] Removing events outside new period:', eventsOutsidePeriod.length);
+        }
+
+        // Remove events from local state
+        const eventsWithinPeriod = effectiveEvents.filter(event =>
+          event.date >= startDate && event.date <= newEndDate
+        );
+        applyEventsChange(eventsWithinPeriod);
+
+        // Remove from database if userId and goalId exist
+        if (userId && goalId) {
+          try {
+            const eventIds = eventsOutsidePeriod.map(event => event.id).filter(Boolean) as string[];
+            if (eventIds.length > 0) {
+              await CalendarEventService.deleteCalendarEvents(goalId, eventIds);
+            }
+          } catch (error) {
+            console.error('[SimpleDatePicker] Failed to delete events from database:', error);
+          }
+        }
+      }
       defer(() => onEndDateChange(range.endDate));
     }
   };
 
-  const handleDurationTypeChange = (type: 'days' | 'weeks' | 'months') => {
+  const handleDurationTypeChange = async (type: 'days' | 'weeks' | 'months') => {
     setDurationType(type);
     if (startDate && durationValue) {
       const numValue = parseInt(durationValue) || 1;
       const range = convertDurationToRange(startDate, type, numValue);
       setEndDate(range.endDate);
+
+      // Remove events outside the new period
+      const newEndDate = range.endDate;
+      const eventsOutsidePeriod = effectiveEvents.filter(event =>
+        event.date < startDate || event.date > newEndDate
+      );
+
+      if (eventsOutsidePeriod.length > 0) {
+        if (__DEV__) {
+          console.log('[SimpleDatePicker] Removing events outside new period:', eventsOutsidePeriod.length);
+        }
+
+        // Remove events from local state
+        const eventsWithinPeriod = effectiveEvents.filter(event =>
+          event.date >= startDate && event.date <= newEndDate
+        );
+        applyEventsChange(eventsWithinPeriod);
+
+        // Remove from database if userId and goalId exist
+        if (userId && goalId) {
+          try {
+            const eventIds = eventsOutsidePeriod.map(event => event.id).filter(Boolean) as string[];
+            if (eventIds.length > 0) {
+              await CalendarEventService.deleteCalendarEvents(goalId, eventIds);
+            }
+          } catch (error) {
+            console.error('[SimpleDatePicker] Failed to delete events from database:', error);
+          }
+        }
+      }
+
       defer(() => onEndDateChange(range.endDate));
     }
   };
@@ -503,14 +570,26 @@ export default function SimpleDatePicker({
     return effectiveEvents.some(e => e.date === dateStr);
   }, [effectiveEvents]);
 
+  // Helper function to check if date is within the selected period
+  const isDateInPeriod = useCallback((dateStr: string): boolean => {
+    if (!startDate || !endDate) return false;
+    return dateStr >= startDate && dateStr <= endDate;
+  }, [startDate, endDate]);
+
   // Weekly Schedule functions removed - using calendar events only
 
   // Long press handler for date editing
   const handleDateLongPress = useCallback((dateStr: string) => {
     log('handleDateLongPress entry:', { dateStr, editingMode });
     if (__DEV__) console.log('[SimpleDatePicker] Long press detected for date:', dateStr);
-    
+
     if (!dateStr) return;
+
+    // Check if date is within the selected period
+    if (!isDateInPeriod(dateStr)) {
+      if (__DEV__) console.log('[SimpleDatePicker] Cannot add schedule outside period:', dateStr);
+      return; // Don't allow scheduling outside the period
+    }
     
     try {
       // Get current time for this date
@@ -526,7 +605,7 @@ export default function SimpleDatePicker({
     } catch (error) {
       console.error('[SimpleDatePicker] Error in handleDateLongPress:', error);
     }
-  }, [effectiveEvents]);
+  }, [effectiveEvents, isDateInPeriod]);
 
   // Helper function to actually add/replace time for a date
   const handleAddTimeToDate = useCallback(async () => {
@@ -796,8 +875,8 @@ export default function SimpleDatePicker({
                     {dayData ? (
                       <TouchableOpacity
                         className={`flex-1 justify-center items-center rounded relative ${
-                          dayData.isPast
-                            ? 'bg-gray-100'
+                          dayData.isPast || (editingMode === 'schedule' && !isDateInPeriod(dayData.dateStr))
+                            ? 'bg-gray-200'
                             : editingMode === 'schedule' && dayData.isScheduled
                             ? 'bg-green-200'
                             : dayData.isSelected
@@ -816,7 +895,7 @@ export default function SimpleDatePicker({
                           }
                         }}
                         delayLongPress={500}
-                        disabled={dayData.isPast}
+                        disabled={dayData.isPast || (editingMode === 'schedule' && !isDateInPeriod(dayData.dateStr))}
                       >
                         <Text
                           className={`text-sm font-semibold ${
