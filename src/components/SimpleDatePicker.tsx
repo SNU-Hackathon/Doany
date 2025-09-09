@@ -462,6 +462,7 @@ export default function SimpleDatePicker({
                   y: layouts[targetMonthIndex].y,
                   animated: false
                 });
+                setHeaderMonth?.(monthsInView[targetMonthIndex]);
               } else {
                 // Fallback to approximate calculation
                 const monthHeight = 280; // Approximate height of one month
@@ -470,14 +471,15 @@ export default function SimpleDatePicker({
                   y: scrollY,
                   animated: false
                 });
+                setHeaderMonth?.(monthsInView[targetMonthIndex]);
               }
             }
           });
         };
         
-        // Try immediately, then retry after a short delay
+        // Try immediately, then single retry after short delay to avoid double jumps
         scrollToTarget();
-        const timeoutId = setTimeout(scrollToTarget, 200);
+        const timeoutId = setTimeout(scrollToTarget, 100);
         
         // Cleanup timeout on unmount
         return () => clearTimeout(timeoutId);
@@ -1983,7 +1985,7 @@ export default function SimpleDatePicker({
         <ScrollView
           ref={calendarScrollRef}
           onScroll={(e) => updateHeaderForScroll(e.nativeEvent.contentOffset.y)}
-          scrollEventThrottle={16}
+          scrollEventThrottle={48}
           showsVerticalScrollIndicator={false}
           bounces={false}
           alwaysBounceVertical={false}
@@ -1991,7 +1993,7 @@ export default function SimpleDatePicker({
           decelerationRate="normal"
           scrollEnabled={true}
           nestedScrollEnabled={true}
-          removeClippedSubviews={false}
+          removeClippedSubviews={true}
           keyboardShouldPersistTaps="handled"
         >
         {monthsInView.map((m, idx) => {
