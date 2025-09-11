@@ -1515,25 +1515,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     try {
       setLoading(true);
       
-      // Log formData.schedule structure before creating goal
-      console.log('[CreateGoalModal] formData.schedule before createGoal:', JSON.stringify({
-        schedule: formData.schedule,
-        timeWindows: formData.schedule?.timeWindows,
-        timeWindowsType: typeof formData.schedule?.timeWindows,
-        timeWindowsIsArray: Array.isArray(formData.schedule?.timeWindows),
-        timeWindowsLength: formData.schedule?.timeWindows?.length,
-        timeWindowsDetails: formData.schedule?.timeWindows?.map((w: any, i: number) => ({
-          index: i,
-          label: w?.label,
-          range: w?.range,
-          source: w?.source,
-          hasUndefined: {
-            label: w?.label === undefined,
-            range: w?.range === undefined,
-            source: w?.source === undefined
-          }
-        }))
-      }, null, 2));
+      // Prepare goal data for creation
 
       // Ensure mandatory verification aligns with presence of time/non-time schedules (both can apply)
       const flags = detectTimeManualFlags({

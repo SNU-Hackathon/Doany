@@ -37,62 +37,12 @@ export class GoalService {
         ...(goalData.targetLocation.address && { address: goalData.targetLocation.address })
       } : null;
 
-      // Log the payload before sanitization to debug timeWindows undefined issue
-      console.log('[GoalPayload Before Sanitize]', JSON.stringify({
-        ...goalData,
-        // Mask PII fields
-        userId: goalData.userId ? '***' : undefined,
-        targetLocation: goalData.targetLocation ? {
-          name: goalData.targetLocation.name ? '***' : undefined,
-          lat: goalData.targetLocation.lat,
-          lng: goalData.targetLocation.lng,
-          placeId: goalData.targetLocation.placeId ? '***' : undefined,
-          address: goalData.targetLocation.address ? '***' : undefined
-        } : null,
-        // Check schedule.timeWindows structure
-        schedule: goalData.schedule ? {
-          ...goalData.schedule,
-          timeWindows: goalData.schedule.timeWindows ? goalData.schedule.timeWindows.map((w: any, i: number) => ({
-            ...w,
-            // Check for undefined fields in each timeWindow
-            hasUndefinedFields: {
-              label: w.label === undefined,
-              range: w.range ? w.range.map((r: any, ri: number) => ({ index: ri, value: r, isUndefined: r === undefined })) : 'range is undefined',
-              source: w.source === undefined
-            }
-          })) : 'timeWindows is undefined'
-        } : 'schedule is undefined'
-      }, null, 2));
+      // Prepare goal data for creation
 
       // Sanitize the payload to remove undefined values
       const sanitizedGoalData = sanitizeGoalPayload(goalData);
       
-      // Log the sanitized payload
-      console.log('[GoalPayload After Sanitize]', JSON.stringify({
-        ...sanitizedGoalData,
-        // Mask PII fields
-        userId: sanitizedGoalData.userId ? '***' : undefined,
-        targetLocation: sanitizedGoalData.targetLocation ? {
-          name: sanitizedGoalData.targetLocation.name ? '***' : undefined,
-          lat: sanitizedGoalData.targetLocation.lat,
-          lng: sanitizedGoalData.targetLocation.lng,
-          placeId: sanitizedGoalData.targetLocation.placeId ? '***' : undefined,
-          address: sanitizedGoalData.targetLocation.address ? '***' : undefined
-        } : null,
-        // Check sanitized schedule.timeWindows structure
-        schedule: sanitizedGoalData.schedule ? {
-          ...sanitizedGoalData.schedule,
-          timeWindows: sanitizedGoalData.schedule.timeWindows ? sanitizedGoalData.schedule.timeWindows.map((w: any, i: number) => ({
-            ...w,
-            // Check for undefined fields in each timeWindow after sanitization
-            hasUndefinedFields: {
-              label: w.label === undefined,
-              range: w.range ? w.range.map((r: any, ri: number) => ({ index: ri, value: r, isUndefined: r === undefined })) : 'range is undefined',
-              source: w.source === undefined
-            }
-          })) : 'timeWindows is undefined'
-        } : 'schedule is undefined'
-      }, null, 2));
+      // Create goal document
 
       const goalDoc = {
         userId: sanitizedGoalData.userId,
