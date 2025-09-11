@@ -23,10 +23,32 @@ service cloud.firestore {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
     
+    // Specific rules for user calendar events subcollection
+    // Ensures calendar events can only be accessed by the user
+    match /users/{userId}/calendarEvents/{eventId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
     // Debug subcollection for connectivity testing
     // Users can ping their own debug documents
     match /users/{userId}/__debug__/{debugDoc} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Verifications collection - user-specific access
+    // Users can only access their own verifications
+    match /verifications/{verificationId} {
+      allow read, write: if request.auth != null && 
+        (resource.data.userId == request.auth.uid || 
+         request.auth.uid in resource.data.userId);
+    }
+    
+    // Goals collection (legacy/global) - user-specific access
+    // Users can only access their own goals
+    match /goals/{goalId} {
+      allow read, write: if request.auth != null && 
+        (resource.data.userId == request.auth.uid || 
+         request.auth.uid in resource.data.userId);
     }
     
     // Places index collection - globally readable for location search
