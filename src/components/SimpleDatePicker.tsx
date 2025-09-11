@@ -330,7 +330,7 @@ export default function SimpleDatePicker({
   };
   const goToYear = (_year: number) => {};  // Fixed header month tracking and measurements
   const calendarScrollRef = useRef<ScrollView | null>(null);
-  const monthsLayoutRef = useRef<Array<{ y: number; h: number }>>([]);
+  const monthsLayoutRef = useRef<{ y: number; h: number }[]>([]);
   const VIEWPORT_HEIGHT = 420;
   const [headerMonth, setHeaderMonth] = useState<Date | null>(null);  useEffect(() => {
     monthsLayoutRef.current = [];
@@ -896,15 +896,11 @@ export default function SimpleDatePicker({
             {(['days', 'weeks', 'months'] as const).map((type) => (
               <TouchableOpacity
                 key={type}
-                className={`h-12 px-4 rounded-lg items-center justify-center ${
-                  durationType === type ? 'bg-blue-600' : 'bg-white border border-blue-300'
-                }`}
+                className={`h-12 px-4 rounded-lg items-center justify-center ${durationType === type ? 'bg-blue-600' : 'bg-white border border-blue-300'}`}
                 onPress={() => handleDurationTypeChange(type)}
               >
                 <Text
-                  className={`text-base font-semibold ${
-                    durationType === type ? 'text-white' : 'text-blue-600'
-                  }`}
+                  className={`text-base font-semibold ${durationType === type ? 'text-white' : 'text-blue-600'}`}
                 >
                   {type}
                 </Text>
@@ -930,7 +926,7 @@ export default function SimpleDatePicker({
             >
               <Text className="text-blue-700 text-xs font-semibold">
                 {startDate ? 'Start Date' : 'Today'}
-                        </Text>
+              </Text>
                     </TouchableOpacity>
             
             <Text className="text-center text-lg font-bold text-gray-800">
@@ -982,19 +978,7 @@ export default function SimpleDatePicker({
                   <View key={index} className="w-[14.28%] p-1" style={{ aspectRatio: 1 }}>
                     {dayData ? (
                       <TouchableOpacity
-                        className={`flex-1 justify-center items-center rounded relative ${
-                          dayData.isPast || (editingMode === 'schedule' && !isDateInPeriod(dayData.dateStr))
-                            ? 'bg-gray-200'
-                            : dayData.isSelected
-                            ? 'bg-blue-600'
-                            : editingMode === 'schedule' && dayData.isScheduled
-                            ? 'bg-green-200'
-                            : dayData.isInRange
-                            ? 'bg-blue-100'
-                            : dayData.isToday
-                            ? 'bg-blue-50'
-                            : 'bg-gray-50'
-                        }`}
+                        className={`flex-1 justify-center items-center rounded relative ${dayData.isPast || (editingMode === 'schedule' && !isDateInPeriod(dayData.dateStr)) ? 'bg-gray-200' : dayData.isSelected ? 'bg-blue-600' : editingMode === 'schedule' && dayData.isScheduled ? 'bg-green-200' : dayData.isInRange ? 'bg-blue-100' : dayData.isToday ? 'bg-blue-50' : 'bg-gray-50'}`}
                         onPress={() => handleDateSelect(dayData.dateStr)}
                         onLongPress={() => {
                           if (!dayData.isPast && dayData.dateStr) {
@@ -1006,19 +990,7 @@ export default function SimpleDatePicker({
                         disabled={dayData.isPast || (editingMode === 'schedule' && !isDateInPeriod(dayData.dateStr))}
                       >
                         <Text
-                          className={`text-sm font-semibold ${
-                            dayData.isPast
-                              ? 'text-gray-400'
-                              : dayData.isSelected
-                              ? 'text-white'
-                              : editingMode === 'schedule' && dayData.isScheduled
-                              ? 'text-green-900'
-                              : dayData.isInRange
-                              ? 'text-blue-600'
-                              : dayData.isToday
-                              ? 'text-blue-800'
-                              : 'text-gray-800'
-                          }`}
+                          className={`text-sm font-semibold ${dayData.isPast ? 'text-gray-400' : dayData.isSelected ? 'text-white' : editingMode === 'schedule' && dayData.isScheduled ? 'text-green-900' : dayData.isInRange ? 'text-blue-600' : dayData.isToday ? 'text-blue-800' : 'text-gray-800'}`}
                         >
                           {dayData.day}
                         </Text>
@@ -1068,30 +1040,22 @@ export default function SimpleDatePicker({
         <View className="flex-row gap-3 mt-2">
           <TouchableOpacity
             onPress={() => setEditingMode('period')}
-            className={`flex-1 rounded-lg py-3 ${
-              editingMode === 'period' ? 'bg-blue-600' : 'bg-blue-100'
-            }`}
+            className={`flex-1 rounded-lg py-3 ${editingMode === 'period' ? 'bg-blue-600' : 'bg-blue-100'}`}
             activeOpacity={0.9}
           >
             <Text
-              className={`text-center font-semibold ${
-                editingMode === 'period' ? 'text-white' : 'text-blue-700'
-              }`}
+              className={`text-center font-semibold ${editingMode === 'period' ? 'text-white' : 'text-blue-700'}`}
             >
               Edit Period
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => setEditingMode('schedule')}
-            className={`flex-1 rounded-lg py-3 ${
-              editingMode === 'schedule' ? 'bg-green-600' : 'bg-green-100'
-            }`}
+            className={`flex-1 rounded-lg py-3 ${editingMode === 'schedule' ? 'bg-green-600' : 'bg-green-100'}`}
             activeOpacity={0.9}
           >
             <Text
-              className={`text-center font-semibold ${
-                editingMode === 'schedule' ? 'text-white' : 'text-green-700'
-              }`}
+              className={`text-center font-semibold ${editingMode === 'schedule' ? 'text-white' : 'text-green-700'}`}
             >
               Edit Schedule
             </Text>
@@ -1122,20 +1086,14 @@ export default function SimpleDatePicker({
                 key={m}
                 onPress={() => toggleMethod(m)}
                 disabled={locked}
-                className={`px-3 py-2 rounded-full border flex-row items-center ${
-                  locked ? 'bg-blue-800 border-blue-800' : (selected ? 'bg-blue-600 border-blue-600' : 'bg-white border-gray-300')
-                }`}
+                className={`px-3 py-2 rounded-full border flex-row items-center ${locked ? 'bg-blue-800 border-blue-800' : (selected ? 'bg-blue-600 border-blue-600' : 'bg-white border-gray-300')}`}
                 activeOpacity={0.8}
               >
                 {locked && (
                   <Ionicons name="lock-closed" size={14} color="#FFFFFF" />
                 )}
                 <Text
-                  className={`${
-                    selected || locked ? 'text-white' : 'text-gray-700'
-                  } font-medium ${
-                    locked ? 'ml-1' : ''
-                  }`}
+                  className={`${selected || locked ? 'text-white' : 'text-gray-700'} font-medium ${locked ? 'ml-1' : ''}`}
                 >
                   {m.charAt(0).toUpperCase() + m.slice(1)}
                 </Text>
@@ -1158,19 +1116,22 @@ export default function SimpleDatePicker({
               ))}
             </View>
           );
-        })()}        {/* AI Success Criteria */}
+        })()}
+        {/* AI Success Criteria */}
         {!!aiSuccessCriteria && (
           <View className="mt-3 bg-blue-50 border border-blue-200 rounded-lg p-3">
             <Text className="text-blue-800 text-xs">{aiSuccessCriteria}</Text>
           </View>
-        )}        {/* Blocking reasons banner */}
+        )}
+        {/* Blocking reasons banner */}
         {blockingReasons.length > 0 && (
           <View className="mt-3 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
             {blockingReasons.map((r, i) => (
               <Text key={i} className="text-yellow-800 text-xs">• {r}</Text>
             ))}
           </View>
-        )}        {/* Target Location selection (when Location method selected) */}
+        )}
+        {/* Target Location selection (when Location method selected) */}
         {(verificationMethods || []).includes('location' as any) && (
           <View className="mt-3 p-3 bg-white rounded-lg border border-gray-200">
             <Text className="text-gray-800 font-semibold mb-2">Target Location</Text>
@@ -1240,19 +1201,11 @@ export default function SimpleDatePicker({
               onNavigateToStep(2); // Fallback only when no validation handler
             }
           }}
-          className={`flex-1 rounded-lg py-3 flex-row items-center justify-center ${
-            (!startDate || loading || (validationResult ? !validationResult.isCompatible : false)) 
-              ? 'bg-gray-400' 
-              : 'bg-blue-600'
-          }`}
+          className={`flex-1 rounded-lg py-3 flex-row items-center justify-center ${(!startDate || loading || (validationResult ? !validationResult.isCompatible : false)) ? 'bg-gray-400' : 'bg-blue-600'}`}
           disabled={!startDate || loading || (validationResult ? !validationResult.isCompatible : false)}
         >
           <Text
-            className={`font-semibold mr-2 ${
-            (!startDate || loading || (validationResult ? !validationResult.isCompatible : false)) 
-              ? 'text-gray-600' 
-              : 'text-white'
-            }`}
+            className={`font-semibold mr-2 ${(!startDate || loading || (validationResult ? !validationResult.isCompatible : false)) ? 'text-gray-600' : 'text-white'}`}
           >
             {loading ? 'Validating...' : 
              (!startDate ? 'Select Date' :

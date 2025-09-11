@@ -86,17 +86,17 @@ export interface GoalSpec {
       unit: 'per_week' | 'per_day' | 'per_month';
     };
     weekdayConstraints?: number[];
-    timeRules?: Array<{
+    timeRules?: {
       days: number[]; // 0=Sun..6=Sat
       range: [string, string]; // HH:MM format
       label?: string;
       source: 'user_text' | 'inferred';
-    }>;
-    timeWindows?: Array<{
+    }[];
+    timeWindows?: {
       label: string;
       range: [string, string]; // HH:MM format
       source: 'user_text' | 'inferred';
-    }>;
+    }[];
     weekBoundary?: 'startWeekday' | 'isoWeek';
     enforcePartialWeeks?: boolean;
     requiresDisambiguation?: boolean;
@@ -149,7 +149,7 @@ export interface Goal {
   // AI-generated schedule specifications
   schedule?: {
     countRule?: { count: number; operator: string; unit: string };
-    timeWindows?: Array<{ label: string; range: [string, string]; source: string }>;
+    timeWindows?: { label: string; range: [string, string]; source: string }[];
     weekdayConstraints?: number[];
     weekBoundary?: 'startWeekday' | 'isoWeek';
     enforcePartialWeeks?: boolean;
@@ -262,10 +262,10 @@ export interface AIGoal {
 }
 
 export interface AIContext {
-  conversationHistory: Array<{
+  conversationHistory: {
     role: 'user' | 'assistant';
     content: string;
-  }>;
+  }[];
   partialGoal?: Partial<AIGoal>;
 }
 
@@ -299,7 +299,7 @@ export interface CreateGoalForm {
   // AI-generated schedule specifications
   schedule?: {
     countRule?: { count: number; operator: string; unit: string };
-    timeWindows?: Array<{ label: string; range: [string, string]; source: string }>;
+    timeWindows?: { label: string; range: [string, string]; source: string }[];
     weekdayConstraints?: number[];
     weekBoundary?: 'startWeekday' | 'isoWeek';
     enforcePartialWeeks?: boolean;

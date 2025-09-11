@@ -165,8 +165,8 @@ export class AIService {
 
 
       // Parse "at TIME on <days>" groups to build timeRules
-      let timeRules: Array<{ days: number[], range: [string, string], label: string, source: 'user_text' | 'inferred' }> = [];
-      let timeWindows: Array<{ label: string; range: [string, string]; source: 'user_text' | 'inferred' }> = [];
+      let timeRules: { days: number[], range: [string, string], label: string, source: 'user_text' | 'inferred' }[] = [];
+      let timeWindows: { label: string; range: [string, string]; source: 'user_text' | 'inferred' }[] = [];
       
       // Simple approach: parse times and weekdays separately, then create timeRules
       // This handles the gym schedule format more reliably
@@ -423,7 +423,7 @@ export class AIService {
     try {
       const spec = input.goalSpec || {};
       const schedule = spec.schedule || {};
-      const timeWindows: Array<{ label: string; range: [string, string]; source: string }> = Array.isArray(schedule.timeWindows) ? schedule.timeWindows : [];
+      const timeWindows: { label: string; range: [string, string]; source: string }[] = Array.isArray(schedule.timeWindows) ? schedule.timeWindows : [];
       const weekdayConstraints: number[] = Array.isArray(schedule.weekdayConstraints) ? schedule.weekdayConstraints : [];
       const countRule = schedule.countRule || { operator: '>=', count: 1, unit: 'per_week' };
       const weekBoundary = schedule.weekBoundary || 'startWeekday';
@@ -446,7 +446,7 @@ export class AIService {
       let timeWindowIssues: string[] = [];
       let timeViolations: { dayIndex: number; time: string; dayName: string }[] = [];
       
-      const timeRules: Array<{ days: number[], range: [string, string], label?: string, source: string }> = Array.isArray(schedule.timeRules) ? schedule.timeRules : [];
+      const timeRules: { days: number[], range: [string, string], label?: string, source: string }[] = Array.isArray(schedule.timeRules) ? schedule.timeRules : [];
       
       if (timeRules.length > 0) {
         // TIME RULES PRIORITY: validate against day-specific ranges
@@ -952,7 +952,7 @@ export class AIService {
       };
       
       // Partition date range into 7-day windows
-      const windows: Array<{ start: Date; end: Date; activeDays: number; isPartial: boolean }> = [];
+      const windows: { start: Date; end: Date; activeDays: number; isPartial: boolean }[] = [];
       
       let windowStart = getWeekStartDate(start, weekBoundary);
       if (weekBoundary === 'startWeekday') {
@@ -2172,7 +2172,7 @@ export class AIService {
     verificationMethods: VerificationType[];
     lockedVerificationMethods: VerificationType[];
     weeklySchedule?: { [key: string]: string[] };
-    calendarEvents?: Array<{ date?: string; time?: string }>;
+    calendarEvents?: { date?: string; time?: string }[];
     targetLocation?: { name: string; address?: string };
     frequency?: { count: number; unit: string };
   }): string {

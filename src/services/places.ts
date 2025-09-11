@@ -25,7 +25,7 @@ const getApiKey = (): string => {
 export const searchPlaces = async (
   input: string,
   opts?: { latitude?: number; longitude?: number; radiusMeters?: number; sessionToken?: string }
-): Promise<Array<{placeId: string; description: string}>> => {
+): Promise<{placeId: string; description: string}[]> => {
   try {
     const apiKey = getApiKey();
     console.log('[Places] Searching for:', input);

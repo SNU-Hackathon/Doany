@@ -15,7 +15,7 @@ interface Props {
   fallbackComponent?: React.ComponentType<ErrorBoundaryFallbackProps>;
   onError?: (error: Error, errorInfo: ErrorInfo) => void;
   resetOnPropsChange?: boolean;
-  resetKeys?: Array<string | number | boolean | null | undefined>;
+  resetKeys?: (string | number | boolean | null | undefined)[];
 }
 
 interface State {

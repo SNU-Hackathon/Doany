@@ -33,7 +33,7 @@ if (Platform.OS === 'web') {
 
 interface MapPreviewProps {
   location?: TargetLocation | null;
-  markers?: Array<{ lat: number; lng: number; title?: string }>;
+  markers?: { lat: number; lng: number; title?: string }[];
   interactive?: boolean;
   fitToMarkers?: boolean;
   onPress: () => void;

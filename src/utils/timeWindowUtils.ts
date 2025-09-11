@@ -176,7 +176,7 @@ export function mergeDuplicateTimeWindows(timeWindows: TimeWindow[]): TimeWindow
  * @returns 유효한 TimeWindow 배열
  */
 export function createSafeTimeWindows(
-  timeData: Array<{ label?: string; startTime?: string; endTime?: string; source?: 'user_text' | 'inferred' }>
+  timeData: { label?: string; startTime?: string; endTime?: string; source?: 'user_text' | 'inferred' }[]
 ): TimeWindow[] {
   // 🔧 IMMUTABLE PATTERN: 불변 배열 처리 (push 금지)
   const validTimeWindows = timeData

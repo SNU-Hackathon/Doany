@@ -431,7 +431,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
   const detectTimeManualFlags = (draft: {
     weeklyWeekdays?: number[];
     weeklySchedule?: { [key: string]: string[] } | undefined;
-    calendarEvents?: Array<{ date?: string; time?: string }>;
+    calendarEvents?: { date?: string; time?: string }[];
   }): TimeManualFlags => {
     const ws = draft.weeklySchedule || {};
     const ww = draft.weeklyWeekdays || [];
@@ -507,7 +507,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
   // State for location picker
   const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [pickerSelectedLocation, setPickerSelectedLocation] = useState<TargetLocation | null>(null);
-  const [pickerMarkers, setPickerMarkers] = useState<Array<{ lat: number; lng: number; title?: string }>>([]);
+  const [pickerMarkers, setPickerMarkers] = useState<{ lat: number; lng: number; title?: string }[]>([]);
   const detailsFetchSeqRef = useRef(0);
   const detailsCacheRef = useRef<Record<string, { lat: number; lng: number; title?: string }>>({});
 
