@@ -1,5 +1,6 @@
 // Verification service functions for Firebase operations
 
+import { getAuth } from 'firebase/auth';
 import {
   addDoc,
   collection,
@@ -11,7 +12,7 @@ import {
 } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { Location, Verification, VerificationStatus } from '../types';
-import { db, storage } from './firebase';
+import { auth, db, storage } from './firebase';
 
 export class VerificationService {
   // Create a new verification record
@@ -53,12 +54,15 @@ export class VerificationService {
   // Get verifications for a specific goal
   static async getGoalVerifications(goalId: string): Promise<Verification[]> {
     try {
+      const uid = (auth?.currentUser?.uid) ?? getAuth().currentUser?.uid;
+      if (!uid) throw new Error('Not authenticated');
+      
       // Simplified query to avoid index requirement (temporary fix)
       const q = query(
         collection(db, 'verifications'),
+        where('userId', '==', uid),
         where('goalId', '==', goalId)
-        // Temporarily removed orderBy to avoid index requirement
-        // TODO: Create index: goalId ASC, timestamp DESC
+        // , orderBy('timestamp','desc')
       );
       
       const querySnapshot = await getDocs(q);
@@ -92,12 +96,14 @@ export class VerificationService {
   // Get all verifications for a user
   static async getUserVerifications(userId: string): Promise<Verification[]> {
     try {
+      const uid = (auth?.currentUser?.uid) ?? getAuth().currentUser?.uid;
+      if (!uid) throw new Error('Not authenticated');
+      
       // Simplified query to avoid index requirement (temporary fix)
       const q = query(
         collection(db, 'verifications'),
-        where('userId', '==', userId)
-        // Temporarily removed orderBy to avoid index requirement
-        // TODO: Create index: userId ASC, timestamp DESC
+        where('userId', '==', uid)
+        // , orderBy('timestamp','desc')
       );
       
       const querySnapshot = await getDocs(q);

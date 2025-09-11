@@ -10,7 +10,7 @@
 import { collection, doc, getDocs, orderBy, query, serverTimestamp, where, writeBatch } from 'firebase/firestore';
 import { v4 as uuidv4 } from 'uuid';
 import { CalendarEvent } from '../types';
-import { db } from './firebase';
+import { auth, db } from './firebase';
 
 export class CalendarEventService {
   /**
@@ -23,11 +23,14 @@ export class CalendarEventService {
       throw new Error('Invalid parameters: goalId and events array are required');
     }
 
+    const uid = auth.currentUser?.uid;
+    if (!uid) throw new Error('Not authenticated');
+
     try {
       const batch = writeBatch(db);
       
       events.forEach(event => {
-        const eventRef = doc(collection(db, 'users', goalId, 'calendarEvents'));
+        const eventRef = doc(collection(db, 'users', uid, 'calendarEvents'));
         batch.set(eventRef, {
           ...event,
           createdAt: serverTimestamp(),
@@ -36,7 +39,7 @@ export class CalendarEventService {
       });
       
       await batch.commit();
-      console.log(`[CalendarEventService] Created ${events.length} calendar events for goal ${goalId}`);
+      console.log(`[CalendarEventService] Created ${events.length} calendar events for user ${uid}`);
     } catch (error) {
       console.error('[CalendarEventService] Error creating calendar events:', error);
       throw new Error(`Failed to create calendar events: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -54,9 +57,13 @@ export class CalendarEventService {
       throw new Error('goalId is required');
     }
 
+    const uid = auth.currentUser?.uid;
+    if (!uid) throw new Error('Not authenticated');
+
     try {
       let q = query(
-        collection(db, 'users', goalId, 'calendarEvents'),
+        collection(db, 'users', uid, 'calendarEvents'),
+        where('goalId', '==', goalId),
         orderBy('date', 'asc')
       );
 
@@ -84,7 +91,7 @@ export class CalendarEventService {
         });
       });
 
-      console.log(`[CalendarEventService] Retrieved ${events.length} calendar events for goal ${goalId}`);
+      console.log(`[CalendarEventService] Retrieved ${events.length} calendar events for user ${uid}`);
       return events;
     } catch (error) {
       console.error('[CalendarEventService] Error getting calendar events:', error);
@@ -102,6 +109,9 @@ export class CalendarEventService {
       throw new Error('Invalid parameters: goalId and events array are required');
     }
 
+    const uid = auth.currentUser?.uid;
+    if (!uid) throw new Error('Not authenticated');
+
     try {
       const batch = writeBatch(db);
       
@@ -109,7 +119,7 @@ export class CalendarEventService {
         if (!event.id) {
           throw new Error('Event ID is required for updates');
         }
-        const eventRef = doc(db, 'users', goalId, 'calendarEvents', event.id);
+        const eventRef = doc(db, 'users', uid, 'calendarEvents', event.id);
         batch.update(eventRef, {
           date: event.date,
           time: event.time,
@@ -120,7 +130,7 @@ export class CalendarEventService {
       });
       
       await batch.commit();
-      console.log(`[CalendarEventService] Updated ${events.length} calendar events for goal ${goalId}`);
+      console.log(`[CalendarEventService] Updated ${events.length} calendar events for user ${uid}`);
     } catch (error) {
       console.error('[CalendarEventService] Error updating calendar events:', error);
       throw new Error(`Failed to update calendar events: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -137,6 +147,9 @@ export class CalendarEventService {
       throw new Error('Invalid parameters: goalId and eventIds array are required');
     }
 
+    const uid = auth.currentUser?.uid;
+    if (!uid) throw new Error('Not authenticated');
+
     try {
       const batch = writeBatch(db);
       
@@ -144,12 +157,12 @@ export class CalendarEventService {
         if (!eventId) {
           throw new Error('Event ID is required for deletion');
         }
-        const eventRef = doc(db, 'users', goalId, 'calendarEvents', eventId);
+        const eventRef = doc(db, 'users', uid, 'calendarEvents', eventId);
         batch.delete(eventRef);
       });
       
       await batch.commit();
-      console.log(`[CalendarEventService] Deleted ${eventIds.length} calendar events for goal ${goalId}`);
+      console.log(`[CalendarEventService] Deleted ${eventIds.length} calendar events for user ${uid}`);
     } catch (error) {
       console.error('[CalendarEventService] Error deleting calendar events:', error);
       throw new Error(`Failed to delete calendar events: ${error instanceof Error ? error.message : 'Unknown error'}`);

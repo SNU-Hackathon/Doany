@@ -38,17 +38,15 @@ service cloud.firestore {
     // Verifications collection - user-specific access
     // Users can only access their own verifications
     match /verifications/{verificationId} {
-      allow read, write: if request.auth != null && 
-        (resource.data.userId == request.auth.uid || 
-         request.auth.uid in resource.data.userId);
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
+      allow read, update, delete: if request.auth != null && request.auth.uid == resource.data.userId;
     }
     
     // Goals collection (legacy/global) - user-specific access
     // Users can only access their own goals
     match /goals/{goalId} {
-      allow read, write: if request.auth != null && 
-        (resource.data.userId == request.auth.uid || 
-         request.auth.uid in resource.data.userId);
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
+      allow read, update, delete: if request.auth != null && request.auth.uid == resource.data.userId;
     }
     
     // Places index collection - globally readable for location search
