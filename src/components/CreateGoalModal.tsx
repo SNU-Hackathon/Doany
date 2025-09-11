@@ -2717,7 +2717,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
               setPickerSelectedLocation(targetLocation);
               setPickerMarkers([{ lat: targetLocation.lat, lng: targetLocation.lng, title: targetLocation.name }]);
             }}
-            placeholder="Search places (e.g., GymBox, Starbucks)"
+            placeholder="Search Places"
             currentLocation={pickerSelectedLocation ? {
               name: pickerSelectedLocation.name,
               latitude: pickerSelectedLocation.lat,
@@ -2730,12 +2730,36 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
           {/* Confirm */}
           <View style={{ padding: 16 }}>
             <TouchableOpacity
-              style={{ flex: 1, backgroundColor: '#2563eb', borderRadius: 8, padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}
-              onPress={handlePickerConfirm}
-              disabled={!pickerSelectedLocation}
+              style={{ 
+                flex: 1, 
+                backgroundColor: pickerSelectedLocation ? '#2563eb' : '#9ca3af', 
+                borderRadius: 8, 
+                padding: 16, 
+                flexDirection: 'row', 
+                alignItems: 'center', 
+                justifyContent: 'center',
+                minHeight: 56
+              }}
+              onPress={() => {
+                if (pickerSelectedLocation) {
+                  handlePickerConfirm();
+                }
+              }}
             >
-              <Ionicons name="checkmark" size={20} color="#FFFFFF" />
-              <Text style={{ color: 'white', fontWeight: '600', marginLeft: 8 }}>Confirm Location</Text>
+              <Ionicons 
+                name={pickerSelectedLocation ? "checkmark" : "location-outline"} 
+                size={24} 
+                color="#FFFFFF" 
+              />
+              <Text style={{ 
+                color: '#FFFFFF', 
+                fontWeight: '700', 
+                fontSize: 16,
+                marginLeft: 12,
+                textAlign: 'center'
+              }}>
+                {pickerSelectedLocation ? 'Confirm Location' : 'Select a Location First'}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
