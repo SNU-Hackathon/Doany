@@ -1896,55 +1896,43 @@ export class AIService {
    */
   static getExamplePrompts(): string[] {
     return [
-      // Fitness & Health
+      // Fitness & Health - Location-based activities
       'Go to the gym 3 times a week',
-      'Run 5km every morning',
-      'Practice yoga for 30 minutes daily',
-      'Swim twice a week',
-      'Do 100 push-ups daily',
-      'Walk 10,000 steps every day',
-      'Meditate for 20 minutes before bed',
-      'Drink 8 glasses of water daily',
+      'Run 5km every morning at the park',
+      'Practice yoga at the studio twice a week',
+      'Swim at the community pool twice a week',
+      'Walk 10,000 steps around the neighborhood daily',
       
-      // Learning & Education
-      'Read 30 minutes every day',
-      'Learn Spanish for 1 hour daily',
-      'Practice piano for 45 minutes daily',
-      'Study coding for 2 hours every weekend',
-      'Write 500 words daily',
-      'Watch one educational video daily',
-      'Learn to cook 3 new recipes per week',
-      'Practice drawing for 1 hour daily',
+      // Learning & Education - Location-based or trackable activities
+      'Read at the library for 30 minutes daily',
+      'Learn Spanish at the language center for 1 hour daily',
+      'Practice piano at the music school for 45 minutes daily',
+      'Study coding at the co-working space for 2 hours every weekend',
+      'Write 500 words at the coffee shop daily',
+      'Learn to cook 3 new recipes at home per week',
+      'Practice drawing at the art studio for 1 hour daily',
       
-      // Work & Productivity
-      'Complete 3 important tasks daily',
-      'Review and plan next day every evening',
-      'Take a 5-minute break every hour',
-      'Organize workspace every Friday',
-      'Learn one new skill per month',
-      'Network with 2 new people weekly',
-      'Update portfolio every month',
-      'Track time spent on projects daily',
+      // Work & Productivity - Location-based activities
+      'Complete 3 important tasks at the office daily',
+      'Organize workspace at the office every Friday',
+      'Network with 2 new people at business events weekly',
+      'Update portfolio at the co-working space every month',
       
-      // Personal Development
-      'Journal for 15 minutes daily',
-      'Call family members weekly',
-      'Try one new hobby per month',
-      'Practice gratitude every morning',
-      'Learn to play guitar for 1 hour daily',
+      // Personal Development - Location-based activities
+      'Journal at the coffee shop for 15 minutes daily',
+      'Call family members from home weekly',
+      'Learn to play guitar at the music school for 1 hour daily',
       'Visit one new place monthly',
-      'Volunteer 4 hours per month',
-      'Practice public speaking weekly',
+      'Volunteer at the community center 4 hours per month',
+      'Practice public speaking at the club weekly',
       
-      // Financial Goals
-      'Save $100 every week',
-      'Track all expenses daily',
-      'Invest 10% of income monthly',
-      'Review budget every Sunday',
+      // Financial Goals - Location-based activities
+      'Save $100 every week by visiting the bank',
+      'Track all expenses using the mobile app daily',
+      'Invest 10% of income at the investment office monthly',
+      'Review budget at home every Sunday',
       'Cook meals at home 5 days a week',
-      'Cancel unused subscriptions monthly',
-      'Read one finance book per month',
-      'Set aside emergency fund weekly'
+      'Read one finance book at the library per month'
     ];
   }
 
