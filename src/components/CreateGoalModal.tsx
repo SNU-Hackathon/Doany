@@ -271,26 +271,11 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       }
 
       // 3) Enhanced validation: check schedule compatibility with CalendarEvents
-      // Always read the latest CalendarEvents for validation (no stale data)
-      const latestCalendarEvents = CalendarEventService.convertWeeklyScheduleToEvents(
-        'temp-goal-id', // Temporary ID for validation
-        weeklyWeekdays,
-        weeklyTimeSettings,
-        formData.duration?.startDate || new Date().toISOString(),
-        formData.duration?.endDate || new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
-      );
-
-      // Add include/exclude dates as override events
-      const latestOverrideEvents = CalendarEventService.convertIncludeExcludeToEvents(
-        'temp-goal-id',
-        formData.includeDates || [],
-        formData.excludeDates || []
-      );
-
-      const allLatestEvents = [...latestCalendarEvents, ...latestOverrideEvents];
+      // Use existing calendar events from formData
+      const latestCalendarEvents = formData.calendarEvents || [];
 
       // Log validation attempt for debugging
-      console.log(`[Schedule] Validating with ${allLatestEvents.length} events (${latestCalendarEvents.length} weekly + ${latestOverrideEvents.length} override)`);
+      console.log(`[Schedule] Validating with ${latestCalendarEvents.length} calendar events`);
 
       if (!goalSpec) {
         Alert.alert('Error', 'Goal specification is missing. Please try again.');
@@ -299,7 +284,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
 
       // Use the latest events for validation
       const result = AIService.validateGoalByCalendarEvents(
-        allLatestEvents,
+        latestCalendarEvents,
         goalSpec,
         formData.duration?.startDate || new Date().toISOString(),
         formData.duration?.endDate || new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
@@ -405,7 +390,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         
         // Update weekdays Set with fresh copy
         if (fixes.weeklyWeekdays && Array.isArray(fixes.weeklyWeekdays)) {
-          updated.weekdays = new Set(fixes.weeklyWeekdays);
+          updated.weekdays = fixes.weeklyWeekdays;
         }
         
         // Update timeSettings (convert number-key to string-key for UI compatibility)
@@ -432,11 +417,88 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
   const [selectedCategory, setSelectedCategory] = useState(0); // 0 for all
   const [filteredExamples, setFilteredExamples] = useState<string[]>(AIService.getExamplePrompts());
   const [weeklyScheduleData, setWeeklyScheduleData] = useState<{
-    weekdays: Set<number>;
+    weekdays: number[];
     timeSettings: { [key: string]: string[] };
-  }>({ weekdays: new Set(), timeSettings: {} });
-  
+  }>({ weekdays: [], timeSettings: {} });
 
+  // --- Centralized enforcement for forced verification methods (time/manual) ---
+  type TimeManualFlags = { hasTime: boolean; hasManual: boolean };
+
+  /**
+   * Detects presence of time-based and non-time (manual) schedules from
+   * both weekly schedule UI state and calendarEvents.
+   */
+  const detectTimeManualFlags = (draft: {
+    weeklyWeekdays?: number[];
+    weeklySchedule?: { [key: string]: string[] } | undefined;
+    calendarEvents?: Array<{ date?: string; time?: string }>;
+  }): TimeManualFlags => {
+    const ws = draft.weeklySchedule || {};
+    const ww = draft.weeklyWeekdays || [];
+    const ce = draft.calendarEvents || [];
+
+
+    // time-present: any calendar event with a non-empty time
+    const calHasTime = ce.some(e => !!(e?.time && e.time.trim() !== ''));
+    // manual-present: any calendar event without a time (only if there are events)
+    const calHasManual = ce.length > 0 && ce.some(e => !e?.time || e.time.trim() === '');
+    
+    // If there are calendar events, determine based on their time content
+    // If all events have time -> hasTime = true, hasManual = false
+    // If all events have no time -> hasTime = false, hasManual = true  
+    // If mixed -> hasTime = true, hasManual = true
+    if (ce.length > 0) {
+      const eventsWithTime = ce.filter(e => !!(e?.time && e.time.trim() !== '')).length;
+      const eventsWithoutTime = ce.filter(e => !e?.time || e.time.trim() === '').length;
+      
+    }
+
+    // weekly schedule based detection
+    const weeklyHasTime = Object.values(ws).some(v => Array.isArray(v) && v.some(t => t && String(t).trim() !== ''));
+    const weeklyHasManual = ww.some(d => {
+      const arr = (ws as any)[d];
+      return !Array.isArray(arr) || arr.length === 0; // selected day with no times
+    });
+
+    const result = {
+      hasTime: calHasTime || weeklyHasTime,
+      hasManual: calHasManual || weeklyHasManual,
+    };
+
+
+    return result;
+  };
+
+  /**
+   * Merge forced methods into formData (idempotent).
+   * - Adds 'time' when hasTime is true
+   * - Adds 'manual' when hasManual is true
+   * - Removes neither if false (user may still keep them voluntarily)
+   */
+  const withForcedVerification = (prev: any, flags: TimeManualFlags) => {
+
+    const nextSelected = new Set([...(prev.verificationMethods || [])]);
+    const nextLocked = new Set([...(prev.lockedVerificationMethods || [])]);
+
+    if (flags.hasTime) {
+      nextSelected.add('time' as any);
+      nextLocked.add('time' as any);
+    }
+    if (flags.hasManual) {
+      nextSelected.add('manual' as any);
+      nextLocked.add('manual' as any);
+    }
+
+    const result = {
+      ...prev,
+      verificationMethods: Array.from(nextSelected),
+      lockedVerificationMethods: Array.from(nextLocked),
+    };
+
+
+    return result;
+  };
+  // --- End centralized enforcement helpers ---
   
 
   // Prevent duplicate AI verification application
@@ -481,55 +543,33 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
   }, [showLocationPicker]);
 
   // Handle weekly schedule changes
-  const handleWeeklyScheduleChange = useCallback((weekdays: Set<number>, timeSettings: { [key: string]: string[] }) => {
-    console.log('[CreateGoalModal] Weekly schedule change received:', { weekdays: Array.from(weekdays), timeSettings });
+  const handleWeeklyScheduleChange = useCallback((weekdays: number[], timeSettings: { [key: string]: string[] }) => {
+    console.log('[CreateGoalModal] Weekly schedule change received:', { weekdays, timeSettings });
     setWeeklyScheduleData({ weekdays, timeSettings });
     // Keep a simple flag on form data; detailed schedule will be saved later alongside this state
     setFormData(prev => ({ 
       ...prev, 
-      needsWeeklySchedule: weekdays.size > 0,
-      weeklyWeekdays: Array.from(weekdays),
+      needsWeeklySchedule: weekdays.length > 0,
+      weeklyWeekdays: weekdays,
       weeklySchedule: timeSettings
     }));
-    // Enforce mandatory method based on weekly schedule selection
+    // Enforce mandatory method(s) based on weekly schedule & selected weekdays
     setFormData(prev => {
-      const selectedDays = Array.from(weekdays);
-      const hasAnyTimes = selectedDays.some(d => (timeSettings?.[d] || []).length > 0);
-      const hasDayWithoutTimes = selectedDays.some(d => !(timeSettings?.[d]) || (timeSettings?.[d] || []).length === 0);
-
-      const nextLocked = new Set([...(prev.lockedVerificationMethods || [])]);
-      const nextSelected = new Set([...(prev.verificationMethods || [])]);
-
-      if (weekdays.size === 0) {
-        // No weekly schedule -> remove forced time/manual locks
-        nextLocked.delete('time' as any);
-        nextLocked.delete('manual' as any);
-      } else if (hasAnyTimes && hasDayWithoutTimes) {
-        // Mixed: some days have times, some don't -> lock both
-        nextLocked.add('time' as any);
-        nextLocked.add('manual' as any);
-        nextSelected.add('time' as any);
-        nextSelected.add('manual' as any);
-      } else if (hasAnyTimes && !hasDayWithoutTimes) {
-        // All selected days have times -> lock time only
-        nextLocked.add('time' as any);
-        nextLocked.delete('manual' as any);
-        nextSelected.add('time' as any);
-      } else {
-        // No times but weekdays selected -> lock manual only
-        nextLocked.add('manual' as any);
-        nextLocked.delete('time' as any);
-        nextSelected.add('manual' as any);
-      }
-
-      return {
-        ...prev,
-        lockedVerificationMethods: Array.from(nextLocked) as any,
-        verificationMethods: Array.from(nextSelected) as any
-      };
+      const flags = detectTimeManualFlags({
+        weeklyWeekdays: weekdays,
+        weeklySchedule: timeSettings,
+        calendarEvents: prev.calendarEvents,
+      });
+      return withForcedVerification(
+        {
+          ...prev,
+          lockedVerificationMethods: (prev.lockedVerificationMethods || []).filter((m: any) => m !== 'time' && m !== 'manual'),
+        },
+        flags
+      );
     });
     if (aiDraft.title) {
-      setAiDraft(prev => ({ ...prev, needsWeeklySchedule: weekdays.size > 0 }));
+      setAiDraft(prev => ({ ...prev, needsWeeklySchedule: weekdays.length > 0 }));
     }
   }, [aiDraft.title]);
 
@@ -558,7 +598,9 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     endDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
     includeDates: [],
     excludeDates: [],
+    calendarEvents: [],
   });
+
 
   // Defer AI evaluation until after initial mount so formData is defined
   useEffect(() => {
@@ -585,6 +627,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         excludeDates: formData.excludeDates || [],
         verificationMethods: formData.verificationMethods as any,
         targetLocationName: formData.targetLocation?.name,
+        calendarEvents: formData.calendarEvents || [],
       });
       if (!cancelled) {
         setScheduleReady(readyEval.ready);
@@ -680,7 +723,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       weeklySchedule: undefined,
     }));
     // Clear local weekly schedule UI cache
-    setWeeklyScheduleData({ weekdays: new Set(), timeSettings: {} });
+    setWeeklyScheduleData({ weekdays: [], timeSettings: {} });
   }, []);
 
   const goToStep = (stepIndex: number) => {
@@ -750,22 +793,8 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
   const syncWeeklyScheduleToCalendar = useCallback(async () => {
     if (!formData.duration?.startDate || !formData.duration?.endDate) return;
     
-    try {
-      // Convert weekly schedule to calendar events
-      const weeklyEvents = CalendarEventService.convertWeeklyScheduleToEvents(
-        'temp-goal-id', // Will be replaced with actual goalId when goal is created
-        formData.weeklyWeekdays || [],
-        formData.weeklySchedule || {},
-        formData.duration.startDate,
-        formData.duration.endDate
-      );
-      
-      // Store in local state for validation (not persisted yet)
-      console.log('[CreateGoalModal] Weekly schedule synced to calendar events:', weeklyEvents.length);
-    } catch (error) {
-      console.error('[CreateGoalModal] Failed to sync weekly schedule:', error);
-      // Don't throw error to avoid breaking the UI
-    }
+    // Weekly schedule conversion removed - using calendar events directly
+    console.log('[CreateGoalModal] Weekly schedule processing completed');
   }, [formData.weeklyWeekdays, formData.weeklySchedule, formData.duration?.startDate, formData.duration?.endDate]);
 
   // Watch for input changes and clear stale errors
@@ -848,24 +877,8 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       }
 
       // CalendarEvent로 변환
-      const latestCalendarEvents = CalendarEventService.convertWeeklyScheduleToEvents(
-        'temp-goal-id',
-        formData.weeklyWeekdays || [],
-        formData.weeklySchedule || {},
-        formData.duration?.startDate || '',
-        formData.duration?.endDate || ''
-      );
-
-      const includeExcludeEvents = CalendarEventService.convertIncludeExcludeToEvents(
-        'temp-goal-id',
-        formData.includeDates || [],
-        formData.excludeDates || []
-      );
-
-      const allEvents = [...latestCalendarEvents, ...includeExcludeEvents];
-      console.log('[CreateGoalModal] 변환된 CalendarEvent:', {
-        weeklyCount: latestCalendarEvents.length,
-        overrideCount: includeExcludeEvents.length,
+      const allEvents = formData.calendarEvents || [];
+      console.log('[CreateGoalModal] Calendar events for validation:', {
         totalCount: allEvents.length
       });
 
@@ -1522,29 +1535,36 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         }))
       }, null, 2));
 
-      // Create goal
-      const goalId = await GoalService.createGoal({
+      // Ensure mandatory verification aligns with presence of time/non-time schedules (both can apply)
+      const flags = detectTimeManualFlags({
+        weeklyWeekdays: formData.weeklyWeekdays,
+        weeklySchedule: formData.weeklySchedule,
+        calendarEvents: formData.calendarEvents,
+      });
+      const currentMethods = new Set(formData.verificationMethods || []);
+      const currentLocked  = new Set(formData.lockedVerificationMethods || []);
+      if (flags.hasTime) {
+        currentMethods.add('time' as any);
+        currentLocked.add('time' as any);
+      }
+      if (flags.hasManual) {
+        currentMethods.add('manual' as any);
+        currentLocked.add('manual' as any);
+      }
+      const updatedFormData = {
         ...formData,
+        verificationMethods: Array.from(currentMethods),
+        lockedVerificationMethods: Array.from(currentLocked),
+      };
+      // Create goal using the updated form data (with forced methods)
+      const goalId = await GoalService.createGoal({
+        ...updatedFormData,
         userId: user.id,
       });
 
-      // Create calendar events from weekly schedule and include/exclude dates
+      // Use existing calendar events from formData
       try {
-        const weeklyEvents = CalendarEventService.convertWeeklyScheduleToEvents(
-          goalId,
-          formData.weeklyWeekdays || [],
-          formData.weeklySchedule || {},
-          formData.duration?.startDate || new Date().toISOString(),
-          formData.duration?.endDate || new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
-        );
-
-        const overrideEvents = CalendarEventService.convertIncludeExcludeToEvents(
-          goalId,
-          formData.includeDates || [],
-          formData.includeDates || [] // Note: excludeDates are handled as override events
-        );
-
-        const allEvents = [...weeklyEvents, ...overrideEvents];
+        const allEvents = formData.calendarEvents || [];
         
         if (allEvents.length > 0) {
           await CalendarEventService.createCalendarEvents(goalId, allEvents);
@@ -1778,7 +1798,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         lockedVerificationMethods={formData.lockedVerificationMethods || []}
         includeDates={formData.includeDates}
         excludeDates={formData.excludeDates}
-        onIncludeExcludeChange={(inc, exc) => setFormData(prev => ({ ...prev, includeDates: inc, excludeDates: exc }))}
+        onIncludeExcludeChange={(inc: string[], exc: string[]) => setFormData(prev => ({ ...prev, includeDates: inc, excludeDates: exc }))}
         // Pass initial weekly schedule to show persistence
         initialSelectedWeekdays={formData.weeklyWeekdays}
         initialWeeklyTimeSettings={formData.weeklySchedule}
@@ -1786,6 +1806,17 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         goalSpec={goalSpec}
         loading={scheduleValidating}
         validationResult={lastValidationResult}
+        calendarEvents={formData.calendarEvents || []}
+        onCalendarEventsChange={(events) => {
+          setFormData(prev => {
+            const flags = detectTimeManualFlags({
+              weeklyWeekdays: prev.weeklyWeekdays,
+              weeklySchedule: prev.weeklySchedule,
+              calendarEvents: events,
+            });
+            return withForcedVerification({ ...prev, calendarEvents: events }, flags);
+          });
+        }}
       />
     </View>
   );
@@ -1987,19 +2018,66 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
           <View style={{ marginBottom: 12 }}>
             <Text style={{ color: '#1f2937', fontWeight: '600', marginBottom: 8 }}>Verification Methods</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-              {(formData.verificationMethods || []).map((m) => (
-                <View key={m} style={{ paddingHorizontal: 12, paddingVertical: 4, backgroundColor: '#dbeafe', borderRadius: 8 }}>
-                  <Text style={{ color: '#1e40af', fontSize: 14, fontWeight: '500' }}>
-                    {m.charAt(0).toUpperCase() + m.slice(1)}
-                  </Text>
-                </View>
-              ))}
+              {(formData.verificationMethods || []).map((m) => {
+                const locked = (formData.lockedVerificationMethods || []).includes(m as any);
+                return (
+                  <View key={m} style={[
+                    { 
+                      paddingHorizontal: 12, 
+                      paddingVertical: 4, 
+                      borderRadius: 20, 
+                      flexDirection: 'row', 
+                      alignItems: 'center' 
+                    },
+                    locked ? { backgroundColor: '#1e40af' } : { backgroundColor: '#dbeafe' }
+                  ]}>
+                    {locked && (
+                      <Ionicons 
+                        name="lock-closed" 
+                        size={12} 
+                        color="#FFFFFF" 
+                        style={{ marginRight: 4 }} 
+                      />
+                    )}
+                    <Text style={[
+                      { fontSize: 14, fontWeight: '500' },
+                      locked ? { color: 'white' } : { color: '#1e40af' }
+                    ]}>
+                      {m.charAt(0).toUpperCase() + m.slice(1)}
+                    </Text>
+                  </View>
+                );
+              })}
               {(formData.verificationMethods || []).length === 0 && (
                 <Text style={{ color: '#6b7280', fontStyle: 'italic' }}>None</Text>
               )}
             </View>
-            <Text style={{ color: '#1f2937', fontSize: 12, marginTop: 4 }}><Text style={{ fontWeight: '600' }}>Mandatory (Locked):</Text> {(formData.lockedVerificationMethods || []).length > 0 ? (formData.lockedVerificationMethods as any).map((m: string) => m.charAt(0).toUpperCase() + m.slice(1)).join(', ') : 'None'}</Text>
+            {(formData.lockedVerificationMethods || []).length > 0 && (
+              <Text style={{ color: '#dc2626', fontSize: 12, marginTop: 8, fontWeight: '500' }}>
+                🔒 Locked: {(formData.lockedVerificationMethods as any).map((m: string) => m.charAt(0).toUpperCase() + m.slice(1)).join(', ')}
+              </Text>
+            )}
           </View>
+
+          {/* AI-generated verification description */}
+          {(formData.verificationMethods || []).length > 0 && (
+            <View style={{ marginBottom: 12 }}>
+              <Text style={{ color: '#1f2937', fontWeight: '600', marginBottom: 8 }}>How Verification Works</Text>
+              <View style={{ backgroundColor: '#f8fafc', borderRadius: 8, padding: 12, borderLeftWidth: 4, borderLeftColor: '#3b82f6' }}>
+                <Text style={{ color: '#1f2937', fontSize: 14, lineHeight: 20 }}>
+                  {AIService.generateVerificationDescription({
+                    title: formData.title || '',
+                    verificationMethods: formData.verificationMethods || [],
+                    lockedVerificationMethods: formData.lockedVerificationMethods || [],
+                    weeklySchedule: formData.weeklySchedule,
+                    calendarEvents: formData.calendarEvents || [],
+                    targetLocation: formData.targetLocation,
+                    frequency: formData.frequency
+                  })}
+                </Text>
+              </View>
+            </View>
+          )}
 
           {/* Target Location */}
           <View style={{ marginBottom: 12 }}>
@@ -2165,7 +2243,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
             lockedVerificationMethods={formData.lockedVerificationMethods || []}
             includeDates={formData.includeDates}
             excludeDates={formData.excludeDates}
-            onIncludeExcludeChange={(inc, exc) => setFormData(prev => ({ ...prev, includeDates: inc, excludeDates: exc }))}
+            onIncludeExcludeChange={(inc: string[], exc: string[]) => setFormData(prev => ({ ...prev, includeDates: inc, excludeDates: exc }))}
             goalTitle={formData.title || aiDraft.title}
             goalRawText={rememberedPrompt || aiPrompt}
             aiSuccessCriteria={aiSuccessCriteria}
@@ -2178,6 +2256,17 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
             onUseCurrentLocation={handleUseCurrentLocation}
             goalSpec={goalSpec}
             loading={scheduleValidating}
+            calendarEvents={formData.calendarEvents || []}
+            onCalendarEventsChange={(events) => {
+              setFormData(prev => {
+                const flags = detectTimeManualFlags({
+                  weeklyWeekdays: prev.weeklyWeekdays,
+                  weeklySchedule: prev.weeklySchedule,
+                  calendarEvents: events,
+                });
+                return withForcedVerification({ ...prev, calendarEvents: events }, flags);
+              });
+            }}
           />
         );
       case 'location':

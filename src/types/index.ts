@@ -201,7 +201,7 @@ export interface ScreenTimeData {
 }
 
 // Calendar event type for unified schedule management
-export type CalendarEventSource = 'single' | 'pattern';
+export type CalendarEventSource = 'single' | 'pattern' | 'weekly' | 'override';
 
 export interface CalendarEvent {
   id?: string;         // uuid (optional for new events)
@@ -294,6 +294,7 @@ export interface CreateGoalForm {
   weeklyWeekdays?: number[];
   includeDates?: string[];
   excludeDates?: string[];
+  calendarEvents?: any[];
   
   // AI-generated schedule specifications
   schedule?: {

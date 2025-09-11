@@ -96,6 +96,15 @@ const defer = (fn: () => void) => queueMicrotask(fn);export interface DateSelect
   calendarEvents?: CalendarEvent[];
   // Callback when calendar events change (for override events)
   onCalendarEventsChange?: (events: CalendarEvent[]) => void;
+  // Weekly schedule callbacks
+  onWeeklyScheduleChange?: (weekdays: number[], timeSettings: { [key: string]: string[] }) => void;
+  onIncludeExcludeChange?: (includeDates: string[], excludeDates: string[]) => void;
+  // Include/exclude dates
+  includeDates?: string[];
+  excludeDates?: string[];
+  // Initial values
+  initialSelectedWeekdays?: number[];
+  initialWeeklyTimeSettings?: { [key: string]: string[] };
 }
 
 export default function SimpleDatePicker({
@@ -121,7 +130,13 @@ export default function SimpleDatePicker({
   loading = false,
   validationResult,
   calendarEvents = [],
-  onCalendarEventsChange
+  onCalendarEventsChange,
+  onWeeklyScheduleChange,
+  onIncludeExcludeChange,
+  includeDates = [],
+  excludeDates = [],
+  initialSelectedWeekdays = [],
+  initialWeeklyTimeSettings = {}
 }: SimpleDatePickerProps) {
   // Parent notifications must happen post-commit.
   
@@ -132,7 +147,7 @@ export default function SimpleDatePicker({
   const [durationValue, setDurationValue] = useState('2');  // Calendar navigation state
   const [currentMonth, setCurrentMonth] = useState(new Date(startDate || today));  // Weekly Schedule state removed - using calendar events only
   const [editingMode, setEditingMode] = useState<'period' | 'schedule'>('period');
-  const [isRangeConfirmed, setIsRangeConfirmed] = useState(false);  // Calendar state  // Ensure an initial endDate exists so that the current period is active
+  // Calendar state  // Ensure an initial endDate exists so that the current period is active
   useEffect(() => {
     if (!endDate && startDate) {
       const numValue = parseInt(durationValue) || 1;
@@ -153,12 +168,16 @@ export default function SimpleDatePicker({
   const [showDateTimeInput, setShowDateTimeInput] = useState(false);
   const [editingDateTimeIndex, setEditingDateTimeIndex] = useState(-1);  // Local fallback when parent does not provide onCalendarEventsChange
   const [localCalendarEvents, setLocalCalendarEvents] = useState<CalendarEvent[]>([]);  const applyEventsChange = (next: CalendarEvent[]) => {
-    if (onCalendarEventsChange) onCalendarEventsChange(next);
-    else setLocalCalendarEvents(next);
+    if (onCalendarEventsChange) {
+      onCalendarEventsChange(next);
+    } else {
+      setLocalCalendarEvents(next);
+    }
   };  const effectiveEvents: CalendarEvent[] = useMemo(() => {
-    return (calendarEvents && calendarEvents.length > 0)
+    const events = (calendarEvents && calendarEvents.length > 0)
       ? calendarEvents
       : localCalendarEvents;
+    return events;
   }, [calendarEvents, localCalendarEvents]);
 
   // Weekly schedule removed - using calendar events only  // OPTIONAL: prefer effect-based parent notification (safer)
@@ -171,13 +190,18 @@ export default function SimpleDatePicker({
     onEndDateChange && onEndDateChange(endDate);
   }, [endDate]);
 
-  // 기간 확정 시 스크롤을 시작월로 이동
+  // 모드 전환 시 스크롤 이동
   useEffect(() => {
-    if (isRangeConfirmed && startDate) {
+    if (editingMode === 'schedule' && startDate) {
+      // 스케줄 모드: 시작월로 이동
       const startMonth = new Date(startDate);
       scrollToTargetMonth(startMonth);
+    } else if (editingMode === 'period') {
+      // 기간 편집 모드: 현재 월로 이동
+      const currentMonth = new Date();
+      scrollToTargetMonth(currentMonth);
     }
-  }, [isRangeConfirmed, startDate]);  // Weekly schedule initialization removed  // Removed 'weekly overrides calendar excludes' effect to allow per-day overrides to persist  // Include/exclude logic removed - using calendar events only  // Calendar navigation functions (moved after monthsInView declaration)  // Generate calendar days for current month
+  }, [editingMode, startDate]);  // Weekly schedule initialization removed  // Removed 'weekly overrides calendar excludes' effect to allow per-day overrides to persist  // Include/exclude logic removed - using calendar events only  // Calendar navigation functions (moved after monthsInView declaration)  // Generate calendar days for current month
   // generateCalendarDays function removed - using calendar events only  // Precompute winning time per date: override > weekly
   const dateTimeMap = useMemo(() => {
     const map = new Map<string, string | null>();
@@ -203,9 +227,16 @@ export default function SimpleDatePicker({
     for (let d = 1; d <= lastDay.getDate(); d++) {
       const dateStr = getLocalYMD(new Date(y, m, d));
       const inRange = !!(endDate && dateStr >= (startDate || today) && dateStr <= endDate);
-      const isScheduled = effectiveEvents.some(e => e.date === dateStr);
+      
+      // 기간 내에 있는 일정만 표시 (editingMode가 'schedule'일 때)
+      const isWithinPeriod = editingMode === 'schedule' ? inRange : true;
       const dayEvents = effectiveEvents.filter(e => e.date === dateStr);
+      const isScheduled = dayEvents.length > 0 && isWithinPeriod;
       const timeToShow = dayEvents.length > 0 ? dayEvents[0].time : null;
+      
+      if (dayEvents.length > 0) {
+        console.log('[SimpleDatePicker] Day events found:', { dateStr, dayEvents: dayEvents.map(e => ({ time: e.time, source: e.source })), timeToShow });
+      }
       
       
       
@@ -222,21 +253,40 @@ export default function SimpleDatePicker({
       });
     }
     return days;
-  }, [startDate, endDate, today, effectiveEvents.length]);  // monthsInView: editingMode에 따라 뷰 범위 전환
+  }, [startDate, endDate, today, effectiveEvents, editingMode]);  // monthsInView: editingMode에 따라 뷰 범위 전환
   const todayDate = useMemo(() => new Date(), []);
   const clampToMonthStart = (d: Date) => new Date(d.getFullYear(), d.getMonth(), 1);
 
-  // ✅ 미래 12개월만: 기준(anchor)은 startDate 있으면 그 달, 없으면 오늘의 달
+  // 달력 뷰 범위: editingMode에 따라 결정
   const monthsInView = useMemo(() => {
-    const anchor = startDate ? new Date(startDate) : new Date();
-    // anchor 이전(과거) 달들은 제외하고, anchor의 달부터 +11개월까지 총 12개월
-    const start = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
-    const list: Date[] = [];
-    for (let i = 0; i < 12; i++) {
-      list.push(new Date(start.getFullYear(), start.getMonth() + i, 1));
-    }
+    if (editingMode === 'schedule' && startDate && endDate) {
+      // 스케줄 모드: 선택된 기간만 표시
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      const list: Date[] = [];
+      
+      const current = new Date(start.getFullYear(), start.getMonth(), 1);
+      const endMonth = new Date(end.getFullYear(), end.getMonth(), 1);
+      
+      while (current <= endMonth) {
+        list.push(new Date(current));
+        current.setMonth(current.getMonth() + 1);
+      }
+      
+      return list;
+    } else {
+      // 기간 편집 모드: 현재 날짜 기준 미래 12개월 표시
+      const today = new Date();
+      const start = new Date(today.getFullYear(), today.getMonth(), 1);
+      const list: Date[] = [];
+      
+      for (let i = 0; i < 12; i++) {
+        list.push(new Date(start.getFullYear(), start.getMonth() + i, 1));
+      }
+      
     return list;
-  }, [startDate]);
+    }
+  }, [editingMode, startDate, endDate]);
 
   // 월별 캘린더 데이터 미리 계산 (훅 규칙 위반 방지)
   const monthKeyOf = (d: Date) => `${d.getFullYear()}-${d.getMonth()}`;
@@ -459,12 +509,53 @@ export default function SimpleDatePicker({
     } else {
       // 🔄 PERIOD MODE: Set start date
     setStartDate(dateStr);
-      defer(() => onStartDateChange(dateStr));
 
     const value = parseInt(durationValue) || 1;
     const range = convertDurationToRange(dateStr, durationType, value);
     setEndDate(range.endDate);
-      defer(() => onEndDateChange(range.endDate));
+
+      // 기간 변경으로 인해 밖으로 밀려난 일정들 삭제
+      const newStartDate = dateStr;
+      const newEndDate = range.endDate;
+      const eventsOutsidePeriod = effectiveEvents.filter(event => {
+        // 유효한 이벤트만 필터링
+        if (!event.id || !event.date || !event.time) return false;
+        
+        // 기간 체크
+        return event.date < newStartDate || event.date > newEndDate;
+      });
+
+      if (eventsOutsidePeriod.length > 0) {
+        console.log(`[SimpleDatePicker] 시작일 변경으로 인해 ${eventsOutsidePeriod.length}개의 일정이 삭제됩니다.`);
+        console.log('[SimpleDatePicker] 삭제될 일정들:', eventsOutsidePeriod.map(e => `${e.date} ${e.time}`).join(', '));
+
+        // 기간 내 이벤트만 유지
+        const eventsWithinPeriod = effectiveEvents.filter(event => {
+          if (!event.id || !event.date || !event.time) return false;
+          return event.date >= newStartDate && event.date <= newEndDate;
+        });
+        
+        console.log(`[SimpleDatePicker] 기간 내 남은 일정: ${eventsWithinPeriod.length}개`);
+        applyEventsChange(eventsWithinPeriod);
+
+        // 데이터베이스에서도 삭제
+        if (userId && goalId) {
+          try {
+            const eventIds = eventsOutsidePeriod.map(event => event.id).filter(Boolean) as string[];
+            if (eventIds.length > 0) {
+              console.log(`[SimpleDatePicker] 데이터베이스에서 ${eventIds.length}개의 일정 삭제 시도...`);
+              await CalendarEventService.deleteCalendarEvents(goalId, eventIds);
+              console.log('[SimpleDatePicker] 데이터베이스에서 일정 삭제 완료');
+            }
+          } catch (error) {
+            console.error('[SimpleDatePicker] 데이터베이스에서 일정 삭제 실패:', error);
+          }
+        }
+      }
+
+      // 즉시 부모 컴포넌트에 변경사항 알림
+      onStartDateChange(dateStr);
+      onEndDateChange(range.endDate);
     }
 
     log('handleDateSelect exit:', { 
@@ -483,36 +574,46 @@ export default function SimpleDatePicker({
       const range = convertDurationToRange(startDate, durationType, numValue);
       setEndDate(range.endDate);
 
-      // Remove events outside the new period
+      // 기간 변경으로 인해 밖으로 밀려난 일정들 삭제
       const newEndDate = range.endDate;
-      const eventsOutsidePeriod = effectiveEvents.filter(event =>
-        event.date < startDate || event.date > newEndDate
-      );
+      const eventsOutsidePeriod = effectiveEvents.filter(event => {
+        // 유효한 이벤트만 필터링
+        if (!event.id || !event.date || !event.time) return false;
+
+        // 기간 체크
+        return event.date < startDate || event.date > newEndDate;
+      });
 
       if (eventsOutsidePeriod.length > 0) {
-        if (__DEV__) {
-          console.log('[SimpleDatePicker] Removing events outside new period:', eventsOutsidePeriod.length);
-        }
+        console.log(`[SimpleDatePicker] 기간 변경으로 인해 ${eventsOutsidePeriod.length}개의 일정이 삭제됩니다.`);
+        console.log('[SimpleDatePicker] 삭제될 일정들:', eventsOutsidePeriod.map(e => `${e.date} ${e.time}`).join(', '));
 
-        // Remove events from local state
-        const eventsWithinPeriod = effectiveEvents.filter(event =>
-          event.date >= startDate && event.date <= newEndDate
-        );
+        // 기간 내 이벤트만 유지
+        const eventsWithinPeriod = effectiveEvents.filter(event => {
+          if (!event.id || !event.date || !event.time) return false;
+          return event.date >= startDate && event.date <= newEndDate;
+        });
+        
+        console.log(`[SimpleDatePicker] 기간 내 남은 일정: ${eventsWithinPeriod.length}개`);
         applyEventsChange(eventsWithinPeriod);
 
-        // Remove from database if userId and goalId exist
+        // 데이터베이스에서도 삭제
         if (userId && goalId) {
           try {
             const eventIds = eventsOutsidePeriod.map(event => event.id).filter(Boolean) as string[];
             if (eventIds.length > 0) {
+              console.log(`[SimpleDatePicker] 데이터베이스에서 ${eventIds.length}개의 일정 삭제 시도...`);
               await CalendarEventService.deleteCalendarEvents(goalId, eventIds);
+              console.log('[SimpleDatePicker] 데이터베이스에서 일정 삭제 완료');
             }
           } catch (error) {
-            console.error('[SimpleDatePicker] Failed to delete events from database:', error);
+            console.error('[SimpleDatePicker] 데이터베이스에서 일정 삭제 실패:', error);
           }
         }
       }
-      defer(() => onEndDateChange(range.endDate));
+      
+      // 즉시 부모 컴포넌트에 변경사항 알림
+      onEndDateChange(range.endDate);
     }
   };
 
@@ -523,37 +624,46 @@ export default function SimpleDatePicker({
       const range = convertDurationToRange(startDate, type, numValue);
       setEndDate(range.endDate);
 
-      // Remove events outside the new period
+      // 기간 변경으로 인해 밖으로 밀려난 일정들 삭제
       const newEndDate = range.endDate;
-      const eventsOutsidePeriod = effectiveEvents.filter(event =>
-        event.date < startDate || event.date > newEndDate
-      );
+      const eventsOutsidePeriod = effectiveEvents.filter(event => {
+        // 유효한 이벤트만 필터링
+        if (!event.id || !event.date || !event.time) return false;
+
+        // 기간 체크
+        return event.date < startDate || event.date > newEndDate;
+      });
 
       if (eventsOutsidePeriod.length > 0) {
-        if (__DEV__) {
-          console.log('[SimpleDatePicker] Removing events outside new period:', eventsOutsidePeriod.length);
-        }
+        console.log(`[SimpleDatePicker] 기간 타입 변경으로 인해 ${eventsOutsidePeriod.length}개의 일정이 삭제됩니다.`);
+        console.log('[SimpleDatePicker] 삭제될 일정들:', eventsOutsidePeriod.map(e => `${e.date} ${e.time}`).join(', '));
 
-        // Remove events from local state
-        const eventsWithinPeriod = effectiveEvents.filter(event =>
-          event.date >= startDate && event.date <= newEndDate
-        );
+        // 기간 내 이벤트만 유지
+        const eventsWithinPeriod = effectiveEvents.filter(event => {
+          if (!event.id || !event.date || !event.time) return false;
+          return event.date >= startDate && event.date <= newEndDate;
+        });
+        
+        console.log(`[SimpleDatePicker] 기간 내 남은 일정: ${eventsWithinPeriod.length}개`);
         applyEventsChange(eventsWithinPeriod);
 
-        // Remove from database if userId and goalId exist
+        // 데이터베이스에서도 삭제
         if (userId && goalId) {
           try {
             const eventIds = eventsOutsidePeriod.map(event => event.id).filter(Boolean) as string[];
             if (eventIds.length > 0) {
+              console.log(`[SimpleDatePicker] 데이터베이스에서 ${eventIds.length}개의 일정 삭제 시도...`);
               await CalendarEventService.deleteCalendarEvents(goalId, eventIds);
+              console.log('[SimpleDatePicker] 데이터베이스에서 일정 삭제 완료');
             }
-          } catch (error) {
-            console.error('[SimpleDatePicker] Failed to delete events from database:', error);
+    } catch (error) {
+            console.error('[SimpleDatePicker] 데이터베이스에서 일정 삭제 실패:', error);
           }
         }
       }
 
-      defer(() => onEndDateChange(range.endDate));
+      // 즉시 부모 컴포넌트에 변경사항 알림
+      onEndDateChange(range.endDate);
     }
   };
 
@@ -582,7 +692,7 @@ export default function SimpleDatePicker({
   const handleDateLongPress = useCallback((dateStr: string) => {
     log('handleDateLongPress entry:', { dateStr, editingMode });
     if (__DEV__) console.log('[SimpleDatePicker] Long press detected for date:', dateStr);
-
+    
     if (!dateStr) return;
 
     // Check if date is within the selected period
@@ -611,69 +721,67 @@ export default function SimpleDatePicker({
   const handleAddTimeToDate = useCallback(async () => {
     if (!selectedDateForEdit || !dateEditTimeInput.trim()) return;
     
-    log('handleAddTimeToDate: processing override time', { date: selectedDateForEdit, time: dateEditTimeInput });
+    console.log('[SimpleDatePicker] handleAddTimeToDate called:', { 
+      selectedDateForEdit, 
+      dateEditTimeInput, 
+      currentEventsCount: effectiveEvents.length 
+    });
     
     // 🔄 ONE TIME PER DATE: Remove any existing events for this date (regardless of source)
-    const otherDateEvents = effectiveEvents.filter(e => e.date !== selectedDateForEdit);
-    const newEvent: CalendarEvent = {
-      id: `override-${selectedDateForEdit}-${dateEditTimeInput}-${Date.now()}`,
-      date: selectedDateForEdit,
-      time: dateEditTimeInput,
-      goalId: goalId || 'temp-goal-id',
+      const otherDateEvents = effectiveEvents.filter(e => e.date !== selectedDateForEdit);
+      const newEvent: CalendarEvent = {
+        id: `override-${selectedDateForEdit}-${dateEditTimeInput}-${Date.now()}`,
+        date: selectedDateForEdit,
+        time: dateEditTimeInput,
+        goalId: goalId || 'temp-goal-id',
       source: 'single',
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
     const next = [...otherDateEvents, newEvent];
     
+    console.log('[SimpleDatePicker] New events array:', next.map(e => ({ date: e.date, time: e.time })));
+    
     // 1) Optimistic UI update
-    applyEventsChange(next);
+        applyEventsChange(next);
+    
     // 2) Background sync
     if (userId && goalId) {
       (async () => {
-      try {
+        try {
+          // 기존 이벤트 삭제
+          const existingEvents = effectiveEvents.filter(e => e.date === selectedDateForEdit);
+          if (existingEvents.length > 0) {
+            const eventIds = existingEvents.map(e => e.id).filter(Boolean) as string[];
+            if (eventIds.length > 0) {
+              console.log('[SimpleDatePicker] Deleting existing events:', eventIds);
+              await CalendarEventService.deleteCalendarEvents(goalId, eventIds);
+            }
+          }
+          
+          // 새 이벤트 생성
+          console.log('[SimpleDatePicker] Creating new event:', { date: selectedDateForEdit, time: dateEditTimeInput });
           await CalendarEventService.createCalendarEvents(goalId, [{
           date: selectedDateForEdit,
-          time: dateEditTimeInput,
+            time: dateEditTimeInput,
           goalId: goalId,
             source: 'single'
           }]);
-        const refreshedEvents = await CalendarEventService.getCalendarEvents(
-          goalId, 
-          selectedDateForEdit,
-          selectedDateForEdit
-        );
-          const others = next.filter(e => e.date !== selectedDateForEdit);
-          applyEventsChange([...others, ...refreshedEvents]);
+          
+          console.log('[SimpleDatePicker] Event created successfully');
         } catch (e) {
-          warn('handleAddTimeToDate bg sync failed', e);
+          console.error('[SimpleDatePicker] Background sync failed:', e);
         }
       })();
     }
     
     // Reset input and close modal
-    setDateEditTimeInput('09:00');
     setShowDateTimeInput(false);
     setShowDateEditModal(false);
     setSelectedDateForEdit('');
+    setDateEditTimeInput('');
     
-    if (__DEV__) {
-      console.log('[SimpleDatePicker] Set SINGLE time for this specific date only:', {
-        date: selectedDateForEdit,
-        time: dateEditTimeInput,
-        affectedOtherDates: false,
-        updateType: 'single-override-only',
-        savedToDatabase: !!(userId && goalId)
-      });
-    }
-    log('handleAddTimeToDate: completed', { 
-      action: 'long_press_set_time', 
-      date: selectedDateForEdit, 
-      time: dateEditTimeInput, 
-      source: 'single',
-      calendarEventsCount: effectiveEvents.length,
-      eventsForDate: effectiveEvents.filter(e => e.date === selectedDateForEdit).map(e => ({ source: e.source, time: e.time }))
-    });
+    console.log('[SimpleDatePicker] Modal closed and state reset');
   }, [selectedDateForEdit, dateEditTimeInput, effectiveEvents, applyEventsChange, userId, goalId]);
 
   // Generate verification note based on GoalSpec
@@ -771,7 +879,7 @@ export default function SimpleDatePicker({
         <Text className="text-2xl font-bold text-gray-800 text-center">Schedule</Text>
         <Text className="text-gray-600 text-center mt-2">Set your goal duration and schedule</Text>
       </View>
-      
+
       {/* Duration Controls */}
       <View className="mb-6 p-4 bg-blue-50 rounded-lg">
         <Text className="text-blue-800 font-semibold text-lg mb-3">Duration</Text>
@@ -808,7 +916,7 @@ export default function SimpleDatePicker({
           <Text className="text-blue-700 text-base mt-3">Will end on: {new Date(endDate).toLocaleDateString()}</Text>
         )}
       </View>
-      
+
       {/* Weekly Schedule UI removed - using calendar events only */}
       
       {/* Calendar */}
@@ -827,7 +935,7 @@ export default function SimpleDatePicker({
             
             <Text className="text-center text-lg font-bold text-gray-800">
               {(headerMonth || monthsInView[0] || new Date()).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-            </Text>
+                      </Text>
             
             <TouchableOpacity 
               onPress={() => scrollToTargetMonth(new Date())}
@@ -877,10 +985,10 @@ export default function SimpleDatePicker({
                         className={`flex-1 justify-center items-center rounded relative ${
                           dayData.isPast || (editingMode === 'schedule' && !isDateInPeriod(dayData.dateStr))
                             ? 'bg-gray-200'
-                            : editingMode === 'schedule' && dayData.isScheduled
-                            ? 'bg-green-200'
                             : dayData.isSelected
                             ? 'bg-blue-600'
+                            : editingMode === 'schedule' && dayData.isScheduled
+                            ? 'bg-green-200'
                             : dayData.isInRange
                             ? 'bg-blue-100'
                             : dayData.isToday
@@ -901,10 +1009,10 @@ export default function SimpleDatePicker({
                           className={`text-sm font-semibold ${
                             dayData.isPast
                               ? 'text-gray-400'
-                              : editingMode === 'schedule' && dayData.isScheduled
-                              ? 'text-green-900'
                               : dayData.isSelected
                               ? 'text-white'
+                              : editingMode === 'schedule' && dayData.isScheduled
+                              ? 'text-green-900'
                               : dayData.isInRange
                               ? 'text-blue-600'
                               : dayData.isToday
@@ -915,12 +1023,12 @@ export default function SimpleDatePicker({
                           {dayData.day}
                         </Text>
                         
-                        {/* Display single time from calendar events */}
+                        {/* Display single time from calendar events - only if within period */}
                         {dayData.timeToShow && (
                           <View className="mt-1 px-1">
-                            <Text className="text-xs text-green-600 text-center leading-3 font-medium">
+                                <Text className="text-xs text-green-600 text-center leading-3 font-medium">
                               {dayData.timeToShow}
-                            </Text>
+                                </Text>
                           </View>
                         )}
                         
@@ -943,7 +1051,7 @@ export default function SimpleDatePicker({
         })}
         </ScrollView>
       </View>
-      
+
       {/* Calendar Legend */}
           <View className="flex-row justify-center space-x-6 mt-2">
           <View className="flex-row items-center">
@@ -955,7 +1063,7 @@ export default function SimpleDatePicker({
             <Text className="text-xs text-gray-600">Scheduled weekdays</Text>
           </View>
         </View>
-        
+
         {/* Mode toggles under calendar */}
         <View className="flex-row gap-3 mt-2">
           <TouchableOpacity
@@ -989,33 +1097,8 @@ export default function SimpleDatePicker({
             </Text>
           </TouchableOpacity>
         </View>
-        
-        {/* Range Confirmation Button */}
-        {!isRangeConfirmed && startDate && endDate && (
-          <View className="mt-3">
-            <TouchableOpacity
-              onPress={() => setIsRangeConfirmed(true)}
-              className="bg-green-600 rounded-lg py-3"
-              activeOpacity={0.9}
-            >
-              <Text className="text-white text-center font-semibold">Confirm Period</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-        
-        {/* Range Reset Button */}
-        {isRangeConfirmed && (
-          <View className="mt-3">
-            <TouchableOpacity
-              onPress={() => setIsRangeConfirmed(false)}
-              className="bg-gray-500 rounded-lg py-3"
-              activeOpacity={0.9}
-            >
-              <Text className="text-white text-center font-semibold">Edit Period Again</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-        
+
+
       {/* Selected Summary */}
       {startDate && (
         <View className="mb-3 p-3 bg-gray-50 rounded-lg">
@@ -1026,7 +1109,7 @@ export default function SimpleDatePicker({
           )}
         </View>
       )}
-      
+
       {/* Verification Methods */}
       <View className="mb-4 p-4 bg-white rounded-lg border border-gray-200">
         <Text className="text-gray-800 font-semibold text-lg mb-3">Verification Methods</Text>
@@ -1061,7 +1144,7 @@ export default function SimpleDatePicker({
           })}
         </View>
         <Text className="text-xs text-gray-500 mt-2">Select one or more methods to verify your progress. AI-selected methods are locked.</Text>
-        
+
         {/* Verification Summary */}
         {(() => {
           const note = generateVerificationNote();
@@ -1118,7 +1201,7 @@ export default function SimpleDatePicker({
           </View>
         )}
       </View>
-      
+
       {/* Validation Error Banner */}
       {validationResult && !validationResult.isCompatible && validationResult.issues.length > 0 && (
         <View className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg shadow-sm">
@@ -1140,14 +1223,14 @@ export default function SimpleDatePicker({
           </View>
         </View>
       )}
-      
+
       {/* Navigation Buttons */}
       <View className="flex-row space-x-3">
         <TouchableOpacity onPress={() => onNavigateToStep(0)} className="flex-1 bg-gray-200 rounded-lg py-3 flex-row items-center justify-center">
           <Ionicons name="chevron-back" size={16} color="#6B7280" />
           <Text className="text-gray-700 font-semibold ml-2">Back</Text>
         </TouchableOpacity>
-        
+
         <TouchableOpacity 
           testID="next-button"
           onPress={() => {
@@ -1158,17 +1241,17 @@ export default function SimpleDatePicker({
             }
           }}
           className={`flex-1 rounded-lg py-3 flex-row items-center justify-center ${
-            (!startDate || loading || (validationResult ? !validationResult.isCompatible : false))
-              ? 'bg-gray-400'
+            (!startDate || loading || (validationResult ? !validationResult.isCompatible : false)) 
+              ? 'bg-gray-400' 
               : 'bg-blue-600'
           }`}
           disabled={!startDate || loading || (validationResult ? !validationResult.isCompatible : false)}
         >
           <Text
             className={`font-semibold mr-2 ${
-              (!startDate || loading || (validationResult ? !validationResult.isCompatible : false))
-                ? 'text-gray-600'
-                : 'text-white'
+            (!startDate || loading || (validationResult ? !validationResult.isCompatible : false)) 
+              ? 'text-gray-600' 
+              : 'text-white'
             }`}
           >
             {loading ? 'Validating...' : 
@@ -1187,7 +1270,7 @@ export default function SimpleDatePicker({
           )}
         </TouchableOpacity>
       </View>
-      
+
       {/* Date Edit Modal for Long Press */}
       <Modal 
         visible={showDateEditModal} 
@@ -1230,9 +1313,9 @@ export default function SimpleDatePicker({
             <View className="mb-6">
               <Text className="text-sm font-medium text-gray-700 mb-3 text-center">Select Time</Text>
                 
-              <View className="flex-row justify-center space-x-4 mb-4">
-                {/* Hour Picker */}
-                <View className="items-center">
+                <View className="flex-row justify-center space-x-4 mb-4">
+                  {/* Hour Picker */}
+                  <View className="items-center">
                     <Text className="text-xs text-gray-500 mb-1">Hour</Text>
                     <View className="border border-gray-300 rounded-lg overflow-hidden" style={{ width: 90, height: 120 }}>
                       <Picker
@@ -1256,8 +1339,8 @@ export default function SimpleDatePicker({
                     </View>
                   </View>
                   
-                {/* Minute Picker */}
-                <View className="items-center">
+                  {/* Minute Picker */}
+                  <View className="items-center">
                     <Text className="text-xs text-gray-500 mb-1">Minute</Text>
                     <View className="border border-gray-300 rounded-lg overflow-hidden" style={{ width: 90, height: 120 }}>
                       <Picker
@@ -1284,7 +1367,7 @@ export default function SimpleDatePicker({
                 </View>
                 
             {/* Action buttons */}
-            <View className="flex-row space-x-3">
+                <View className="flex-row space-x-3">
                   <TouchableOpacity 
                     onPress={() => {
                   setShowDateEditModal(false);
@@ -1299,8 +1382,6 @@ export default function SimpleDatePicker({
                   onPress={() => {
                   if (selectedDateForEdit && dateEditTimeInput) {
                     handleAddTimeToDate();
-                    setShowDateEditModal(false);
-                    setDateEditTimeInput('');
                   }
                 }}
                 className="flex-1 bg-blue-600 rounded-lg py-3"
@@ -1311,15 +1392,15 @@ export default function SimpleDatePicker({
           </View>
         </View>
       </Modal>
-      
+
       {/* Time Picker Modal */}
       <Modal visible={showTimePicker} transparent animationType="fade" onRequestClose={() => setShowTimePicker(false)}>
         <View className="flex-1 justify-center items-center">
           <View className="bg-white mx-6 rounded-xl p-4 shadow-2xl border border-gray-300 w-80" style={{ elevation: 8 }}>
             <Text className="text-center text-lg font-semibold text-gray-800 mb-3">{editingTimeIndex === -1 ? 'Add Time' : 'Edit Time'}</Text>
               <View className="flex-row items-start justify-center gap-6">
-              {/* Hour Picker (00-23) */}
-              <View>
+                {/* Hour Picker (00-23) */}
+                <View>
                   <Text className="text-center text-sm text-gray-600 mb-1 font-medium">Hour</Text>
                   <View className="rounded-lg border border-gray-300 overflow-hidden" style={{ width: 120 }}>
                       <Picker
@@ -1333,8 +1414,8 @@ export default function SimpleDatePicker({
                       </Picker>
                     </View>
                   </View>
-              {/* Minute Picker (00-59) */}
-              <View>
+                {/* Minute Picker (00-59) */}
+                <View>
                   <Text className="text-center text-sm text-gray-600 mb-1 font-medium">Minute</Text>
                   <View className="rounded-lg border border-gray-300 overflow-hidden" style={{ width: 120 }}>
                       <Picker

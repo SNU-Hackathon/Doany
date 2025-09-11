@@ -6,6 +6,16 @@ import { sliceCompleteWeeks } from '../utils/dateSlices';
 
 export class AIService {
   /**
+   * Format a date to local YYYY-MM-DD string
+   */
+  private static formatLocalDate(date: Date): string {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
+  /**
    * Generate a goal from natural language text
    * Uses OpenAI ChatGPT if available, proxy endpoint as secondary, otherwise falls back to local heuristic
    */
@@ -894,6 +904,7 @@ export class AIService {
     verificationMethods?: VerificationType[];
     targetLocationName?: string;
     goalSpec?: GoalSpec | null;
+    calendarEvents?: any[];
   }): { ready: boolean; reasons: string[]; suggestions: string[] } {
     const reasons: string[] = [];
     const suggestions: string[] = [];
@@ -985,7 +996,7 @@ export class AIService {
           // Count feasible slots in this full window
           let feasibleSlots = 0;
           for (let d = new Date(window.start); d <= window.end; d.setDate(d.getDate() + 1)) {
-            const ds = d.toISOString().split('T')[0];
+            const ds = this.formatLocalDate(d);
             const base = weekly.has(d.getDay());
             const isScheduled = (base && !exclude.has(ds)) || include.has(ds);
             if (isScheduled) {
@@ -1026,10 +1037,21 @@ export class AIService {
       } else {
         // No full windows - check if any days are scheduled at all
         let anyScheduled = false;
+        const calendarEventDates = new Set((ctx.calendarEvents || []).map(e => e.date));
+        
+        // Debug logging for date matching
+        if (__DEV__ && calendarEventDates.size > 0) {
+        }
+        
         for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-          const ds = d.toISOString().split('T')[0];
+          const ds = this.formatLocalDate(d);
           const base = weekly.has(d.getDay());
-          const isScheduled = (base && !exclude.has(ds)) || include.has(ds);
+          const isScheduled = (base && !exclude.has(ds)) || include.has(ds) || calendarEventDates.has(ds);
+          
+          // Debug logging for first few dates
+          if (__DEV__ && !anyScheduled) {
+          }
+          
           if (isScheduled) {
             anyScheduled = true;
             break;
@@ -1047,11 +1069,27 @@ export class AIService {
     } else {
       // For non-per_week goals, use simple schedule check
       let scheduled = 0;
+      const calendarEventDates = new Set((ctx.calendarEvents || []).map(e => e.date));
+      
+      // Debug logging for date matching
+      if (__DEV__ && calendarEventDates.size > 0) {
+      }
+      
       for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-        const ds = d.toISOString().split('T')[0];
+        const ds = this.formatLocalDate(d);
         const base = weekly.has(d.getDay());
-        const isScheduled = (base && !exclude.has(ds)) || include.has(ds);
-        if (isScheduled) { scheduled++; if (scheduled > 0) break; }
+        const isScheduled = (base && !exclude.has(ds)) || include.has(ds) || calendarEventDates.has(ds);
+        
+        // Debug logging for first few dates
+        if (__DEV__ && scheduled < 3) {
+        }
+        
+        if (isScheduled) { 
+          scheduled++; 
+          if (__DEV__) {
+          }
+          if (scheduled > 0) break; 
+        }
       }
       
       if (scheduled > 0) {
@@ -1571,7 +1609,7 @@ export class AIService {
   /**
    * Analyze verification methods using OpenAI (or heuristic) and return both selected and mandatory sets
    */
-  static async analyzeVerificationMethods(input: { prompt: string; title?: string; targetLocationName?: string; placeId?: string | null; locale?: string; timezone?: string; userHints?: string }): Promise<{ methods: VerificationType[]; mandatory: VerificationType[]; usedFallback?: boolean }> {
+  static async analyzeVerificationMethods(input: { prompt: string; title?: string; targetLocationName?: string; placeId?: string | null; locale?: string; timezone?: string; userHints?: string; weeklyTimeSettings?: { [key: string]: string[] }; calendarEvents?: any[] }): Promise<{ methods: VerificationType[]; mandatory: VerificationType[]; usedFallback?: boolean }> {
     const proxyUrl = process.env.EXPO_PUBLIC_AI_PROXY_URL;
     const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
     const allowed: VerificationType[] = ['location','time','screentime','photo','manual'];
@@ -1582,7 +1620,9 @@ export class AIService {
       placeId: input.placeId,
       locale: input.locale || 'ko-KR',
       timezone: input.timezone || 'Asia/Seoul',
-      userHints: input.userHints
+      userHints: input.userHints,
+      weeklyTimeSettings: input.weeklyTimeSettings,
+      calendarEvents: input.calendarEvents
     };
     try {
       if (proxyUrl) {
@@ -1603,6 +1643,39 @@ export class AIService {
           if (!methods.includes('location' as any)) methods = [...methods, 'location' as any];
           if (!mandatory.includes('location' as any)) mandatory = [...mandatory, 'location' as any];
         }
+        
+        // Enforce time/manual verification based on weeklyTimeSettings and calendarEvents
+        const hasAnyTime = (() => {
+          // Check weeklyTimeSettings
+          const weeklyHasTime = payload.weeklyTimeSettings && Object.values(payload.weeklyTimeSettings).some(times => 
+            Array.isArray(times) && times.some(time => time && time.trim() !== '')
+          );
+          
+          // Check calendarEvents if available in payload
+          const calendarHasTime = payload.calendarEvents && payload.calendarEvents.some(event => 
+            event.time && event.time.trim() !== ''
+          );
+          
+          return weeklyHasTime || calendarHasTime;
+        })();
+        
+        // Determine required verification method based on time presence
+        const requiredMethod = hasAnyTime ? 'time' : 'manual';
+        
+        // Use Set to avoid duplicates and ensure required method is included
+        const methodsSet = new Set(methods);
+        const mandatorySet = new Set(mandatory);
+        
+        // Add required method to both sets
+        methodsSet.add(requiredMethod as any);
+        mandatorySet.add(requiredMethod as any);
+        
+        // Convert back to arrays
+        methods = Array.from(methodsSet);
+        mandatory = Array.from(mandatorySet);
+        
+        console.log(`[AI] Proxy response: hasAnyTime=${hasAnyTime}, requiredMethod=${requiredMethod}, methods=${methods.join(',')}`);
+        
         return { methods, mandatory };
       }
 
@@ -1647,6 +1720,39 @@ export class AIService {
           if (!methods.includes('location' as any)) methods = [...methods, 'location' as any];
           if (!mandatory.includes('location' as any)) mandatory = [...mandatory, 'location' as any];
         }
+        
+        // Enforce time/manual verification based on weeklyTimeSettings and calendarEvents
+        const hasAnyTime = (() => {
+          // Check weeklyTimeSettings
+          const weeklyHasTime = payload.weeklyTimeSettings && Object.values(payload.weeklyTimeSettings).some(times => 
+            Array.isArray(times) && times.some(time => time && time.trim() !== '')
+          );
+          
+          // Check calendarEvents if available in payload
+          const calendarHasTime = payload.calendarEvents && payload.calendarEvents.some(event => 
+            event.time && event.time.trim() !== ''
+          );
+          
+          return weeklyHasTime || calendarHasTime;
+        })();
+        
+        // Determine required verification method based on time presence
+        const requiredMethod = hasAnyTime ? 'time' : 'manual';
+        
+        // Use Set to avoid duplicates and ensure required method is included
+        const methodsSet = new Set(methods);
+        const mandatorySet = new Set(mandatory);
+        
+        // Add required method to both sets
+        methodsSet.add(requiredMethod as any);
+        mandatorySet.add(requiredMethod as any);
+        
+        // Convert back to arrays
+        methods = Array.from(methodsSet);
+        mandatory = Array.from(mandatorySet);
+        
+        console.log(`[AI] OpenAI response: hasAnyTime=${hasAnyTime}, requiredMethod=${requiredMethod}, methods=${methods.join(',')}`);
+        
         return { methods, mandatory };
       }
 
@@ -1678,6 +1784,39 @@ export class AIService {
         if (!methods.includes('location' as any)) methods = [...methods, 'location' as any];
         if (!mandatory.includes('location' as any)) mandatory = [...mandatory, 'location' as any];
       }
+      
+      // Enforce time/manual verification based on weeklyTimeSettings and calendarEvents
+      const hasAnyTime = (() => {
+        // Check weeklyTimeSettings
+        const weeklyHasTime = payload.weeklyTimeSettings && Object.values(payload.weeklyTimeSettings).some(times => 
+          Array.isArray(times) && times.some(time => time && time.trim() !== '')
+        );
+        
+        // Check calendarEvents if available in payload
+        const calendarHasTime = payload.calendarEvents && payload.calendarEvents.some(event => 
+          event.time && event.time.trim() !== ''
+        );
+        
+        return weeklyHasTime || calendarHasTime;
+      })();
+      
+      // Determine required verification method based on time presence
+      const requiredMethod = hasAnyTime ? 'time' : 'manual';
+      
+      // Use Set to avoid duplicates and ensure required method is included
+      const methodsSet = new Set(methods);
+      const mandatorySet = new Set(mandatory);
+      
+      // Add required method to both sets
+      methodsSet.add(requiredMethod as any);
+      mandatorySet.add(requiredMethod as any);
+      
+      // Convert back to arrays
+      methods = Array.from(methodsSet);
+      mandatory = Array.from(mandatorySet);
+      
+      console.log(`[AI] Heuristic fallback: hasAnyTime=${hasAnyTime}, requiredMethod=${requiredMethod}, methods=${methods.join(',')}`);
+      
       return { methods, mandatory, usedFallback: true };
     }
   }
@@ -1826,7 +1965,6 @@ export class AIService {
     const daysDiff = Math.ceil(timeDiff / (1000 * 60 * 60 * 24)) + 1;
     
     if (daysDiff < 7) {
-      console.log(`[AIService] 경계 규칙: 기간이 7일 미만 (${daysDiff}일) - 검증 스킵`);
       return {
         isCompatible: true,
         issues: [],
@@ -1840,7 +1978,6 @@ export class AIService {
       };
     }
     
-    console.log(`[AIService] 경계 규칙: 기간 ${daysDiff}일 - 완전 주 검증 진행`);
     
     // 타임존: Asia/Seoul 고정, 날짜 문자열은 YYYY-MM-DD
     const completeWeeks = sliceCompleteWeeks(startDate, endDate);
@@ -1895,17 +2032,20 @@ export class AIService {
         const weekStart = new Date(week.from);
         const weekEnd = new Date(week.to);
         
-        // Get events for this week
+        // Get events for this week using local date comparison
         const weekEvents = events.filter(event => {
           const eventDate = new Date(event.date);
-          return eventDate >= weekStart && eventDate <= weekEnd;
+          const eventDateStr = this.formatLocalDate(eventDate);
+          const weekStartStr = this.formatLocalDate(weekStart);
+          const weekEndStr = this.formatLocalDate(weekEnd);
+          return eventDateStr >= weekStartStr && eventDateStr <= weekEndStr;
         });
+
 
         // 1. Frequency validation
         if (countRule.unit === 'per_week') {
-          const weeklyCount = weekEvents.filter(e => e.source === 'weekly').length;
-          const overrideCount = weekEvents.filter(e => e.source === 'override').length;
-          const totalCount = weeklyCount + overrideCount;
+          // Count all events in this week regardless of source
+          const totalCount = weekEvents.length;
           
           let frequencyPassed = false;
           const operator = countRule.operator as string;
@@ -2022,5 +2162,114 @@ export class AIService {
   private static getDayName(dayIndex: number): string {
     const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     return dayNames[dayIndex] || 'Unknown';
+  }
+
+  /**
+   * Generate verification description based on schedule and verification methods
+   */
+  static generateVerificationDescription(input: {
+    title: string;
+    verificationMethods: VerificationType[];
+    lockedVerificationMethods: VerificationType[];
+    weeklySchedule?: { [key: string]: string[] };
+    calendarEvents?: Array<{ date?: string; time?: string }>;
+    targetLocation?: { name: string; address?: string };
+    frequency?: { count: number; unit: string };
+  }): string {
+    const { 
+      title, 
+      verificationMethods, 
+      lockedVerificationMethods, 
+      weeklySchedule = {}, 
+      calendarEvents = [],
+      targetLocation,
+      frequency
+    } = input;
+
+    const descriptions: string[] = [];
+
+    // Time verification
+    if (verificationMethods.includes('time')) {
+      const hasTimeEvents = calendarEvents.some(e => e.time && e.time.trim() !== '');
+      const hasWeeklyTime = Object.values(weeklySchedule).some(times => 
+        Array.isArray(times) && times.some(time => time && time.trim() !== '')
+      );
+
+      if (hasTimeEvents || hasWeeklyTime) {
+        const isLocked = lockedVerificationMethods.includes('time');
+        descriptions.push(
+          `⏰ **Time Verification${isLocked ? ' (Required)' : ''}**: ` +
+          `You'll be verified at your scheduled times. ` +
+          `The app will check if you're active during the specific time slots you've set.`
+        );
+      }
+    }
+
+    // Manual verification
+    if (verificationMethods.includes('manual')) {
+      const hasManualEvents = calendarEvents.some(e => !e.time || e.time.trim() === '');
+      const hasWeeklyManual = Object.keys(weeklySchedule).length > 0 && 
+        Object.values(weeklySchedule).some(times => !Array.isArray(times) || times.length === 0);
+
+      if (hasManualEvents || hasWeeklyManual) {
+        const isLocked = lockedVerificationMethods.includes('manual');
+        descriptions.push(
+          `📝 **Manual Verification${isLocked ? ' (Required)' : ''}**: ` +
+          `You'll need to manually confirm completion of your goal activities. ` +
+          `This is suitable for activities that don't require specific timing.`
+        );
+      }
+    }
+
+    // Location verification
+    if (verificationMethods.includes('location') && targetLocation) {
+      const isLocked = lockedVerificationMethods.includes('location');
+      descriptions.push(
+        `📍 **Location Verification${isLocked ? ' (Required)' : ''}**: ` +
+        `You'll be verified by being at ${targetLocation.name} ` +
+        `(within ~100m) for at least 10 minutes during your scheduled times.`
+      );
+    }
+
+    // Photo verification
+    if (verificationMethods.includes('photo')) {
+      const isLocked = lockedVerificationMethods.includes('photo');
+      descriptions.push(
+        `📸 **Photo Verification${isLocked ? ' (Required)' : ''}**: ` +
+        `You'll need to take a photo as proof of completing your goal activity.`
+      );
+    }
+
+    // Screen time verification
+    if (verificationMethods.includes('screentime')) {
+      const isLocked = lockedVerificationMethods.includes('screentime');
+      descriptions.push(
+        `📱 **Screen Time Verification${isLocked ? ' (Required)' : ''}**: ` +
+        `Your screen time usage will be monitored to verify goal completion.`
+      );
+    }
+
+    // Frequency information
+    if (frequency) {
+      const unit = frequency.unit.replace('per_', '');
+      descriptions.push(
+        `\n📊 **Frequency**: ${frequency.count} times per ${unit}`
+      );
+    }
+
+    // Schedule summary
+    const totalEvents = calendarEvents.length;
+    const weeklyDays = Object.keys(weeklySchedule).length;
+    
+    if (totalEvents > 0 || weeklyDays > 0) {
+      descriptions.push(
+        `\n📅 **Schedule**: ` +
+        `${totalEvents > 0 ? `${totalEvents} calendar events` : ''}` +
+        `${totalEvents > 0 && weeklyDays > 0 ? ' + ' : ''}` +
+        `${weeklyDays > 0 ? `${weeklyDays} weekly recurring days` : ''}`
+      );
+    }
+
+    return descriptions.join('\n\n');
   }
 }
