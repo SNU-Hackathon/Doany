@@ -150,3 +150,19 @@ export class PartnerVerificationService {
     return reviews;
   }
 }
+
+import { doc, getDoc } from 'firebase/firestore';
+
+export async function applyPartnerReview(verificationId: string, approved: boolean) {
+  const verificationRef = doc(db, 'verifications', verificationId);
+  const verificationDoc = await getDoc(verificationRef);
+  
+  if (!verificationDoc.exists()) {
+    throw new Error('Verification not found');
+  }
+  
+  await updateDoc(verificationRef, {
+    'signals.partner': { reviewed: true, approved },
+    finalPass: approved ? true : false,
+  });
+}
