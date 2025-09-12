@@ -68,12 +68,7 @@ export class VerificationAutomationService {
         const shouldRecord = await this.shouldRecordVerification(goal);
         
         if (shouldRecord) {
-          await VerificationService.createVerification(
-            goal.id,
-            goal.userId,
-            'success',
-            currentLocation
-          );
+          await verifyLocation(goal as any, true);
 
           // Notify user of successful verification
           Alert.alert(

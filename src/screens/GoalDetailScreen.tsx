@@ -198,11 +198,7 @@ export default function GoalDetailScreen({ route, navigation }: GoalDetailScreen
           style: 'cancel',
           onPress: async () => {
             try {
-              await VerificationService.createVerification(
-                goal.id,
-                goal.userId,
-                'fail'
-              );
+              await verifyManual(goal as any, false);
               await loadGoalData();
               Alert.alert('Recorded', 'Failure recorded. Keep trying!');
             } catch (error) {
@@ -214,11 +210,7 @@ export default function GoalDetailScreen({ route, navigation }: GoalDetailScreen
           text: 'Yes',
           onPress: async () => {
             try {
-              await VerificationService.createVerification(
-                goal.id,
-                goal.userId,
-                'success'
-              );
+              await verifyManual(goal as any, true);
               await loadGoalData();
               Alert.alert('Great!', 'Success recorded! Keep up the good work!');
             } catch (error) {
@@ -253,13 +245,7 @@ export default function GoalDetailScreen({ route, navigation }: GoalDetailScreen
       const resp = await fetch(asset.uri);
       const blob = await resp.blob();
 
-      await VerificationService.createVerification(
-        goal.id,
-        goal.userId,
-        'success',
-        undefined,
-        blob
-      );
+      await verifyPhoto(goal as any, blob);
 
       await loadGoalData();
       Alert.alert('Uploaded', 'Photo verification uploaded successfully.');
