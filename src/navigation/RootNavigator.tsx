@@ -1,113 +1,34 @@
-// Root navigation component for Doany app
+// Root navigation component for Doany app - Stack Navigator 완전 제거
 
-import { createStackNavigator } from '@react-navigation/stack';
 import React from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 import OfflineBanner from '../components/OfflineBanner';
 import { useAuth } from '../hooks/useAuth';
-import { AuthScreen, GoalDetailScreen, LocationPickerScreen } from '../screens';
-import { RootStackParamList } from '../types';
-
-const Stack = createStackNavigator<RootStackParamList>();
-
-// Lazy load MainTabNavigator to avoid loading all screens at once
-const MainTabNavigator = React.lazy(() => import('./MainTabNavigator'));
+import AuthScreen from '../screens/AuthScreen';
+import MainTabNavigator from './MainTabNavigator';
 
 export default function RootNavigator() {
   const { user, loading } = useAuth();
 
   if (loading) {
     return (
-      <View className="flex-1 justify-center items-center bg-gray-50">
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F9FAFB' }}>
         <ActivityIndicator size="large" color="#3B82F6" />
-        <Text className="mt-4 text-gray-600">Loading...</Text>
+        <Text style={{ marginTop: 16, color: '#6B7280' }}>Loading...</Text>
       </View>
     );
   }
 
   return (
-    <View className="flex-1">
+    <View style={{ flex: 1 }}>
       <OfflineBanner />
-      <Stack.Navigator
-        screenOptions={{
-          headerShown: false,
-          gestureEnabled: false,
-          gestureResponseDistance: 0,
-          gestureVelocityImpact: 0,
-        }}
-      >
-        {user ? (
-          // User is signed in
-          <>
-            <Stack.Screen
-              name="Main"
-              options={{
-                gestureEnabled: false,
-                gestureResponseDistance: 0,
-                gestureVelocityImpact: 0,
-              }}
-            >
-              {() => (
-                <React.Suspense fallback={
-                  <View className="flex-1 justify-center items-center bg-gray-50">
-                    <ActivityIndicator size="large" color="#3B82F6" />
-                    <Text className="mt-4 text-gray-600">Loading...</Text>
-                  </View>
-                }>
-                  <MainTabNavigator />
-                </React.Suspense>
-              )}
-            </Stack.Screen>
-            <Stack.Screen
-              name="GoalDetail"
-              component={GoalDetailScreen}
-              options={{
-                headerShown: true,
-                title: 'Goal Details',
-                gestureEnabled: false,
-                gestureResponseDistance: 0,
-                gestureVelocityImpact: 0,
-                headerStyle: {
-                  backgroundColor: '#3B82F6',
-                },
-                headerTintColor: '#FFFFFF',
-                headerTitleStyle: {
-                  fontWeight: 'bold',
-                },
-              }}
-            />
-            <Stack.Screen
-              name="LocationPicker"
-              component={LocationPickerScreen}
-              options={{
-                headerShown: true,
-                title: 'Choose Location',
-                gestureEnabled: false,
-                gestureResponseDistance: 0,
-                gestureVelocityImpact: 0,
-                headerStyle: {
-                  backgroundColor: '#3B82F6',
-                },
-                headerTintColor: '#FFFFFF',
-                headerTitleStyle: {
-                  fontWeight: 'bold',
-                },
-              }}
-            />
-          </>
-        ) : (
-          // User is NOT signed in
-          <Stack.Screen
-            name="Auth"
-            component={AuthScreen}
-            options={{
-              gestureEnabled: false,
-              gestureResponseDistance: 0,
-              gestureVelocityImpact: 0,
-            }}
-          />
-        )}
-      </Stack.Navigator>
+      {user ? (
+        // User is signed in - MainTabNavigator만 렌더링
+        <MainTabNavigator />
+      ) : (
+        // User is NOT signed in - AuthScreen만 렌더링
+        <AuthScreen />
+      )}
     </View>
   );
 }

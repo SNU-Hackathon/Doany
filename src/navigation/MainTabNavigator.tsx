@@ -1,125 +1,98 @@
-// Main tab navigation component for authenticated users
+// Main tab navigation component - Navigator 완전 제거하고 단순한 화면 렌더링
 
 import { Ionicons } from '@expo/vector-icons';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import React, { Suspense } from 'react';
-import { ActivityIndicator, Text, View } from 'react-native';
-import { MainTabParamList } from '../types';
+import React, { useState } from 'react';
+import { Text, TouchableOpacity, View } from 'react-native';
+import CalendarScreen from '../screens/CalendarScreen';
+import HomeScreen from '../screens/HomeScreen';
+import ProfileScreen from '../screens/ProfileScreen';
 
-// Lazy load screens for better performance
-const HomeScreen = React.lazy(() => import('../screens/HomeScreen'));
-const CalendarScreen = React.lazy(() => import('../screens/CalendarScreen'));
-const ProfileScreen = React.lazy(() => import('../screens/ProfileScreen'));
-
-// Loading component for lazy-loaded screens
-const ScreenLoader = ({ name }: { name: string }) => {
-  console.time(`[Navigation] ${name} Screen Load`);
-  
-  React.useEffect(() => {
-    return () => {
-      console.timeEnd(`[Navigation] ${name} Screen Load`);
-    };
-  }, [name]);
-
-  return (
-    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F9FAFB' }}>
-      <ActivityIndicator size="large" color="#3B82F6" />
-      <Text style={{ color: '#6B7280', marginTop: 16 }}>Loading {name}...</Text>
-    </View>
-  );
-};
-
-const Tab = createBottomTabNavigator<MainTabParamList>();
+type TabType = 'MyGoals' | 'Calendar' | 'Profile';
 
 export default function MainTabNavigator() {
+  const [activeTab, setActiveTab] = useState<TabType>('MyGoals');
+
+  const renderScreen = () => {
+    switch (activeTab) {
+      case 'MyGoals':
+        return <HomeScreen />;
+      case 'Calendar':
+        return <CalendarScreen />;
+      case 'Profile':
+        return <ProfileScreen />;
+      default:
+        return <HomeScreen />;
+    }
+  };
+
+  const getIconName = (tabName: TabType, focused: boolean): keyof typeof Ionicons.glyphMap => {
+    switch (tabName) {
+      case 'MyGoals':
+        return focused ? 'checkmark-done' : 'checkmark-done-outline';
+      case 'Calendar':
+        return focused ? 'calendar' : 'calendar-outline';
+      case 'Profile':
+        return focused ? 'person' : 'person-outline';
+      default:
+        return 'help-outline';
+    }
+  };
+
   return (
-    <Tab.Navigator
-      screenOptions={({ route }) => ({
-        tabBarShowLabel: false, // Hide all text labels
-        tabBarIcon: ({ focused, color }) => {
-          let iconName: keyof typeof Ionicons.glyphMap;
-          const size = 24; // Consistent icon size
+    <View style={{ flex: 1 }}>
+      {/* Header */}
+      <View style={{ 
+        backgroundColor: '#3B82F6', 
+        height: 60, 
+        justifyContent: 'center', 
+        alignItems: 'center',
+        paddingTop: 10
+      }}>
+        <Text style={{ 
+          color: '#FFFFFF', 
+          fontSize: 18, 
+          fontWeight: '600' 
+        }}>
+          {activeTab === 'MyGoals' ? 'My Goals' : activeTab}
+        </Text>
+      </View>
 
-          if (route.name === 'MyGoals') {
-            iconName = focused ? 'checkmark-done' : 'checkmark-done-outline';
-          } else if (route.name === 'Calendar') {
-            iconName = focused ? 'calendar' : 'calendar-outline';
-          } else if (route.name === 'Profile') {
-            iconName = focused ? 'person' : 'person-outline';
-          } else {
-            iconName = 'help-outline';
-          }
+      {/* Screen Content */}
+      <View style={{ flex: 1 }}>
+        {renderScreen()}
+      </View>
 
-          return <Ionicons name={iconName} size={size} color={color} />;
-        },
-        tabBarActiveTintColor: '#3B82F6',
-        tabBarInactiveTintColor: '#6B7280',
-        tabBarStyle: {
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          bottom: 0,           // Move to very bottom (no gap)
-          height: 70,          // Increase height slightly for better safe area handling
-          paddingTop: 8,
-          paddingBottom: 20,   // More bottom padding for safe area
-          borderTopWidth: 1,
-          borderTopColor: '#e5e7eb', // gray-200
-          backgroundColor: '#ffffff',
-          borderRadius: 0,     // keep no rounded corners
-          elevation: 12,
-        },
-        tabBarItemStyle: {
-          paddingVertical: 8, // Comfortable hit area
-        },
-        headerStyle: {
-          backgroundColor: '#3B82F6',
-          height: 56, // Much thinner header (h-14 = 56px)
-        },
-        headerTintColor: '#FFFFFF',
-        headerTitleStyle: {
-          fontWeight: '600', // semibold
-          fontSize: 18,
-        },
-      })}
-    >
-      <Tab.Screen 
-        name="MyGoals" 
-        options={{
-          title: 'My Goals',
-        }}
-      >
-        {() => (
-          <Suspense fallback={<ScreenLoader name="My Goals" />}>
-            <HomeScreen />
-          </Suspense>
-        )}
-      </Tab.Screen>
-      
-      <Tab.Screen 
-        name="Calendar" 
-        options={{
-          title: 'Calendar',
-        }}
-      >
-        {() => (
-          <Suspense fallback={<ScreenLoader name="Calendar" />}>
-            <CalendarScreen />
-          </Suspense>
-        )}
-      </Tab.Screen>
-      
-      <Tab.Screen 
-        name="Profile" 
-        options={{
-          title: 'Profile',
-        }}
-      >
-        {() => (
-          <Suspense fallback={<ScreenLoader name="Profile" />}>
-            <ProfileScreen />
-          </Suspense>
-        )}
-      </Tab.Screen>
-    </Tab.Navigator>
+      {/* Custom Tab Bar */}
+      <View style={{
+        flexDirection: 'row',
+        backgroundColor: '#FFFFFF',
+        borderTopWidth: 1,
+        borderTopColor: '#E5E7EB',
+        height: 60,
+        paddingBottom: 8,
+        paddingTop: 8,
+      }}>
+        {(['MyGoals', 'Calendar', 'Profile'] as TabType[]).map((tab) => {
+          const isActive = activeTab === tab;
+          return (
+            <TouchableOpacity
+              key={tab}
+              style={{
+                flex: 1,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+              onPress={() => setActiveTab(tab)}
+            >
+              <Ionicons
+                name={getIconName(tab, isActive)}
+                size={24}
+                color={isActive ? '#3B82F6' : '#6B7280'}
+              />
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </View>
   );
 }

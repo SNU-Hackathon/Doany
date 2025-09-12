@@ -16,7 +16,9 @@ import RootNavigator from './src/navigation/RootNavigator';
 // App navigation component
 function AppNavigator() {
   return (
-    <NavigationContainer>
+    <NavigationContainer
+      onReady={() => console.log('[Navigation] Navigation container ready')}
+    >
       <RootNavigator />
     </NavigationContainer>
   );

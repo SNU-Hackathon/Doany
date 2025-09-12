@@ -36,6 +36,26 @@ export interface GoalDoc {
   };
 }
 
+export interface PartnerChatMessage {
+  id: string;
+  verificationId: string;
+  senderId: string;
+  senderName: string;
+  message: string;
+  timestamp: Timestamp;
+}
+
+export interface PartnerReview {
+  id: string;
+  verificationId: string;
+  partnerId: string;
+  partnerName: string;
+  status: 'pending' | 'approved' | 'rejected';
+  comments?: string;
+  createdAt: Timestamp;
+  reviewedAt?: Timestamp;
+}
+
 /**
  * User document in the users collection
  * Path: users/{uid}

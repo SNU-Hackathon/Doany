@@ -12,7 +12,9 @@ import {
 } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { Location, Verification, VerificationStatus } from '../types';
+import type { GoalDoc, VerificationDoc, VerificationSignals } from '../types/firestore';
 import { auth, db, storage } from './firebase';
+import { evaluateByGoalType } from './verificationRules';
 
 export class VerificationService {
   // Create a new verification record
@@ -184,4 +186,65 @@ export class VerificationService {
       throw error;
     }
   }
+}
+
+// TODO: 아래 3개는 프로젝트의 실제 구현으로 연결하세요.
+async function uploadPhotoAndGetUrl(blob: Blob): Promise<string> {
+  // 기존 사진 업로드 유틸/스토리지 로직으로 대체
+  const timestamp = Date.now();
+  const uid = getAuth().currentUser?.uid;
+  if (!uid) throw new Error('Not authenticated');
+  
+  const photoRef = ref(storage, `verifications/${uid}/${timestamp}.jpg`);
+  await uploadBytes(photoRef, blob);
+  return await getDownloadURL(photoRef);
+}
+
+async function saveVerificationDoc(doc: VerificationDoc): Promise<void> {
+  // 기존 Firestore 저장 로직으로 대체
+  await addDoc(collection(db, 'verifications'), doc);
+}
+
+function generateId(): string {
+  return Math.random().toString(36).slice(2);
+}
+
+export async function createVerificationWithSignals(
+  goal: GoalDoc,
+  rawSignals: VerificationSignals
+): Promise<VerificationDoc> {
+  const signals: VerificationSignals = { ...rawSignals };
+  // photo blob 지원: signals.photo에 blob이 들어왔다면 업로드 후 url 주입
+  const anyPhoto = (signals as any).photo;
+  if (anyPhoto && anyPhoto.blob) {
+    const url = await uploadPhotoAndGetUrl(anyPhoto.blob);
+    signals.photo = { present: true, url };
+    delete (anyPhoto as any).blob;
+  }
+
+  const { pass } = evaluateByGoalType(goal.type, signals);
+  const doc: VerificationDoc = {
+    id: generateId(),
+    goalId: goal.id,
+    createdAt: Date.now(),
+    signals,
+    autoPass: pass,
+    finalPass: pass,
+  };
+  await saveVerificationDoc(doc);
+  return doc;
+}
+
+// 편의 헬퍼 (UI 버튼/자동화에서 사용)
+export async function verifyManual(goal: GoalDoc, ok = true) {
+  return createVerificationWithSignals(goal, { manual: { present: true, pass: ok } });
+}
+export async function verifyPhoto(goal: GoalDoc, blob: Blob) {
+  return createVerificationWithSignals(goal, { photo: { present: true, /* blob */ } } as any);
+}
+export async function verifyLocation(goal: GoalDoc, inside: boolean) {
+  return createVerificationWithSignals(goal, { location: { inside } });
+}
+export async function verifyTimeWindow(goal: GoalDoc, start?: number | null, end?: number | null) {
+  return createVerificationWithSignals(goal, { time: { now: Date.now(), windowStart: start ?? null, windowEnd: end ?? null } });
 }
