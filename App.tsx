@@ -87,15 +87,17 @@ export default function App() {
   console.log('[App] App component mounting');
 
   return (
-    <SafeAreaProvider>
-      <StatusBar style="auto" />
-      <ErrorBoundary>
-        <AuthProvider>
-          <SafeAreaView style={{ flex: 1, backgroundColor: '#ffffff' }}>
-            <AppNavigator />
-          </SafeAreaView>
-        </AuthProvider>
-      </ErrorBoundary>
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <StatusBar style="auto" />
+        <ErrorBoundary>
+          <AuthProvider>
+            <SafeAreaView style={{ flex: 1, backgroundColor: '#ffffff' }}>
+              <AppNavigator />
+            </SafeAreaView>
+          </AuthProvider>
+        </ErrorBoundary>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
