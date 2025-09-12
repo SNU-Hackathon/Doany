@@ -5,6 +5,7 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { StatusBar } from 'expo-status-bar';
 import React from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-get-random-values'; // Crypto polyfill
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import './app/globals.css'; // Tailwind CSS
