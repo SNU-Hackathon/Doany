@@ -20,7 +20,7 @@ import { useAuth } from '../hooks/useAuth';
 import { CalendarEventService } from '../services/calendarEventService';
 import { db } from '../services/firebase';
 import { GoalService } from '../services/goalService';
-import { VerificationService } from '../services/verificationService';
+import { VerificationService, verifyManual, verifyPhoto } from '../services/verificationService';
 import { CalendarEvent, Goal, RootStackParamList, Verification } from '../types';
 
 type GoalDetailScreenRouteProp = RouteProp<RootStackParamList, 'GoalDetail'>;

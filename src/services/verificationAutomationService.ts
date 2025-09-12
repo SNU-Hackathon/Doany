@@ -4,7 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Alert } from 'react-native';
 import { Goal, Location as LocationType, VerificationStatus } from '../types';
 import { LocationService } from './locationService';
-import { VerificationService } from './verificationService';
+import { VerificationService, verifyLocation } from './verificationService';
 
 export class VerificationAutomationService {
   private static activeTracking: Map<string, any> = new Map();
