@@ -248,3 +248,23 @@ export async function verifyLocation(goal: GoalDoc, inside: boolean) {
 export async function verifyTimeWindow(goal: GoalDoc, start?: number | null, end?: number | null) {
   return createVerificationWithSignals(goal, { time: { now: Date.now(), windowStart: start ?? null, windowEnd: end ?? null } });
 }
+
+// TODO: 실제 Firestore 조회 유틸로 대체
+async function fetchVerifications(goalId: string, start: number, end: number): Promise<VerificationDoc[]> {
+  const q = query(
+    collection(db, 'verifications'),
+    where('goalId', '==', goalId)
+  );
+  
+  const snapshot = await getDocs(q);
+  return snapshot.docs
+    .map(doc => ({ id: doc.id, ...doc.data() } as VerificationDoc))
+    .filter(v => v.createdAt >= start && v.createdAt <= end);
+}
+
+export async function aggregateFrequency(goal: GoalDoc, periodStart: number, periodEnd: number) {
+  const list = await fetchVerifications(goal.id, periodStart, periodEnd);
+  const verified = list.filter(v => (v.finalPass ?? v.autoPass) === true).length;
+  const target = goal.frequencySpec?.targetCount ?? 0;
+  return { verified, target, pass: verified >= target };
+}
