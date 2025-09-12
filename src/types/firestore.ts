@@ -3,6 +3,39 @@
 
 import { Timestamp } from 'firebase/firestore';
 
+export type GoalType = 'schedule' | 'frequency';
+
+export interface VerificationSignals {
+  time?: { now: number; windowStart?: number | null; windowEnd?: number | null };
+  location?: { inside: boolean };
+  photo?: { present: boolean; url?: string };
+  manual?: { present: boolean; pass?: boolean };
+  partner?: { reviewed?: boolean; approved?: boolean };
+}
+
+export interface VerificationDoc {
+  id: string;
+  goalId: string;
+  createdAt: number;
+  // 기존 status, photoUrl 등의 필드는 유지
+  signals?: VerificationSignals;
+  autoPass?: boolean;
+  finalPass?: boolean;
+}
+
+export interface GoalDoc {
+  id: string;
+  type: GoalType;
+  scheduleSpec?: {
+    events: Array<{ start: string; end?: string | null; tz?: string; locationId?: string | null }>;
+  };
+  frequencySpec?: {
+    window: { start: string; end: string };
+    targetCount: number;
+    locationId?: string | null;
+  };
+}
+
 /**
  * User document in the users collection
  * Path: users/{uid}
