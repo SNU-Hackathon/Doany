@@ -1,4 +1,5 @@
 // Main App component with single NavigationContainer and conditional auth gate
+import 'react-native-gesture-handler'; // RNGH side-effect import (safe)
 
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
