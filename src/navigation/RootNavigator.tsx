@@ -28,11 +28,25 @@ export default function RootNavigator() {
   return (
     <View className="flex-1">
       <OfflineBanner />
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Navigator
+        screenOptions={{
+          headerShown: false,
+          gestureEnabled: false,
+          gestureResponseDistance: 0,
+          gestureVelocityImpact: 0,
+        }}
+      >
         {user ? (
           // User is signed in
           <>
-            <Stack.Screen name="Main">
+            <Stack.Screen
+              name="Main"
+              options={{
+                gestureEnabled: false,
+                gestureResponseDistance: 0,
+                gestureVelocityImpact: 0,
+              }}
+            >
               {() => (
                 <React.Suspense fallback={
                   <View className="flex-1 justify-center items-center bg-gray-50">
@@ -44,12 +58,15 @@ export default function RootNavigator() {
                 </React.Suspense>
               )}
             </Stack.Screen>
-            <Stack.Screen 
-              name="GoalDetail" 
+            <Stack.Screen
+              name="GoalDetail"
               component={GoalDetailScreen}
               options={{
                 headerShown: true,
                 title: 'Goal Details',
+                gestureEnabled: false,
+                gestureResponseDistance: 0,
+                gestureVelocityImpact: 0,
                 headerStyle: {
                   backgroundColor: '#3B82F6',
                 },
@@ -59,12 +76,15 @@ export default function RootNavigator() {
                 },
               }}
             />
-            <Stack.Screen 
-              name="LocationPicker" 
+            <Stack.Screen
+              name="LocationPicker"
               component={LocationPickerScreen}
               options={{
                 headerShown: true,
                 title: 'Choose Location',
+                gestureEnabled: false,
+                gestureResponseDistance: 0,
+                gestureVelocityImpact: 0,
                 headerStyle: {
                   backgroundColor: '#3B82F6',
                 },
@@ -77,9 +97,14 @@ export default function RootNavigator() {
           </>
         ) : (
           // User is NOT signed in
-          <Stack.Screen 
-            name="Auth" 
-            component={AuthScreen} 
+          <Stack.Screen
+            name="Auth"
+            component={AuthScreen}
+            options={{
+              gestureEnabled: false,
+              gestureResponseDistance: 0,
+              gestureVelocityImpact: 0,
+            }}
           />
         )}
       </Stack.Navigator>
