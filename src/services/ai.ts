@@ -905,9 +905,16 @@ export class AIService {
     targetLocationName?: string;
     goalSpec?: GoalSpec | null;
     calendarEvents?: any[];
+    goalType?: 'schedule' | 'frequency' | 'partner';
   }): { ready: boolean; reasons: string[]; suggestions: string[] } {
     const reasons: string[] = [];
     const suggestions: string[] = [];
+    
+    // Frequency Goal과 Partner Goal은 스케줄 검증을 스킵
+    if (ctx.goalType === 'frequency' || ctx.goalType === 'partner') {
+      return { ready: true, reasons: [], suggestions: [] };
+    }
+    
     const start = ctx.startDateISO ? new Date(ctx.startDateISO) : null;
     const end = ctx.endDateISO ? new Date(ctx.endDateISO) : null;
     if (!start || !end || end < start) {
@@ -1944,8 +1951,39 @@ export class AIService {
     events: (CalendarEvent | Omit<CalendarEvent, 'id' | 'createdAt' | 'updatedAt'>)[],
     goalSpec: GoalSpec,
     startDate: string,
-    endDate: string
+    endDate: string,
+    goalType?: 'schedule' | 'frequency' | 'partner'
   ): ValidationResult {
+    // Frequency Goal은 스케줄 검증을 스킵
+    if (goalType === 'frequency') {
+      return {
+        isCompatible: true,
+        issues: [],
+        summary: 'Frequency Goal은 스케줄 검증을 건너뜁니다.',
+        completeWeekCount: 0,
+        validationDetails: {
+          frequencyCheck: { passed: true, details: 'Frequency Goal으로 검증 스킵' },
+          weekdayCheck: { passed: true, details: 'Frequency Goal으로 검증 스킵' },
+          timeCheck: { passed: true, details: 'Frequency Goal으로 검증 스킵' }
+        }
+      };
+    }
+
+    // Partner Goal도 스케줄 검증을 스킵
+    if (goalType === 'partner') {
+      return {
+        isCompatible: true,
+        issues: [],
+        summary: 'Partner Goal은 스케줄 검증을 건너뜁니다.',
+        completeWeekCount: 0,
+        validationDetails: {
+          frequencyCheck: { passed: true, details: 'Partner Goal으로 검증 스킵' },
+          weekdayCheck: { passed: true, details: 'Partner Goal으로 검증 스킵' },
+          timeCheck: { passed: true, details: 'Partner Goal으로 검증 스킵' }
+        }
+      };
+    }
+
     // 경계 규칙 1: 기간이 7일 미만이면 검증 스킵
     const start = new Date(startDate);
     const end = new Date(endDate);

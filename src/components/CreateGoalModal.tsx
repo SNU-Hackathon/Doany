@@ -688,6 +688,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         verificationMethods: formData.verificationMethods as any,
         targetLocationName: formData.targetLocation?.name,
         calendarEvents: formData.calendarEvents || [],
+        goalType: aiBadgeState.type, // goal type 추가
       });
       if (!cancelled) {
         setScheduleReady(readyEval.ready);
@@ -944,11 +945,35 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
 
       // 검증 실행
       console.log('[CreateGoalModal] AIService.validateGoalByCalendarEvents 호출');
+      
+      // 날짜 형식 검증 및 기본값 설정
+      const startDate = formData.duration?.startDate;
+      const endDate = formData.duration?.endDate;
+      
+      if (!startDate || !endDate) {
+        console.log('[CreateGoalModal] 시작일 또는 종료일이 없어 검증 스킵');
+        setScheduleValidating(false);
+        scheduleValidateInFlight.current = false;
+        return;
+      }
+      
+      // 날짜 형식 검증 (YYYY-MM-DD)
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      if (!dateRegex.test(startDate) || !dateRegex.test(endDate)) {
+        console.log('[CreateGoalModal] 잘못된 날짜 형식:', { startDate, endDate });
+        setValidationErrors(['날짜 형식이 올바르지 않습니다. YYYY-MM-DD 형식을 사용해주세요.']);
+        setShowValidationModal(true);
+        setScheduleValidating(false);
+        scheduleValidateInFlight.current = false;
+        return;
+      }
+      
       const result = AIService.validateGoalByCalendarEvents(
         allEvents,
         goalSpec,
-        formData.duration?.startDate || '',
-        formData.duration?.endDate || ''
+        startDate,
+        endDate,
+        aiBadgeState.type // goal type 전달
       );
 
       console.log('[CreateGoalModal] === 검증 결과 ===');

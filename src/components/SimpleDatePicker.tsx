@@ -883,8 +883,12 @@ export default function SimpleDatePicker({
       )}
       {/* Header */}
       <View className="mb-6">
-        <Text className="text-2xl font-bold text-gray-800 text-center">Schedule</Text>
-        <Text className="text-gray-600 text-center mt-2">Set your goal duration and schedule</Text>
+        <Text className="text-2xl font-bold text-gray-800 text-center">
+          {isFrequencyGoal ? 'Frequency Goal' : 'Schedule'}
+        </Text>
+        <Text className="text-gray-600 text-center mt-2">
+          {isFrequencyGoal ? 'Set your goal duration and frequency' : 'Set your goal duration and schedule'}
+        </Text>
       </View>
 
       {/* Duration Controls */}
@@ -985,7 +989,7 @@ export default function SimpleDatePicker({
                   <View key={index} className="w-[14.28%] p-1" style={{ aspectRatio: 1 }}>
                     {dayData ? (
                       <TouchableOpacity
-                        className={`flex-1 justify-center items-center rounded relative ${dayData.isPast || (editingMode === 'schedule' && !isDateInPeriod(dayData.dateStr)) ? 'bg-gray-200' : dayData.isSelected ? 'bg-blue-600' : editingMode === 'schedule' && dayData.isScheduled ? 'bg-green-200' : dayData.isInRange ? 'bg-blue-100' : dayData.isToday ? 'bg-blue-50' : 'bg-gray-50'}`}
+                        className={`flex-1 justify-center items-center rounded relative ${dayData.isPast || (!isFrequencyGoal && editingMode === 'schedule' && !isDateInPeriod(dayData.dateStr)) ? 'bg-gray-200' : dayData.isSelected ? 'bg-blue-600' : !isFrequencyGoal && editingMode === 'schedule' && dayData.isScheduled ? 'bg-green-200' : dayData.isInRange ? 'bg-blue-100' : dayData.isToday ? 'bg-blue-50' : 'bg-gray-50'}`}
                         onPress={() => handleDateSelect(dayData.dateStr)}
                         onLongPress={() => {
                           if (!dayData.isPast && dayData.dateStr) {
@@ -994,16 +998,16 @@ export default function SimpleDatePicker({
                           }
                         }}
                         delayLongPress={500}
-                        disabled={dayData.isPast || (editingMode === 'schedule' && !isDateInPeriod(dayData.dateStr))}
+                        disabled={dayData.isPast || (!isFrequencyGoal && editingMode === 'schedule' && !isDateInPeriod(dayData.dateStr))}
                       >
                         <Text
-                          className={`text-sm font-semibold ${dayData.isPast ? 'text-gray-400' : dayData.isSelected ? 'text-white' : editingMode === 'schedule' && dayData.isScheduled ? 'text-green-900' : dayData.isInRange ? 'text-blue-600' : dayData.isToday ? 'text-blue-800' : 'text-gray-800'}`}
+                          className={`text-sm font-semibold ${dayData.isPast ? 'text-gray-400' : dayData.isSelected ? 'text-white' : !isFrequencyGoal && editingMode === 'schedule' && dayData.isScheduled ? 'text-green-900' : dayData.isInRange ? 'text-blue-600' : dayData.isToday ? 'text-blue-800' : 'text-gray-800'}`}
                         >
                           {dayData.day}
                         </Text>
                         
                         {/* Display single time from calendar events - only if within period */}
-                        {dayData.timeToShow && (
+                        {!isFrequencyGoal && dayData.timeToShow && (
                           <View className="mt-1 px-1">
                                 <Text className="text-xs text-green-600 text-center leading-3 font-medium">
                               {dayData.timeToShow}
@@ -1012,7 +1016,7 @@ export default function SimpleDatePicker({
                         )}
                         
                         
-                        {editingMode !== 'schedule' && dayData.isScheduled && (
+                        {!isFrequencyGoal && editingMode !== 'schedule' && dayData.isScheduled && (
                           <View className="absolute -bottom-1 w-2 h-2 bg-green-500 rounded-full" />
                         )}
                         {dayData.isToday && (
@@ -1037,10 +1041,12 @@ export default function SimpleDatePicker({
             <View className="w-3 h-3 bg-blue-600 rounded mr-2" />
             <Text className="text-xs text-gray-600">Selected range</Text>
           </View>
-          <View className="flex-row items-center">
-            <View className="w-2 h-2 bg-green-500 rounded-full mr-2" />
-            <Text className="text-xs text-gray-600">Scheduled weekdays</Text>
-          </View>
+          {!isFrequencyGoal && (
+            <View className="flex-row items-center">
+              <View className="w-2 h-2 bg-green-500 rounded-full mr-2" />
+              <Text className="text-xs text-gray-600">Scheduled weekdays</Text>
+            </View>
+          )}
         </View>
 
         {/* Mode toggles under calendar */}
