@@ -70,7 +70,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       setAiBadgeState(prev => ({
         ...prev,
         aiGuess: guess,
-        type: prev.type === 'schedule' ? prev.type : guess // Keep user's manual selection
+        type: prev.typeLockedByUser ? prev.type : guess // 사용자가 직접 고정한 경우만 유지
       }));
     }
   }, [aiBadgeState.title]);
@@ -1916,6 +1916,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
   // Type-specific sections based on aiBadgeState.type
   const renderTypeSpecificSections = () => {
     if (!aiBadgeState.type) return null;
+    if (state.step === 0) return null; // AI 단계에서는 절대 렌더하지 않음
 
     switch (aiBadgeState.type) {
       case 'schedule':
@@ -2578,12 +2579,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
   const renderSection = ({ item }: { item: any }) => {
     switch (item.type) {
       case 'ai':
-        return (
-          <View>
-            {renderAISection()}
-            {renderTypeSpecificSections()}
-          </View>
-        );
+        return renderAISection();
       case 'datePicker':
         return (
           <SimpleDatePicker
@@ -2765,7 +2761,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
                 <TouchableOpacity
                   key={type}
                   onPress={() => {
-                    setAiBadgeState(prev => ({ ...prev, type }));
+                    setAiBadgeState(prev => ({ ...prev, type, typeLockedByUser: true }));
                     setShowTypeSelector(false);
                   }}
                   style={{

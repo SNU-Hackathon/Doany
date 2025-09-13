@@ -7,6 +7,7 @@ export interface CreateGoalState {
   aiGuess?: GoalType;            // AI guessed type for badge
   title: string;
   step: number;                  // current step in the creation flow
+  typeLockedByUser?: boolean;    // 사용자가 직접 타입을 바꿨는지 여부
 
   // schedule
   times?: Array<{ dow?: number; time?: string; atMs?: number }>; // either DOW+time or exact datetime
@@ -30,7 +31,7 @@ export interface CreateGoalState {
 }
 
 export const INITIAL_CREATE_GOAL_STATE: CreateGoalState = {
-  type: 'schedule',
+  type: 'frequency', // 기본 fallback은 frequency, AI guess로 덮어씌워짐
   aiGuess: undefined,
   title: '',
   step: 0,
@@ -40,6 +41,7 @@ export const INITIAL_CREATE_GOAL_STATE: CreateGoalState = {
   methods: { manual: false, location: false, photo: false },
   photo: { exifEnabled: true },
   partner: undefined,
+  typeLockedByUser: false,
   basic: undefined,
   schedule: undefined,
   verification: undefined,
@@ -59,6 +61,7 @@ export function classifyGoalTypeFromTitle(title: string): GoalType {
 
 interface CreateGoalActions {
   setType: (type: GoalType) => void;
+  setTypeLocked: (type: GoalType, locked: boolean) => void;
   setTitle: (title: string) => void;
   setTimes: (times: Array<{ dow?: number; time?: string; atMs?: number }>) => void;
   setPeriod: (period: { startMs: number; endMs: number }) => void;
@@ -84,6 +87,7 @@ const CreateGoalContext = createContext<CreateGoalContextType | undefined>(undef
 
 type CreateGoalAction = 
   | { type: 'SET_TYPE'; payload: GoalType }
+  | { type: 'SET_TYPE_LOCKED'; payload: { type: GoalType; locked: boolean } }
   | { type: 'SET_TITLE'; payload: string }
   | { type: 'SET_TIMES'; payload: Array<{ dow?: number; time?: string; atMs?: number }> }
   | { type: 'SET_PERIOD'; payload: { startMs: number; endMs: number } }
@@ -103,6 +107,8 @@ function createGoalReducer(state: CreateGoalState, action: CreateGoalAction): Cr
   switch (action.type) {
     case 'SET_TYPE':
       return { ...state, type: action.payload };
+    case 'SET_TYPE_LOCKED':
+      return { ...state, type: action.payload.type, typeLockedByUser: action.payload.locked };
     case 'SET_TITLE':
       return { ...state, title: action.payload };
     case 'SET_TIMES':
@@ -141,6 +147,7 @@ export function CreateGoalProvider({ children }: { children: ReactNode }) {
 
   const actions: CreateGoalActions = {
     setType: (type) => dispatch({ type: 'SET_TYPE', payload: type }),
+    setTypeLocked: (type, locked) => dispatch({ type: 'SET_TYPE_LOCKED', payload: { type, locked } }),
     setTitle: (title) => dispatch({ type: 'SET_TITLE', payload: title }),
     setTimes: (times) => dispatch({ type: 'SET_TIMES', payload: times }),
     setPeriod: (period) => dispatch({ type: 'SET_PERIOD', payload: period }),
