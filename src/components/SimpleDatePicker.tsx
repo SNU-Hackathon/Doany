@@ -105,6 +105,10 @@ const defer = (fn: () => void) => queueMicrotask(fn);export interface DateSelect
   // Initial values
   initialSelectedWeekdays?: number[];
   initialWeeklyTimeSettings?: { [key: string]: string[] };
+  // Frequency Goal props
+  isFrequencyGoal?: boolean;
+  perWeek?: number;
+  onPerWeekChange?: (perWeek: number) => void;
 }
 
 export default function SimpleDatePicker({
@@ -136,7 +140,10 @@ export default function SimpleDatePicker({
   includeDates = [],
   excludeDates = [],
   initialSelectedWeekdays = [],
-  initialWeeklyTimeSettings = {}
+  initialWeeklyTimeSettings = {},
+  isFrequencyGoal = false,
+  perWeek = 3,
+  onPerWeekChange
 }: SimpleDatePickerProps) {
   // Parent notifications must happen post-commit.
   
@@ -1049,18 +1056,49 @@ export default function SimpleDatePicker({
               Edit Period
             </Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => setEditingMode('schedule')}
-            className={`flex-1 rounded-lg py-3 ${editingMode === 'schedule' ? 'bg-green-600' : 'bg-green-100'}`}
-            activeOpacity={0.9}
-          >
-            <Text
-              className={`text-center font-semibold ${editingMode === 'schedule' ? 'text-white' : 'text-green-700'}`}
+          {!isFrequencyGoal && (
+            <TouchableOpacity
+              onPress={() => setEditingMode('schedule')}
+              className={`flex-1 rounded-lg py-3 ${editingMode === 'schedule' ? 'bg-green-600' : 'bg-green-100'}`}
+              activeOpacity={0.9}
             >
-              Edit Schedule
-            </Text>
-          </TouchableOpacity>
+              <Text
+                className={`text-center font-semibold ${editingMode === 'schedule' ? 'text-white' : 'text-green-700'}`}
+              >
+                Edit Schedule
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
+
+        {/* Frequency Goal - 주당 횟수 설정 */}
+        {isFrequencyGoal && (
+          <View className="mb-3 p-4 bg-blue-50 rounded-lg">
+            <Text className="text-blue-800 font-semibold text-base mb-3">주당 목표 횟수</Text>
+            <View className="flex-row items-center justify-center space-x-4">
+              <TouchableOpacity
+                onPress={() => onPerWeekChange?.(Math.max(1, (perWeek || 3) - 1))}
+                className="w-10 h-10 bg-blue-200 rounded-full items-center justify-center"
+                activeOpacity={0.7}
+              >
+                <Text className="text-blue-700 text-xl font-bold">-</Text>
+              </TouchableOpacity>
+              <Text className="text-2xl font-bold text-blue-800 min-w-[60px] text-center">
+                {perWeek || 3}회
+              </Text>
+              <TouchableOpacity
+                onPress={() => onPerWeekChange?.((perWeek || 3) + 1)}
+                className="w-10 h-10 bg-blue-200 rounded-full items-center justify-center"
+                activeOpacity={0.7}
+              >
+                <Text className="text-blue-700 text-xl font-bold">+</Text>
+              </TouchableOpacity>
+            </View>
+            <Text className="text-blue-600 text-sm text-center mt-2">
+              주당 {perWeek || 3}회 목표를 달성하세요
+            </Text>
+          </View>
+        )}
 
 
       {/* Selected Summary */}

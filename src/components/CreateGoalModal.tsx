@@ -2625,50 +2625,48 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         );
       case 'frequency':
         return (
-          <View style={{ padding: 16 }}>
-            <Text style={{ fontSize: 18, fontWeight: '600', color: '#1f2937', marginBottom: 16 }}>Frequency Goal</Text>
-            <FrequencyTarget
+          <View>
+            <SimpleDatePicker
+              startDate={formData.duration?.startDate || null}
+              endDate={formData.duration?.endDate || null}
+              onStartDateChange={(date) => setFormData(prev => ({ ...prev, duration: { ...prev.duration, startDate: date } }))}
+              onEndDateChange={(date) => setFormData(prev => ({ ...prev, duration: { ...prev.duration, endDate: date } }))}
+              onNavigateToStep={goToStep}
+              onWeeklyScheduleChange={handleWeeklyScheduleChange}
+              verificationMethods={formData.verificationMethods}
+              onVerificationMethodsChange={(methods) => setFormData(prev => ({ ...prev, verificationMethods: methods }))}
+              lockedVerificationMethods={formData.lockedVerificationMethods || []}
+              includeDates={formData.includeDates}
+              excludeDates={formData.excludeDates}
+              onIncludeExcludeChange={(inc: string[], exc: string[]) => setFormData(prev => ({ ...prev, includeDates: inc, excludeDates: exc }))}
+              goalTitle={formData.title || aiDraft.title}
+              goalRawText={rememberedPrompt || aiPrompt}
+              aiSuccessCriteria={aiSuccessCriteria}
+              blockingReasons={blockingReasons}
+              onRequestNext={handleRequestNextFromSchedule}
+              initialSelectedWeekdays={formData.weeklyWeekdays}
+              initialWeeklyTimeSettings={formData.weeklySchedule}
+              targetLocation={formData.targetLocation}
+              onOpenLocationPicker={openLocationPicker}
+              onUseCurrentLocation={handleUseCurrentLocation}
+              goalSpec={goalSpec}
+              loading={scheduleValidating}
+              calendarEvents={formData.calendarEvents || []}
+              onCalendarEventsChange={(events) => {
+                setFormData(prev => {
+                  const flags = detectTimeManualFlags({
+                    weeklyWeekdays: prev.weeklyWeekdays,
+                    weeklySchedule: prev.weeklySchedule,
+                    calendarEvents: events,
+                  });
+                  return withForcedVerification({ ...prev, calendarEvents: events }, flags);
+                });
+              }}
+              // Frequency Goal용 추가 props
+              isFrequencyGoal={true}
               perWeek={aiBadgeState.perWeek || 3}
               onPerWeekChange={(perWeek) => setAiBadgeState(prev => ({ ...prev, perWeek }))}
-              period={aiBadgeState.period}
-              onPeriodChange={(period) => setAiBadgeState(prev => ({ ...prev, period }))}
             />
-            <View style={{ marginTop: 16 }}>
-              <Text style={{ fontSize: 16, fontWeight: '600', color: '#1f2937', marginBottom: 8 }}>Verification Methods</Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                {['manual', 'location', 'photo'].map((method) => (
-                  <TouchableOpacity
-                    key={method}
-                    onPress={() => {
-                      const currentMethods = aiBadgeState.methods || { manual: false, location: false, photo: false };
-                      setAiBadgeState(prev => ({
-                        ...prev,
-                        methods: {
-                          ...currentMethods,
-                          [method]: !currentMethods[method as keyof typeof currentMethods]
-                        }
-                      }));
-                    }}
-                    style={{
-                      paddingHorizontal: 12,
-                      paddingVertical: 8,
-                      borderRadius: 20,
-                      backgroundColor: aiBadgeState.methods?.[method as keyof typeof aiBadgeState.methods] ? '#dbeafe' : '#f3f4f6',
-                      borderWidth: 1,
-                      borderColor: aiBadgeState.methods?.[method as keyof typeof aiBadgeState.methods] ? '#3b82f6' : '#d1d5db'
-                    }}
-                  >
-                    <Text style={{
-                      color: aiBadgeState.methods?.[method as keyof typeof aiBadgeState.methods] ? '#1e40af' : '#6b7280',
-                      fontSize: 14,
-                      fontWeight: '500'
-                    }}>
-                      {method.charAt(0).toUpperCase() + method.slice(1)}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
           </View>
         );
       case 'partner':
