@@ -18,7 +18,7 @@ import {
 import { LocationSearch } from '../components';
 import { FrequencyTarget, PartnerPicker, ScheduleWhen } from '../components/createGoal';
 import { Categories } from '../constants';
-import { classifyGoalTypeFromTitle, CreateGoalState as CreateGoalFeatureState, CreateGoalProvider, GoalType, INITIAL_CREATE_GOAL_STATE, RULE_TIPS, useCreateGoal, validateCreateView } from '../features/createGoal';
+import { classifyGoalTypeFromTitle, computeVerificationPlan, CreateGoalState as CreateGoalFeatureState, CreateGoalProvider, GoalType, INITIAL_CREATE_GOAL_STATE, RULE_TIPS, useCreateGoal, validateCreateView } from '../features/createGoal';
 import { AIGoalDraft, mergeAIGoal, updateDraftWithDates, validateAIGoal } from '../features/goals/aiDraft';
 import { useAuth } from '../hooks/useAuth';
 import { AIService } from '../services/ai';
@@ -2630,6 +2630,8 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
             <FrequencyTarget
               perWeek={aiBadgeState.perWeek || 3}
               onPerWeekChange={(perWeek) => setAiBadgeState(prev => ({ ...prev, perWeek }))}
+              period={aiBadgeState.period}
+              onPeriodChange={(period) => setAiBadgeState(prev => ({ ...prev, period }))}
             />
             <View style={{ marginTop: 16 }}>
               <Text style={{ fontSize: 16, fontWeight: '600', color: '#1f2937', marginBottom: 8 }}>Verification Methods</Text>
@@ -2675,7 +2677,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
             <Text style={{ fontSize: 18, fontWeight: '600', color: '#1f2937', marginBottom: 16 }}>Partner Goal</Text>
             <PartnerPicker
               partner={aiBadgeState.partner}
-              onPartnerChange={(partner) => setAiBadgeState(prev => ({ ...prev, partner }))}
+              onChange={(partner) => setAiBadgeState(prev => ({ ...prev, partner }))}
             />
           </View>
         );
@@ -3006,32 +3008,113 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
                 <Text style={{ color: '#374151', fontWeight: '500', textAlign: 'center' }}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity 
-                onPress={() => {
+                onPress={async () => {
+                  // Follow-up 질문에 답변이 있는 경우 처리
+                  if (specFollowUpQuestion && specFollowUpAnswer.trim()) {
+                    try {
+                      setGoalSpecLoading(true);
+                      
+                      // Update formData with user's answer
+                      setFormData(prev => ({
+                        ...prev,
+                        targetLocation: { 
+                          ...(prev.targetLocation || {}), 
+                          name: specFollowUpAnswer.trim(),
+                          lat: prev.targetLocation?.lat || 0,
+                          lng: prev.targetLocation?.lng || 0
+                        } as TargetLocation
+                      }));
+                      
+                      // Also update aiDraft if it exists
+                      if (aiDraft.targetLocation) {
+                        setAiDraft(prev => ({
+                          ...prev,
+                          targetLocation: {
+                            ...prev.targetLocation,
+                            name: specFollowUpAnswer.trim()
+                          }
+                        }));
+                      }
+                      
+                      // Recompile GoalSpec with the answer
+                      const originalPrompt = rememberedPrompt || aiPrompt;
+                      const title = aiDraft.title || formData.title;
+                      const timezone = 'Asia/Seoul';
+                      const locale = 'ko-KR';
+                      
+                      const refined = await AIService.compileGoalSpec({
+                        prompt: originalPrompt,
+                        title,
+                        timezone,
+                        locale,
+                        targetLocationName: specFollowUpAnswer.trim()
+                      });
+                      
+                      if (refined && typeof refined === 'object' && refined.verification && refined.schedule) {
+                        setGoalSpec(refined);
+                        
+                        // Post-process verification methods
+                        const initialMethods = Array.isArray(refined.verification?.methods) ? refined.verification.methods : [];
+                        const initialMandatory = Array.isArray(refined.verification?.mandatory) ? refined.verification.mandatory : [];
+                        const processed = postProcessVerificationMethods(refined, initialMethods, initialMandatory, originalPrompt);
+                        
+                        // Update the spec with processed methods
+                        refined.verification.methods = processed.methods;
+                        refined.verification.mandatory = processed.mandatory;
+                        refined.verification.sufficiency = processed.sufficiency;
+                        
+                        // Show processed results to user
+                        setAiAnalyzedMethods(processed.methods);
+                        setAiMandatoryMethods(processed.mandatory);
+                        setAiVerificationSummary(refined.verification?.rationale || '');
+                        
+                        // Clear follow-up question
+                        setSpecFollowUpQuestion('');
+                        setSpecFollowUpAnswer('');
+                        
+                        // Proceed to next step
+                        setShowSpecPlanModal(false);
+                        goToStep(1);
+                        return;
+                      }
+                    } catch (e) {
+                      console.error('Follow-up processing error:', e);
+                      Alert.alert('AI Error', 'Failed to process your answer. Please try again.');
+                    } finally {
+                      setGoalSpecLoading(false);
+                    }
+                    return;
+                  }
+                  
                   setShowSpecPlanModal(false);
-                  // 타입에 맞는 다음 단계로 이동
-                  goToStep(1);
-                }}
-                style={{ flex: 1, backgroundColor: '#3b82f6', borderRadius: 8, paddingVertical: 12 }}
-              >
-                <Text style={{ color: 'white', fontWeight: '600', textAlign: 'center' }}>
-                  OK
-                </Text>
-              </TouchableOpacity>
+                  
+                  // AI GoalSpec 처리 로직 (기존 기능 복원)
+                  if (goalSpec && aiDraft.title) {
+                    try {
+                      setGoalSpecLoading(true);
                       
                       // Post-process verification methods to enforce requirements
-                      const initialMethods = Array.isArray(refined.verification?.methods) ? refined.verification.methods : [];
-                      const initialMandatory = Array.isArray(refined.verification?.mandatory) ? refined.verification.mandatory : [];
-                      const processed = postProcessVerificationMethods(refined, initialMethods, initialMandatory, originalPrompt);
+                      const initialMethods = Array.isArray(goalSpec.verification?.methods) ? goalSpec.verification.methods : [];
+                      const initialMandatory = Array.isArray(goalSpec.verification?.mandatory) ? goalSpec.verification.mandatory : [];
+                      const processed = postProcessVerificationMethods(goalSpec, initialMethods, initialMandatory, aiPrompt.trim());
                       
                       // Update the spec with processed methods
-                      refined.verification.methods = processed.methods;
-                      refined.verification.mandatory = processed.mandatory;
-                      refined.verification.sufficiency = processed.sufficiency;
+                      const updatedGoalSpec = {
+                        ...goalSpec,
+                        verification: {
+                          ...goalSpec.verification,
+                          methods: processed.methods,
+                          mandatory: processed.mandatory,
+                          sufficiency: processed.sufficiency
+                        }
+                      };
+                      
+                      setGoalSpec(updatedGoalSpec);
                       
                       // Show processed results to user
                       setAiAnalyzedMethods(processed.methods);
                       setAiMandatoryMethods(processed.mandatory);
-                      setAiVerificationSummary(refined.verification?.rationale || '');
+                      setAiVerificationSummary(updatedGoalSpec.verification?.rationale || '');
                       
                       // Check sufficiency before proceeding
                       if (!processed.sufficiency) {
@@ -3046,88 +3129,47 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
                       // Handle missing fields from post-processing
                       if (processed.missingFields && processed.missingFields.length > 0) {
                         // Update the spec with missing fields
-                        if (!refined.missingFields) refined.missingFields = [];
-                        refined.missingFields = [...new Set([...refined.missingFields, ...processed.missingFields])];
+                        if (!updatedGoalSpec.missingFields) updatedGoalSpec.missingFields = [];
+                        updatedGoalSpec.missingFields = [...new Set([...updatedGoalSpec.missingFields, ...processed.missingFields])];
                         
-                        // Set follow-up question if provided, but avoid repeating location questions if user already answered
+                        // Set follow-up question if provided
                         if (processed.followUpQuestion) {
-                          const isLocationQuestion = processed.followUpQuestion.includes('place name') || processed.followUpQuestion.includes('location');
-                          const userAlreadyAnsweredLocation = specFollowUpAnswer.trim() && isLocationQuestion;
-                          
-                          if (!userAlreadyAnsweredLocation) {
-                            setSpecFollowUpQuestion(processed.followUpQuestion);
-                            setSpecFollowUpAnswer('');
-                            return; // Stay in modal for another follow-up
-                          } else {
-                            // User already answered location question, clear it and proceed
-                            console.log('[FollowUp] User already answered location question, proceeding...');
-                          }
+                          setSpecFollowUpQuestion(processed.followUpQuestion);
+                          setSpecFollowUpAnswer('');
+                          setShowSpecPlanModal(true); // Reopen modal for follow-up
+                          return;
                         }
                       }
                       
-                      // Proceed only if refined.schedule?.requiresDisambiguation === false
-                      if (refined.schedule?.requiresDisambiguation && refined.schedule?.followUpQuestion) {
-                        setSpecFollowUpQuestion(refined.schedule.followUpQuestion);
+                      // Proceed only if schedule doesn't require disambiguation
+                      if (updatedGoalSpec.schedule?.requiresDisambiguation && updatedGoalSpec.schedule?.followUpQuestion) {
+                        setSpecFollowUpQuestion(updatedGoalSpec.schedule.followUpQuestion);
                         setSpecFollowUpAnswer('');
-                        return; // Stay in modal for another follow-up
+                        setShowSpecPlanModal(true); // Reopen modal for follow-up
+                        return;
                       }
                       
-                      // No more disambiguation needed, proceed
-                      setSpecFollowUpQuestion('');
-                      setSpecFollowUpAnswer('');
-                      setShowSpecPlanModal(false);
-                      setAppState('NEEDS_DATES');
-                      goToStep(1);
                     } catch (e) {
-                      Alert.alert('AI Error', 'Failed to refine GoalSpec. Please try again.');
+                      console.error('AI GoalSpec processing error:', e);
+                      Alert.alert('AI Error', 'Failed to process GoalSpec. Please try again.');
+                      return;
                     } finally {
                       setGoalSpecLoading(false);
                     }
-                  } else if (!specFollowUpQuestion || isMovementGoal) {
-                    // No follow-up needed OR movement goal (can proceed without place name)
-                    // Check if verification methods are sufficient before proceeding
-                    if (!aiAnalyzedMethods.length || !isVerificationSufficient(aiAnalyzedMethods)) {
-                      Alert.alert('Unsupported Goal', 'This goal cannot be created because it cannot be sufficiently verified with the available methods.');
-                      return;
-                    }
-                    setShowSpecPlanModal(false);
-                    setAppState('NEEDS_DATES');
-                    goToStep(1);
                   }
-                  // If there's a geofence follow-up question but no answer, do nothing (wait for user input)
-                }} 
-                disabled={goalSpecLoading || (!!specFollowUpQuestion && 
-                  (goalSpec?.verification?.constraints?.location?.mode === 'geofence' &&
-                   !(goalSpec?.verification?.constraints?.location?.name || 
-                     goalSpec?.verification?.constraints?.location?.placeId || 
-                     formData?.targetLocation?.name)) && 
-                  !specFollowUpAnswer.trim())}
-                style={[
-                  { flex: 1, borderRadius: 8, paddingVertical: 12 },
-                  goalSpecLoading || (!!specFollowUpQuestion && 
-                    (goalSpec?.verification?.constraints?.location?.mode === 'geofence' &&
-                     !(goalSpec?.verification?.constraints?.location?.name || 
-                       goalSpec?.verification?.constraints?.location?.placeId || 
-                       formData?.targetLocation?.name)) && 
-                    !specFollowUpAnswer.trim())
-                    ? { backgroundColor: '#9ca3af' }
-                    : { backgroundColor: '#2563eb' }
-                ]}
+                  
+                  // 타입에 맞는 다음 단계로 이동
+                  goToStep(1);
+                }}
+                style={{ flex: 1, backgroundColor: '#3b82f6', borderRadius: 8, paddingVertical: 12 }}
               >
-                <Text style={{ color: 'white', fontWeight: '500', textAlign: 'center' }}>
-                  {goalSpecLoading ? 'Processing...' : 
-                   (specFollowUpQuestion && 
-                    (goalSpec?.verification?.constraints?.location?.mode === 'geofence' &&
-                     !(goalSpec?.verification?.constraints?.location?.name || 
-                       goalSpec?.verification?.constraints?.location?.placeId || 
-                       formData?.targetLocation?.name)) && 
-                    !specFollowUpAnswer.trim()) ? 'Answer Required' : 'OK'}
+                <Text style={{ color: 'white', fontWeight: '600', textAlign: 'center' }}>
+                  OK
                 </Text>
               </TouchableOpacity>
             </View>
           </View>
         </Modal>
-
         {/* Schedule Fixes Modal */}
         <Modal visible={showScheduleFixes} transparent animationType="fade" onRequestClose={() => setShowScheduleFixes(false)}>
           <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.4)' }}>
