@@ -12,6 +12,13 @@ import './app/globals.css'; // Tailwind CSS
 import ErrorBoundary from './src/components/ErrorBoundary';
 import { AuthProvider } from './src/hooks/useAuth';
 import RootNavigator from './src/navigation/RootNavigator';
+import './src/services/network/NetworkService'; // Initialize network service
+
+// Development-only test harness
+if (__DEV__) {
+  import('./src/services/test/VerificationTestHarness');
+  import('./src/services/test/TestCommands');
+}
 
 // App navigation component
 function AppNavigator() {

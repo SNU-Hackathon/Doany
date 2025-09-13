@@ -5,11 +5,26 @@ import { Timestamp } from 'firebase/firestore';
 
 export type GoalType = 'schedule' | 'frequency';
 
+export interface PhotoEvidence {
+  present: boolean;
+  url?: string;
+  exif?: {
+    timestampMs?: number;
+    location?: { lat: number; lng: number };
+    deviceModel?: string;
+  };
+  validationResult?: {
+    timeValid?: boolean;
+    locationValid?: boolean;
+    freshnessValid?: boolean;
+  };
+}
+
 export interface VerificationSignals {
-  time?: { now: number; windowStart?: number | null; windowEnd?: number | null };
-  location?: { inside: boolean };
-  photo?: { present: boolean; url?: string };
+  time?: { present: boolean; windowStart?: number | null; windowEnd?: number | null };
+  location?: { present: boolean; inside?: boolean; lat?: number; lng?: number; radiusM?: number };
   manual?: { present: boolean; pass?: boolean };
+  photo?: PhotoEvidence;
   partner?: { reviewed?: boolean; approved?: boolean };
 }
 
@@ -21,6 +36,7 @@ export interface VerificationDoc {
   signals?: VerificationSignals;
   autoPass?: boolean;
   finalPass?: boolean;
+  isDuplicate?: boolean; // Flag for duplicate PASS attempts
 }
 
 export interface GoalDoc {

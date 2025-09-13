@@ -2,9 +2,11 @@
 
 import * as ImagePicker from 'expo-image-picker';
 import { Alert } from 'react-native';
+import { VERIFICATION_DEFAULTS } from '../config/verification';
 import { Goal, Location as LocationType, VerificationStatus } from '../types';
 import { LocationService } from './locationService';
-import { VerificationService, verifyLocation } from './verificationService';
+import { parsePickerExif, validateFreshness, validateGeofence, validateTimeWindow } from './photo/ExifValidator';
+import { VerificationService, verifyLocation, verifyPhoto } from './verificationService';
 
 export class VerificationAutomationService {
   private static activeTracking: Map<string, any> = new Map();
@@ -174,19 +176,53 @@ export class VerificationAutomationService {
         return;
       }
 
-      const result = await ImagePicker.launchCameraAsync({ quality: 0.6 });
+      const result = await ImagePicker.launchCameraAsync({ 
+        quality: 0.8, 
+        exif: true, 
+        base64: false 
+      });
       if (result.canceled || !result.assets || result.assets.length === 0) return;
+      
       const asset = result.assets[0];
       const resp = await fetch(asset.uri);
       const blob = await resp.blob();
 
-      await VerificationService.createVerification(
-        goal.id,
-        goal.userId,
-        'success',
-        undefined,
-        blob
-      );
+      // Extract EXIF and perform validation
+      const exif = parsePickerExif(asset.exif || undefined);
+      
+      // Get time window from goal (if available)
+      const now = Date.now();
+      const windowStart = now - (30 * 60 * 1000); // 30 min ago default
+      const windowEnd = now + (30 * 60 * 1000);   // 30 min from now default
+      
+      // Get target location from goal
+      const targetLocation = goal.targetLocation ? 
+        { lat: goal.targetLocation.lat, lng: goal.targetLocation.lng } : 
+        undefined;
+      
+      // Validate EXIF data
+      const timeValid = validateTimeWindow(exif.timestampMs, windowStart, windowEnd, VERIFICATION_DEFAULTS.timeToleranceMinutes);
+      const locValid = targetLocation ? validateGeofence(exif.location, targetLocation, VERIFICATION_DEFAULTS.geofenceRadiusMeters) : true;
+      const freshValid = validateFreshness(exif.timestampMs, VERIFICATION_DEFAULTS.photoFreshnessMaxMinutes);
+      
+      console.log(`[PhotoVerification] timeValid=${timeValid} locValid=${locValid} freshValid=${freshValid} ts=${exif.timestampMs}`);
+      
+      // Create enriched photo signals
+      const photoSignals = {
+        present: true,
+        exif: { 
+          timestampMs: exif.timestampMs, 
+          location: exif.location, 
+          deviceModel: exif.deviceModel 
+        },
+        validationResult: { 
+          timeValid, 
+          locationValid: locValid, 
+          freshnessValid: freshValid 
+        }
+      };
+
+      await verifyPhoto(goal as any, blob, photoSignals);
 
       Alert.alert('Uploaded', 'Photo verification uploaded.');
     } catch (error) {
