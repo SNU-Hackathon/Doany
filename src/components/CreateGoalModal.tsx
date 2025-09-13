@@ -3030,6 +3030,10 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
                           onPress={() => {
                             setAiBadgeState(prev => ({ ...prev, type: 'partner', typeLockedByUser: true }));
                             setShowSpecPlanModal(false);
+                            // Partner로 변경 후 바로 Verification Plan 모달 표시
+                            setTimeout(() => {
+                              setShowSpecPlanModal(true);
+                            }, 100);
                           }}
                           style={{ paddingVertical: 8, paddingHorizontal: 16, backgroundColor: '#f59e0b', borderRadius: 6, alignSelf: 'flex-start' }}
                         >
