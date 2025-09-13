@@ -16,8 +16,9 @@ import {
   View,
 } from 'react-native';
 import { LocationSearch } from '../components';
+import { FrequencyTarget, PartnerPicker, ScheduleWhen } from '../components/createGoal';
 import { Categories } from '../constants';
-import { CreateGoalProvider, useCreateGoal } from '../features/createGoal/state';
+import { classifyGoalTypeFromTitle, CreateGoalState as CreateGoalFeatureState, CreateGoalProvider, GoalType, INITIAL_CREATE_GOAL_STATE, RULE_TIPS, useCreateGoal, validateCreateView } from '../features/createGoal';
 import { AIGoalDraft, mergeAIGoal, updateDraftWithDates, validateAIGoal } from '../features/goals/aiDraft';
 import { useAuth } from '../hooks/useAuth';
 import { AIService } from '../services/ai';
@@ -50,10 +51,66 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
   const navigation = useNavigation<any>();
   const { state, actions } = useCreateGoal();
   
+  // Local state for AI type badge
+  const [aiBadgeState, setAiBadgeState] = useState<CreateGoalFeatureState>(INITIAL_CREATE_GOAL_STATE);
+  const [showTypeSelector, setShowTypeSelector] = useState(false);
+  const [showWhyTooltip, setShowWhyTooltip] = useState(false);
+  const [showRulePreview, setShowRulePreview] = useState(false);
+  
   // Debug navigation state
   useEffect(() => {
     console.log('[NAV] available screens:', navigation.getState()?.routeNames);
   }, [navigation]);
+
+  // AI classification effect
+  useEffect(() => {
+    if (aiBadgeState.title.length > 0) {
+      const guess = classifyGoalTypeFromTitle(aiBadgeState.title);
+      console.log('[CreateGoal] AI guess ->', guess);
+      setAiBadgeState(prev => ({
+        ...prev,
+        aiGuess: guess,
+        type: prev.type === 'schedule' ? prev.type : guess // Keep user's manual selection
+      }));
+    }
+  }, [aiBadgeState.title]);
+
+  // Validation computation
+  const validation = validateCreateView(aiBadgeState.type, aiBadgeState);
+  const { ok, issues } = validation;
+
+  // Log validation issues for debugging
+  useEffect(() => {
+    if (!ok && issues.length > 0) {
+      console.log('[CreateGoal] Validation issues:', issues);
+    }
+  }, [ok, issues]);
+
+  // Helper function to get classification reasons
+  const getClassificationReasons = (title: string, type: GoalType): string[] => {
+    const t = title.toLowerCase();
+    const reasons: string[] = [];
+    
+    if (type === 'frequency') {
+      if (/(times\s+per\s+(week|day|month))/.test(t)) reasons.push("Detected 'times per week/day/month'");
+      if (/(\bper\s+week\b)/.test(t)) reasons.push("Found 'per week'");
+      if (/(\bweekly\b)/.test(t)) reasons.push("Found 'weekly'");
+    } else if (type === 'partner') {
+      if (/(with|by)\s+(friend|coach|partner)/.test(t)) reasons.push("Detected 'with/by friend/coach/partner'");
+      if (/\bpartner approval\b/.test(t)) reasons.push("Found 'partner approval'");
+      if (/\baccountability\b/.test(t)) reasons.push("Found 'accountability'");
+    } else if (type === 'schedule') {
+      if (/\b(mon|tue|wed|thu|fri|sat|sun)\b/.test(t)) reasons.push("Detected day names");
+      if (/\b\d{1,2}:\d{2}\b/.test(t)) reasons.push("Found time format");
+      if (/\b(am|pm)\b/.test(t)) reasons.push("Found AM/PM");
+    }
+    
+    if (reasons.length === 0) {
+      reasons.push("Default classification based on general goal pattern");
+    }
+    
+    return reasons;
+  };
   
   // Location data is now handled via navigation params in the Search button
   
@@ -1613,7 +1670,10 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
           placeholder={"Describe your goal (e.g., 'Go to the gym 3 times a week')"}
           placeholderTextColor="#9CA3AF"
           value={aiPrompt}
-          onChangeText={setAiPrompt}
+          onChangeText={(text: string) => {
+            setAiPrompt(text);
+            setAiBadgeState(prev => ({ ...prev, title: text }));
+          }}
           multiline
           textAlignVertical="top"
           editable={!loading}
@@ -1850,6 +1910,314 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
           <Text style={{ color: 'white', fontWeight: '600', marginLeft: 8 }}>Current Location</Text>
         </TouchableOpacity>
       </View>
+    </View>
+  );
+
+  // Type-specific sections based on aiBadgeState.type
+  const renderTypeSpecificSections = () => {
+    if (!aiBadgeState.type) return null;
+
+    switch (aiBadgeState.type) {
+      case 'schedule':
+        return renderScheduleSection();
+      case 'frequency':
+        return renderFrequencySection();
+      case 'partner':
+        return renderPartnerSection();
+      default:
+        return null;
+    }
+  };
+
+  const renderScheduleSection = () => (
+    <View style={{ marginBottom: 24 }}>
+      <Text style={{ fontSize: 18, fontWeight: '600', color: '#1f2937', marginBottom: 16 }}>Schedule</Text>
+      
+      {/* When Section */}
+      <ScheduleWhen
+        times={aiBadgeState.times || []}
+        onChange={(times) => setAiBadgeState(prev => ({ ...prev, times }))}
+      />
+
+      {/* Verification Methods */}
+      <View style={{ marginBottom: 20 }}>
+        <Text style={{ fontSize: 16, fontWeight: '500', color: '#374151', marginBottom: 12 }}>Verification Methods</Text>
+        
+        {['manual', 'location', 'photo'].map((method) => (
+          <TouchableOpacity
+            key={method}
+            onPress={() => {
+              setAiBadgeState(prev => ({
+                ...prev,
+                methods: {
+                  ...prev.methods,
+                  [method]: !prev.methods[method as keyof typeof prev.methods]
+                }
+              }));
+            }}
+            style={{ 
+              flexDirection: 'row', 
+              alignItems: 'center', 
+              paddingVertical: 12,
+              paddingHorizontal: 16,
+              backgroundColor: 'white',
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: '#d1d5db',
+              marginBottom: 8
+            }}
+          >
+            <View style={{
+              width: 20,
+              height: 20,
+              borderRadius: 4,
+              borderWidth: 2,
+              borderColor: aiBadgeState.methods[method as keyof typeof aiBadgeState.methods] ? '#3b82f6' : '#d1d5db',
+              backgroundColor: aiBadgeState.methods[method as keyof typeof aiBadgeState.methods] ? '#3b82f6' : 'white',
+              marginRight: 12,
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              {aiBadgeState.methods[method as keyof typeof aiBadgeState.methods] && (
+                <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>✓</Text>
+              )}
+            </View>
+            <Text style={{ 
+              color: '#374151', 
+              fontSize: 16,
+              textTransform: 'capitalize'
+            }}>
+              {method}
+            </Text>
+          </TouchableOpacity>
+        ))}
+        
+        <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 8, fontStyle: 'italic' }}>
+          Need Time and either (Manual + Location) or Photo
+        </Text>
+      </View>
+
+      {/* Optional Partner Toggle */}
+      <View style={{ marginBottom: 20 }}>
+        <TouchableOpacity
+          onPress={() => {
+            setAiBadgeState(prev => ({
+              ...prev,
+              partner: prev.partner ? undefined : { status: 'pending' }
+            }));
+          }}
+          style={{ 
+            flexDirection: 'row', 
+            alignItems: 'center', 
+            paddingVertical: 12,
+            paddingHorizontal: 16,
+            backgroundColor: 'white',
+            borderRadius: 8,
+            borderWidth: 1,
+            borderColor: '#d1d5db'
+          }}
+        >
+          <View style={{
+            width: 20,
+            height: 20,
+            borderRadius: 4,
+            borderWidth: 2,
+            borderColor: aiBadgeState.partner ? '#3b82f6' : '#d1d5db',
+            backgroundColor: aiBadgeState.partner ? '#3b82f6' : 'white',
+            marginRight: 12,
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            {aiBadgeState.partner && (
+              <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>✓</Text>
+            )}
+          </View>
+          <Text style={{ color: '#374151', fontSize: 16 }}>
+            Require partner approval
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
+  const renderFrequencySection = () => (
+    <View style={{ marginBottom: 24 }}>
+      <Text style={{ fontSize: 18, fontWeight: '600', color: '#1f2937', marginBottom: 16 }}>Frequency</Text>
+      
+      {/* Target Section */}
+      <FrequencyTarget
+        perWeek={aiBadgeState.perWeek || 1}
+        period={aiBadgeState.period}
+        onPerWeekChange={(perWeek) => setAiBadgeState(prev => ({ ...prev, perWeek }))}
+        onPeriodChange={(period) => setAiBadgeState(prev => ({ ...prev, period }))}
+      />
+
+      {/* Verification Methods */}
+      <View style={{ marginBottom: 20 }}>
+        <Text style={{ fontSize: 16, fontWeight: '500', color: '#374151', marginBottom: 12 }}>Verification Methods</Text>
+        
+        {['manual', 'location', 'photo'].map((method) => {
+          const isManual = method === 'manual';
+          const isChecked = aiBadgeState.methods[method as keyof typeof aiBadgeState.methods];
+          
+          return (
+            <TouchableOpacity
+              key={method}
+              onPress={() => {
+                if (isManual) {
+                  // Show toast for manual
+                  console.warn('[CreateGoal] Manual is required for frequency goals');
+                  Alert.alert('Manual Required', 'Manual is required for frequency goals');
+                  return;
+                }
+                setAiBadgeState(prev => ({
+                  ...prev,
+                  methods: {
+                    ...prev.methods,
+                    [method]: !prev.methods[method as keyof typeof prev.methods]
+                  }
+                }));
+              }}
+              style={{ 
+                flexDirection: 'row', 
+                alignItems: 'center', 
+                paddingVertical: 12,
+                paddingHorizontal: 16,
+                backgroundColor: isManual ? '#f3f4f6' : 'white',
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: isManual ? '#9ca3af' : '#d1d5db',
+                marginBottom: 8,
+                opacity: isManual ? 0.6 : 1
+              }}
+            >
+              <View style={{
+                width: 20,
+                height: 20,
+                borderRadius: 4,
+                borderWidth: 2,
+                borderColor: isChecked ? '#3b82f6' : '#d1d5db',
+                backgroundColor: isChecked ? '#3b82f6' : 'white',
+                marginRight: 12,
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                {isChecked && (
+                  <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>✓</Text>
+                )}
+              </View>
+              <Text style={{ 
+                color: '#374151', 
+                fontSize: 16,
+                textTransform: 'capitalize'
+              }}>
+                {method} {isManual && '(Required)'}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+        
+        <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 8, fontStyle: 'italic' }}>
+          Need Manual plus either Location or Photo
+        </Text>
+      </View>
+    </View>
+  );
+
+  const renderPartnerSection = () => (
+      <View style={{ marginBottom: 24 }}>
+        <Text style={{ fontSize: 18, fontWeight: '600', color: '#1f2937', marginBottom: 16 }}>Partner Goal</Text>
+        
+        {/* Period Section */}
+        <View style={{ marginBottom: 20 }}>
+          <Text style={{ fontSize: 16, fontWeight: '500', color: '#374151', marginBottom: 12 }}>Period</Text>
+          <View style={{ flexDirection: 'row', gap: 12 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Start Date</Text>
+              <TouchableOpacity
+                style={{ 
+                  backgroundColor: 'white', 
+                  borderRadius: 8, 
+                  borderWidth: 1, 
+                  borderColor: '#d1d5db',
+                  paddingHorizontal: 12,
+                  paddingVertical: 8
+                }}
+              >
+                <Text style={{ color: '#374151' }}>
+                  {aiBadgeState.period?.startMs ? new Date(aiBadgeState.period.startMs).toLocaleDateString() : 'Select start date'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>End Date</Text>
+              <TouchableOpacity
+                style={{ 
+                  backgroundColor: 'white', 
+                  borderRadius: 8, 
+                  borderWidth: 1, 
+                  borderColor: '#d1d5db',
+                  paddingHorizontal: 12,
+                  paddingVertical: 8
+                }}
+              >
+                <Text style={{ color: '#374151' }}>
+                  {aiBadgeState.period?.endMs ? new Date(aiBadgeState.period.endMs).toLocaleDateString() : 'Select end date'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+
+        {/* Partner Section */}
+        <PartnerPicker
+          partner={aiBadgeState.partner}
+          onChange={(partner) => setAiBadgeState(prev => ({ ...prev, partner }))}
+        />
+
+        {/* Helper text */}
+        <Text style={{ fontSize: 12, color: '#6b7280', fontStyle: 'italic' }}>
+          This goal will be verified by your partner's approval.
+        </Text>
+      </View>
+    );
+
+  const renderValidationSummary = () => (
+    <View style={{ marginBottom: 24 }}>
+      <Text style={{ fontSize: 16, fontWeight: '600', color: '#1f2937', marginBottom: 12 }}>Summary & Warnings</Text>
+      
+      {!ok ? (
+        <View style={{ 
+          backgroundColor: '#fef2f2', 
+          borderRadius: 8, 
+          padding: 16, 
+          borderWidth: 1, 
+          borderColor: '#fecaca' 
+        }}>
+          <Text style={{ fontSize: 14, fontWeight: '600', color: '#dc2626', marginBottom: 8 }}>
+            Insufficient Verification
+          </Text>
+          <View style={{ marginLeft: 8 }}>
+            {issues.map((issue: string, index: number) => (
+              <Text key={index} style={{ fontSize: 13, color: '#dc2626', marginBottom: 4 }}>
+                • {issue}
+              </Text>
+            ))}
+          </View>
+        </View>
+      ) : (
+        <View style={{ 
+          backgroundColor: '#f0fdf4', 
+          borderRadius: 8, 
+          padding: 16, 
+          borderWidth: 1, 
+          borderColor: '#bbf7d0' 
+        }}>
+          <Text style={{ fontSize: 14, fontWeight: '600', color: '#16a34a' }}>
+            All set
+          </Text>
+        </View>
+      )}
     </View>
   );
 
@@ -2210,7 +2578,12 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
   const renderSection = ({ item }: { item: any }) => {
     switch (item.type) {
       case 'ai':
-        return renderAISection();
+        return (
+          <View>
+            {renderAISection()}
+            {renderTypeSpecificSections()}
+          </View>
+        );
       case 'datePicker':
         return (
           <SimpleDatePicker
@@ -2255,6 +2628,8 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         return renderLocationSection();
       case 'manualForm':
         return renderManualFormSection();
+      case 'validation':
+        return renderValidationSummary();
       default:
         return null;
     }
@@ -2273,6 +2648,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         sections.push({ type: 'datePicker', key: 'date-picker-section' });
         break;
       case 2: // Review
+        sections.push({ type: 'validation', key: 'validation-section' });
         sections.push({ type: 'manualForm', key: 'manual-form-section' });
         break;
       default:
@@ -2306,6 +2682,165 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       onRequestClose={handleClose}
     >
       <View style={{ flex: 1, backgroundColor: '#f9fafb' }}>
+        {/* AI Type Badge */}
+        {aiBadgeState.title.length > 0 && aiBadgeState.aiGuess && (
+          <View style={{ 
+            backgroundColor: '#f3f4f6', 
+            paddingHorizontal: 16, 
+            paddingVertical: 12, 
+            borderBottomWidth: 1, 
+            borderBottomColor: '#e5e7eb'
+          }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                <Text style={{ color: '#374151', fontSize: 14, fontWeight: '500' }}>
+                  AI guessed: <Text style={{ fontWeight: '600', color: '#1f2937' }}>{aiBadgeState.aiGuess}</Text>
+                </Text>
+                <TouchableOpacity 
+                  onPress={() => setShowTypeSelector(true)}
+                  style={{ marginLeft: 8, paddingHorizontal: 8, paddingVertical: 4, backgroundColor: '#dbeafe', borderRadius: 12 }}
+                >
+                  <Text style={{ color: '#1e40af', fontSize: 12, fontWeight: '600' }}>Change</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  onPress={() => setShowWhyTooltip(true)}
+                  style={{ marginLeft: 8, paddingHorizontal: 8, paddingVertical: 4, backgroundColor: '#f3f4f6', borderRadius: 12 }}
+                >
+                  <Text style={{ color: '#6b7280', fontSize: 12, fontWeight: '500' }}>Why?</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+            
+            {/* Rule Preview */}
+            <TouchableOpacity
+              onPress={() => setShowRulePreview(!showRulePreview)}
+              style={{ 
+                paddingVertical: 8,
+                paddingHorizontal: 12,
+                backgroundColor: '#e0f2fe',
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: '#b3e5fc'
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Text style={{ fontSize: 12, color: '#0277bd', fontWeight: '500' }}>
+                  Rule Preview
+                </Text>
+                <Ionicons 
+                  name={showRulePreview ? "chevron-up" : "chevron-down"} 
+                  size={16} 
+                  color="#0277bd" 
+                />
+              </View>
+            </TouchableOpacity>
+            
+            {/* Rule Preview Content */}
+            {showRulePreview && (
+              <View style={{ 
+                marginTop: 8,
+                padding: 12,
+                backgroundColor: '#f8fafc',
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: '#e2e8f0'
+              }}>
+                <Text style={{ fontSize: 13, color: '#475569', lineHeight: 18 }}>
+                  {RULE_TIPS[aiBadgeState.type]}
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Type Selector Modal */}
+        <Modal visible={showTypeSelector} transparent animationType="fade" onRequestClose={() => setShowTypeSelector(false)}>
+          <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' }}>
+            <View style={{ backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24 }}>
+              <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#1f2937', marginBottom: 20, textAlign: 'center' }}>
+                Choose Goal Type
+              </Text>
+              
+              {(['schedule', 'frequency', 'partner'] as GoalType[]).map((type) => (
+                <TouchableOpacity
+                  key={type}
+                  onPress={() => {
+                    setAiBadgeState(prev => ({ ...prev, type }));
+                    setShowTypeSelector(false);
+                  }}
+                  style={{
+                    paddingVertical: 16,
+                    paddingHorizontal: 20,
+                    borderRadius: 12,
+                    backgroundColor: aiBadgeState.type === type ? '#dbeafe' : '#f9fafb',
+                    marginBottom: 8,
+                    borderWidth: 1,
+                    borderColor: aiBadgeState.type === type ? '#3b82f6' : '#e5e7eb'
+                  }}
+                >
+                  <Text style={{
+                    fontSize: 16,
+                    fontWeight: aiBadgeState.type === type ? '600' : '500',
+                    color: aiBadgeState.type === type ? '#1e40af' : '#374151',
+                    textAlign: 'center'
+                  }}>
+                    {type.charAt(0).toUpperCase() + type.slice(1)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+              
+              <TouchableOpacity
+                onPress={() => setShowTypeSelector(false)}
+                style={{
+                  paddingVertical: 12,
+                  paddingHorizontal: 20,
+                  borderRadius: 12,
+                  backgroundColor: '#f3f4f6',
+                  marginTop: 8
+                }}
+              >
+                <Text style={{ fontSize: 16, fontWeight: '500', color: '#6b7280', textAlign: 'center' }}>
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Why Tooltip Modal */}
+        <Modal visible={showWhyTooltip} transparent animationType="fade" onRequestClose={() => setShowWhyTooltip(false)}>
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.4)' }}>
+            <View style={{ backgroundColor: '#fff', borderRadius: 20, padding: 24, marginHorizontal: 20, maxWidth: 300 }}>
+              <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#1f2937', marginBottom: 16, textAlign: 'center' }}>
+                Why {aiBadgeState.aiGuess}?
+              </Text>
+              
+              <View style={{ marginBottom: 16 }}>
+                {getClassificationReasons(aiBadgeState.title, aiBadgeState.aiGuess!).map((reason, index) => (
+                  <Text key={index} style={{ color: '#4b5563', fontSize: 14, marginBottom: 8 }}>
+                    • {reason}
+                  </Text>
+                ))}
+              </View>
+              
+              <TouchableOpacity
+                onPress={() => setShowWhyTooltip(false)}
+                style={{
+                  paddingVertical: 12,
+                  paddingHorizontal: 20,
+                  borderRadius: 12,
+                  backgroundColor: '#3b82f6',
+                  alignSelf: 'center'
+                }}
+              >
+                <Text style={{ fontSize: 16, fontWeight: '600', color: 'white' }}>
+                  Got it
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
         {/* GoalSpec Verification Plan Modal */}
         <Modal visible={showSpecPlanModal} transparent animationType="fade" onRequestClose={() => setShowSpecPlanModal(false)}>
           <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.4)' }}>
@@ -2590,11 +3125,16 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
             </TouchableOpacity>
             <Text style={{ fontSize: 20, fontWeight: 'bold' }}>Create Goal</Text>
             <TouchableOpacity
-              onPress={handleSubmit}
-              disabled={loading || state.step !== 2}
+              onPress={() => {
+                console.log('[CreateGoal] payload', aiBadgeState);
+                if (ok) {
+                  handleSubmit();
+                }
+              }}
+              disabled={loading || state.step !== 2 || !ok}
               style={[
                 { padding: 12, borderRadius: 8 },
-                loading || state.step !== 2 ? { backgroundColor: '#e5e7eb' } : { backgroundColor: '#2563eb' }
+                loading || state.step !== 2 || !ok ? { backgroundColor: '#e5e7eb' } : { backgroundColor: '#2563eb' }
               ]}
             >
               {loading ? (
@@ -2659,7 +3199,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         <FlatList
           data={getSections()}
           renderItem={renderSection}
-          keyExtractor={(item) => item.key}
+          keyExtractor={(item: any) => item.key}
           contentContainerStyle={{ padding: 16 }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"

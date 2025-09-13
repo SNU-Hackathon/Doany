@@ -135,7 +135,7 @@ export class LocationService {
           timeInterval: options?.timeInterval || 5000, // 5 seconds
           distanceInterval: options?.distanceInterval || 10, // 10 meters
         },
-        (location) => {
+        (location: any) => {
           callback({
             latitude: location.coords.latitude,
             longitude: location.coords.longitude,

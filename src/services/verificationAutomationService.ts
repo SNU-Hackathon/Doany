@@ -244,9 +244,10 @@ export class VerificationAutomationService {
 
   // Stop all active verifications
   static stopAllVerifications(): void {
-    for (const [goalId] of this.activeTracking) {
+    const goalIds = Array.from(this.activeTracking.keys());
+    goalIds.forEach(goalId => {
       this.stopVerification(goalId);
-    }
+    });
   }
 
   // Get active tracking status

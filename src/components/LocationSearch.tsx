@@ -977,7 +977,7 @@ export default function LocationSearch({
             style={{ paddingVertical: 0 }}
             onFocus={() => { if (debugKeyboardLogs) console.log('[LocationSearch] TextInput onFocus'); }}
             onBlur={() => { if (debugKeyboardLogs) console.log('[LocationSearch] TextInput onBlur'); }}
-            onKeyPress={(e) => {
+            onKeyPress={(e: any) => {
               // Guard: ignore Enter during IME composing to avoid premature submit/blur
               if (debugKeyboardLogs) console.log('[LocationSearch] onKeyPress', e.nativeEvent.key);
               if ((e.nativeEvent as any).isComposing && e.nativeEvent.key === 'Enter') {
@@ -1086,7 +1086,7 @@ export default function LocationSearch({
               latitudeDelta: 0.05,
               longitudeDelta: 0.05,
             }}
-            onRegionChangeComplete={(region) => {
+            onRegionChangeComplete={(region: any) => {
               if (isPinMode) setCenterLatLng({ lat: region.latitude, lng: region.longitude });
             }}
             onPress={() => {
@@ -1189,7 +1189,7 @@ export default function LocationSearch({
           ref={flatListRef as any}
           data={predictions}
           renderItem={renderPrediction}
-          keyExtractor={(item) => item.place_id}
+          keyExtractor={(item: any) => item.place_id}
           keyboardShouldPersistTaps="always"
           showsVerticalScrollIndicator={false}
           initialNumToRender={10}
@@ -1204,7 +1204,7 @@ export default function LocationSearch({
           ref={flatListRef as any}
           data={results}
           renderItem={renderResult}
-          keyExtractor={(item) => item.placeId}
+          keyExtractor={(item: any) => item.placeId}
           keyboardShouldPersistTaps="always"
           showsVerticalScrollIndicator={false}
           initialNumToRender={10}

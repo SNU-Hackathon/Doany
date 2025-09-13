@@ -952,7 +952,7 @@ export default function SimpleDatePicker({
         </View>
         <ScrollView
           ref={calendarScrollRef}
-          onScroll={(e) => updateHeaderForScroll(e.nativeEvent.contentOffset.y)}
+          onScroll={(e: any) => updateHeaderForScroll(e.nativeEvent.contentOffset.y)}
           scrollEventThrottle={48}
           showsVerticalScrollIndicator={false}
           bounces={false}
@@ -970,7 +970,7 @@ export default function SimpleDatePicker({
           return (
             <View
               key={monthKey}
-              onLayout={(e) => onMonthLayout(idx, e.nativeEvent.layout.y, e.nativeEvent.layout.height)}
+              onLayout={(e: any) => onMonthLayout(idx, e.nativeEvent.layout.y, e.nativeEvent.layout.height)}
               className="mb-4"
             >
               <View className="flex-row flex-wrap">

@@ -15,10 +15,10 @@ import RootNavigator from './src/navigation/RootNavigator';
 import './src/services/network/NetworkService'; // Initialize network service
 
 // Development-only test harness
-if (__DEV__) {
-  import('./src/services/test/VerificationTestHarness');
-  import('./src/services/test/TestCommands');
-}
+  if (__DEV__) {
+    import('./src/services/test/VerificationTestHarness');
+    // TestCommands는 자동으로 로드됨
+  }
 
 // App navigation component
 function AppNavigator() {

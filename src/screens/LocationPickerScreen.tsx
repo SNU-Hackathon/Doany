@@ -445,7 +445,7 @@ export default function LocationPickerScreen() {
         <FlatList
           data={results}
           renderItem={renderResult}
-          keyExtractor={(item) => item.placeId}
+          keyExtractor={(item: any) => item.placeId}
           keyboardShouldPersistTaps="always"
           removeClippedSubviews={false}
           style={{ backgroundColor: 'white', maxHeight: 320 }}

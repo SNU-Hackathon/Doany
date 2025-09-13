@@ -153,7 +153,7 @@ export class AIService {
         };
         
         const uniqueDays = new Set<number>();
-        weekdayMatches.forEach(match => {
+        weekdayMatches.forEach((match: any) => {
           const dayIndex = dayMap[match.toLowerCase()];
           if (dayIndex !== undefined) {
             uniqueDays.add(dayIndex);
@@ -177,7 +177,7 @@ export class AIService {
       const uniqueTimes = new Set<string>();
       
       timeMatches.forEach(match => {
-        const timeMatch = match.match(/(\d{1,2}):?(\d{2})?\s*(am|pm)?/i);
+        const timeMatch = (match as any).match(/(\d{1,2}):?(\d{2})?\s*(am|pm)?/i);
         if (timeMatch) {
           let hour = parseInt(timeMatch[1]);
           const minute = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
@@ -239,7 +239,7 @@ export class AIService {
         const uniqueTimes = new Set<string>();
         
         timeMatches.forEach(match => {
-          const timeMatch = match.match(/(\d{1,2}):?(\d{2})?\s*(am|pm)?/i);
+          const timeMatch = (match as any).match(/(\d{1,2}):?(\d{2})?\s*(am|pm)?/i);
           if (timeMatch) {
             let hour = parseInt(timeMatch[1]);
             const minute = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
@@ -273,7 +273,7 @@ export class AIService {
           const uniqueTimes = new Set<string>();
           
           timeMatches.forEach(match => {
-            const timeMatch = match.match(/(\d{1,2}):?(\d{2})?\s*(am|pm)?/i);
+            const timeMatch = (match as any).match(/(\d{1,2}):?(\d{2})?\s*(am|pm)?/i);
             if (timeMatch) {
               let hour = parseInt(timeMatch[1]);
               const minute = timeMatch[2] ? parseInt(timeMatch[2]) : 0;

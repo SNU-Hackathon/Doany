@@ -676,7 +676,7 @@ export default function GoalScheduleCalendar({
 
         <ScrollView
           ref={calendarScrollRef}
-          onScroll={(e) => updateHeaderForScroll(e.nativeEvent.contentOffset.y)}
+          onScroll={(e: any) => updateHeaderForScroll(e.nativeEvent.contentOffset.y)}
           scrollEventThrottle={16}
           showsVerticalScrollIndicator={false}
           bounces={false}
@@ -689,7 +689,7 @@ export default function GoalScheduleCalendar({
             return (
               <View
                 key={monthKey}
-                onLayout={(e) => onMonthLayout(idx, e.nativeEvent.layout.y, e.nativeEvent.layout.height)}
+                onLayout={(e: any) => onMonthLayout(idx, e.nativeEvent.layout.y, e.nativeEvent.layout.height)}
               >
                 <View className="flex-row flex-wrap">
                   {days.map((d: any, index: number) => (
