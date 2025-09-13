@@ -1063,9 +1063,46 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     setAiContext(null);
     setFollowUpQuestion('');
     setAiDraft({});
+    
+    // AI Badge State 완전 초기화
+    setAiBadgeState({
+      title: '',
+      type: 'frequency', // 기본값으로 frequency 설정
+      aiGuess: undefined,
+      typeLockedByUser: false,
+      perWeek: 3,
+      period: undefined,
+      methods: { manual: false, location: false, photo: false },
+      partner: undefined,
+      step: 0 // step 속성 추가
+    });
+    
+    // 모든 모달 상태 초기화
+    setShowTypeSelector(false);
+    setShowSpecPlanModal(false);
+    setShowScheduleFixes(false);
+    setShowLocationPicker(false);
+    setShowDatePicker(false);
+    
+    // GoalSpec 관련 상태 초기화
+    setGoalSpec(null);
+    setGoalSpecLoading(false);
+    setSpecFollowUpQuestion('');
+    setSpecFollowUpAnswer('');
+    setAiAnalyzedMethods([]);
+    setAiMandatoryMethods([]);
+    setAiVerificationSummary('');
+    
     actions.reset();
     setAppState('IDLE');
   };
+
+  // 모달이 열릴 때마다 완전 초기화
+  useEffect(() => {
+    if (visible) {
+      resetForm();
+    }
+  }, [visible]);
 
   // AI generation with timeout and error handling
   const handleAiGeneration = async () => {
