@@ -1,5 +1,60 @@
 import type { CreateGoalState, GoalType } from './state';
 
+export type PlanType = 'schedule'|'frequency'|'partner';
+export interface VerificationPlan {
+  type: PlanType;                      // 결정된 목표 타입
+  methods: Array<'manual'|'location'|'photo'>;
+  mandatory: Array<'time'|'manual'|'location'|'photo'>;
+  ok: boolean;                         // 규칙 충족 여부(간단 판단; 상세 평가는 런타임)
+  reason?: string;                     // 부족 사유 또는 요약
+  partnerRecommended?: boolean;        // Partner로 전환 권장
+}
+
+export function computeVerificationPlan(type: PlanType, s: CreateGoalState): VerificationPlan {
+  const methods: Array<'manual'|'location'|'photo'> = [];
+  if (s.methods?.manual) methods.push('manual');
+  if (s.methods?.location) methods.push('location');
+  if (s.methods?.photo) methods.push('photo');
+
+  if (type === 'schedule') {
+    const hasTime = !!(s.times && s.times.length);
+    const manualLocOk = s.methods?.manual && s.methods?.location;
+    const photoOk = !!s.methods?.photo; // EXIF 유효성은 런타임에서
+    const ok = !!(hasTime && (manualLocOk || photoOk));
+    return {
+      type, methods, ok,
+      mandatory: ['time'],
+      reason: ok ? 'Time window + (Manual+Location OR Photo)' : 'Need Time and either (Manual+Location) or Photo',
+      partnerRecommended: !ok
+    };
+  }
+
+  if (type === 'frequency') {
+    const hasPeriod = !!s.period;
+    const perWeekOk = (s.perWeek ?? 0) > 0;
+    const manualOk = !!s.methods?.manual;
+    const locOrPhoto = !!(s.methods?.location || s.methods?.photo);
+    const ok = !!(hasPeriod && perWeekOk && manualOk && locOrPhoto);
+    return {
+      type, methods, ok,
+      mandatory: ['manual'],
+      reason: ok ? 'Manual + (Location OR Photo). Aggregated by complete weeks.' : 'Manual is required and choose Location or Photo; set period & N/week',
+      partnerRecommended: !ok
+    };
+  }
+
+  // partner
+  const partnerChosen = !!(s.partner?.id || s.partner?.inviteEmail);
+  const hasPeriod = !!s.period;
+  const ok = !!(hasPeriod && partnerChosen);
+  return {
+    type, methods, ok,
+    mandatory: [],
+    reason: ok ? 'Partner approval decides the result.' : 'Select/invite a partner and set a period',
+    partnerRecommended: false
+  };
+}
+
 export function validateCreateView(type: GoalType, s: CreateGoalState): { ok: boolean; issues: string[] } {
   const issues: string[] = [];
   

@@ -78,13 +78,16 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
   // Validation computation
   const validation = validateCreateView(aiBadgeState.type, aiBadgeState);
   const { ok, issues } = validation;
+  
+  // AI 단계(step===0)에서는 issues를 표시하지 않음 (Verification Plan이 대체)
+  const showIssues = state.step === 2; // Review에서만 표시
 
   // Log validation issues for debugging
   useEffect(() => {
-    if (!ok && issues.length > 0) {
+    if (!ok && issues.length > 0 && showIssues) {
       console.log('[CreateGoal] Validation issues:', issues);
     }
-  }, [ok, issues]);
+  }, [ok, issues, showIssues]);
 
   // Helper function to get classification reasons
   const getClassificationReasons = (title: string, type: GoalType): string[] => {
@@ -2620,6 +2623,62 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
             }}
           />
         );
+      case 'frequency':
+        return (
+          <View style={{ padding: 16 }}>
+            <Text style={{ fontSize: 18, fontWeight: '600', color: '#1f2937', marginBottom: 16 }}>Frequency Goal</Text>
+            <FrequencyTarget
+              perWeek={aiBadgeState.perWeek || 3}
+              onPerWeekChange={(perWeek) => setAiBadgeState(prev => ({ ...prev, perWeek }))}
+            />
+            <View style={{ marginTop: 16 }}>
+              <Text style={{ fontSize: 16, fontWeight: '600', color: '#1f2937', marginBottom: 8 }}>Verification Methods</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                {['manual', 'location', 'photo'].map((method) => (
+                  <TouchableOpacity
+                    key={method}
+                    onPress={() => {
+                      const currentMethods = aiBadgeState.methods || { manual: false, location: false, photo: false };
+                      setAiBadgeState(prev => ({
+                        ...prev,
+                        methods: {
+                          ...currentMethods,
+                          [method]: !currentMethods[method as keyof typeof currentMethods]
+                        }
+                      }));
+                    }}
+                    style={{
+                      paddingHorizontal: 12,
+                      paddingVertical: 8,
+                      borderRadius: 20,
+                      backgroundColor: aiBadgeState.methods?.[method as keyof typeof aiBadgeState.methods] ? '#dbeafe' : '#f3f4f6',
+                      borderWidth: 1,
+                      borderColor: aiBadgeState.methods?.[method as keyof typeof aiBadgeState.methods] ? '#3b82f6' : '#d1d5db'
+                    }}
+                  >
+                    <Text style={{
+                      color: aiBadgeState.methods?.[method as keyof typeof aiBadgeState.methods] ? '#1e40af' : '#6b7280',
+                      fontSize: 14,
+                      fontWeight: '500'
+                    }}>
+                      {method.charAt(0).toUpperCase() + method.slice(1)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          </View>
+        );
+      case 'partner':
+        return (
+          <View style={{ padding: 16 }}>
+            <Text style={{ fontSize: 18, fontWeight: '600', color: '#1f2937', marginBottom: 16 }}>Partner Goal</Text>
+            <PartnerPicker
+              partner={aiBadgeState.partner}
+              onPartnerChange={(partner) => setAiBadgeState(prev => ({ ...prev, partner }))}
+            />
+          </View>
+        );
       case 'location':
         return renderLocationSection();
       case 'manualForm':
@@ -2640,8 +2699,17 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       case 0: // AI Assistant
         sections.push({ type: 'ai', key: 'ai-section' });
         break;
-      case 1: // Schedule
-        sections.push({ type: 'datePicker', key: 'date-picker-section' });
+      case 1: // Schedule/Frequency/Partner
+        if (aiBadgeState.type === 'schedule') {
+          sections.push({ type: 'datePicker', key: 'date-picker-section' });
+        } else if (aiBadgeState.type === 'frequency') {
+          sections.push({ type: 'frequency', key: 'frequency-section' });
+        } else if (aiBadgeState.type === 'partner') {
+          sections.push({ type: 'partner', key: 'partner-section' });
+        } else {
+          // Fallback to datePicker for unknown types
+          sections.push({ type: 'datePicker', key: 'date-picker-section' });
+        }
         break;
       case 2: // Review
         sections.push({ type: 'validation', key: 'validation-section' });
@@ -2840,30 +2908,76 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         {/* GoalSpec Verification Plan Modal */}
         <Modal visible={showSpecPlanModal} transparent animationType="fade" onRequestClose={() => setShowSpecPlanModal(false)}>
           <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.4)' }}>
-            <View style={{ backgroundColor: '#fff', borderRadius: 20, padding: 24, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 5 }}>
+            <View style={{ backgroundColor: '#fff', borderRadius: 20, padding: 24, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 5, maxWidth: '90%', width: 400 }}>
               <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#1f2937', marginBottom: 16 }}>Verification Plan</Text>
-              {!!aiVerificationSummary && (
-                <Text style={{ color: '#4b5563', marginBottom: 12 }}>{aiVerificationSummary}</Text>
-              )}
-              <Text style={{ fontSize: 16, fontWeight: '600', color: '#1f2937', marginBottom: 8 }}>Methods:</Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
-                {(aiAnalyzedMethods || []).map((m) => (
-                  <View key={String(m)} style={{ paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, backgroundColor: '#dbeafe' }}>
-                    <Text style={{ color: '#1e40af', fontSize: 12, fontWeight: '600' }}>{String(m)[0].toUpperCase() + String(m).slice(1)}</Text>
+              
+              {/* Type Badge and Description */}
+              <View style={{ marginBottom: 16 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                  <View style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, backgroundColor: '#dbeafe' }}>
+                    <Text style={{ color: '#1e40af', fontSize: 12, fontWeight: '600' }}>
+                      {aiBadgeState.type?.toUpperCase() || 'UNKNOWN'}
+                    </Text>
                   </View>
-                ))}
-              </View>
-              
-              {aiMandatoryMethods && aiMandatoryMethods.length > 0 && (
-                <Text style={{ color: '#dc2626', fontSize: 12, marginBottom: 8 }}>Mandatory: {(aiMandatoryMethods || []).map(m => String(m)[0].toUpperCase() + String(m).slice(1)).join(', ')}</Text>
-              )}
-              
-              <View style={{ marginTop: 16, padding: 12, backgroundColor: '#eff6ff', borderRadius: 8, borderWidth: 1, borderColor: '#bfdbfe' }}>
-                <Text style={{ color: '#1e40af', fontSize: 14, fontWeight: '500', marginBottom: 4 }}>GPS Movement Tracking</Text>
-                <Text style={{ color: '#1d4ed8', fontSize: 12 }}>
-                  Your location will be tracked during scheduled sessions to verify you're at the specified location.
+                </View>
+                <Text style={{ color: '#4b5563', fontSize: 14 }}>
+                  {aiBadgeState.type === 'schedule' && 'This goal will be tracked on a fixed schedule.'}
+                  {aiBadgeState.type === 'frequency' && 'This goal will be tracked by weekly frequency.'}
+                  {aiBadgeState.type === 'partner' && 'This goal will be verified by your partner\'s approval.'}
                 </Text>
               </View>
+
+              {/* Verification Plan Details */}
+              {(() => {
+                const plan = computeVerificationPlan(aiBadgeState.type || 'frequency', aiBadgeState);
+                return (
+                  <View>
+                    <Text style={{ fontSize: 16, fontWeight: '600', color: '#1f2937', marginBottom: 8 }}>Methods:</Text>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+                      {plan.methods.length === 0 ? (
+                        <View style={{ paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, backgroundColor: '#f3f4f6' }}>
+                          <Text style={{ color: '#6b7280', fontSize: 12 }}>None selected</Text>
+                        </View>
+                      ) : plan.methods.map(m => (
+                        <View key={m} style={{ paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, backgroundColor: '#dbeafe' }}>
+                          <Text style={{ color: '#1e40af', fontSize: 12, fontWeight: '600' }}>{m}</Text>
+                        </View>
+                      ))}
+                    </View>
+                    
+                    {plan.mandatory.length > 0 && (
+                      <Text style={{ color: '#dc2626', fontSize: 12, marginBottom: 8 }}>
+                        Mandatory: {plan.mandatory.join(', ')}
+                      </Text>
+                    )}
+                    
+                    {plan.reason && (
+                      <View style={{ marginTop: 12, padding: 12, backgroundColor: '#eff6ff', borderRadius: 8, borderWidth: 1, borderColor: '#bfdbfe' }}>
+                        <Text style={{ color: '#1e40af', fontSize: 14 }}>{plan.reason}</Text>
+                      </View>
+                    )}
+
+                    {/* Partner Recommendation */}
+                    {plan.partnerRecommended && aiBadgeState.type !== 'partner' && (
+                      <View style={{ marginTop: 16, padding: 12, backgroundColor: '#fef3c7', borderRadius: 8, borderWidth: 1, borderColor: '#f59e0b' }}>
+                        <Text style={{ color: '#92400e', fontSize: 14, marginBottom: 8 }}>
+                          Your current selections may not be sufficient. You can proceed with{' '}
+                          <Text style={{ fontWeight: '600' }}>Partner approval</Text> instead.
+                        </Text>
+                        <TouchableOpacity
+                          onPress={() => {
+                            setAiBadgeState(prev => ({ ...prev, type: 'partner', typeLockedByUser: true }));
+                            setShowSpecPlanModal(false);
+                          }}
+                          style={{ paddingVertical: 8, paddingHorizontal: 16, backgroundColor: '#f59e0b', borderRadius: 6, alignSelf: 'flex-start' }}
+                        >
+                          <Text style={{ color: 'white', fontSize: 14, fontWeight: '600' }}>Use Partner instead</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </View>
+                );
+              })()}
               
               {specFollowUpQuestion && (
                 <View style={{ marginTop: 16 }}>
@@ -2892,63 +3006,17 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
                 <Text style={{ color: '#374151', fontWeight: '500', textAlign: 'center' }}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity 
-                onPress={async () => {
-                  // Use location-based logic instead of string-based checks
-                  const loc = goalSpec?.verification?.constraints?.location;
-                  // For geofence mode, treat location as satisfied if ANY of these exist:
-                  // - goalSpec.verification.constraints.location.name
-                  // - goalSpec.verification.constraints.location.placeId  
-                  // - formData.targetLocation?.name
-                  const needsPlace = loc?.mode === 'geofence' &&
-                                   !(loc?.name || loc?.placeId || formData?.targetLocation?.name);
-                  const isMovementGoal = loc?.mode === 'movement';
-                  
-                  if (needsPlace && specFollowUpAnswer.trim()) {
-                    // User answered place name question for geofence goal, recompile GoalSpec
-                    try {
-                      setGoalSpecLoading(true);
-                      
-                      // Update formData with user's answer
-                      setFormData(prev => ({
-                        ...prev,
-                        targetLocation: { 
-                          ...(prev.targetLocation || {}), 
-                          name: specFollowUpAnswer.trim(),
-                          lat: prev.targetLocation?.lat || 0,
-                          lng: prev.targetLocation?.lng || 0
-                        } as TargetLocation
-                      }));
-                      
-                      // Also update aiDraft if it exists
-                      if (aiDraft.targetLocation) {
-                        setAiDraft(prev => ({
-                          ...prev,
-                          targetLocation: {
-                            ...prev.targetLocation,
-                            name: specFollowUpAnswer.trim()
-                          }
-                        }));
-                      }
-                      
-                      const originalPrompt = rememberedPrompt || aiPrompt;
-                      const title = aiDraft.title || formData.title;
-                      const timezone = 'Asia/Seoul';
-                      const locale = 'ko-KR';
-                      
-                      const refined = await AIService.compileGoalSpec({
-                        prompt: originalPrompt,
-                        title,
-                        timezone,
-                        locale,
-                        targetLocationName: specFollowUpAnswer.trim()
-                      });
-                      
-                      if (!refined || typeof refined !== 'object' || !refined.verification || !refined.schedule) {
-                        Alert.alert('AI Error', 'Failed to parse refined GoalSpec. Please try again.');
-                        return;
-                      }
-                      
-                      setGoalSpec(refined);
+                onPress={() => {
+                  setShowSpecPlanModal(false);
+                  // 타입에 맞는 다음 단계로 이동
+                  goToStep(1);
+                }}
+                style={{ flex: 1, backgroundColor: '#3b82f6', borderRadius: 8, paddingVertical: 12 }}
+              >
+                <Text style={{ color: 'white', fontWeight: '600', textAlign: 'center' }}>
+                  OK
+                </Text>
+              </TouchableOpacity>
                       
                       // Post-process verification methods to enforce requirements
                       const initialMethods = Array.isArray(refined.verification?.methods) ? refined.verification.methods : [];
