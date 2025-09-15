@@ -43,9 +43,151 @@ export class AIService {
   }
 
   /**
-   * Compile a GoalSpec from free-text using strict JSON-only output
+   * Compile a GoalSpec from free-text using strict JSON-only output with enhanced type classification
    */
   static async compileGoalSpec(input: {
+    prompt: string;
+    title?: string;
+    targetLocationName?: string;
+    placeId?: string | null;
+    locale?: string;
+    timezone?: string;
+    userHints?: string;
+  }): Promise<GoalSpec> {
+    console.log("[AI] compileGoalSpec input:", input.prompt);
+    
+    const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
+    const proxyUrl = process.env.EXPO_PUBLIC_AI_PROXY_URL;
+    
+    const SYSTEM_PROMPT = `
+You are a strict classifier and planner. Output ONLY JSON matching the schema.
+Classify goalType with these rules (do NOT guess loosely):
+1) If the goal specifies explicit days of week AND a specific time (e.g., "Mon/Wed/Fri at 6am"), type = "schedule".
+2) If the goal specifies only counts per period (e.g., "3 times a week") and no fixed time-of-day, type = "frequency".
+3) Only if verification fundamentally requires another human's explicit approval (and cannot be verified by time/location/photo/manual), type = "partner".
+If (1) and (2) both appear, prefer "schedule". If unclear, prefer "frequency" (NOT partner).
+
+Return JSON:
+{
+  "type": "schedule" | "frequency" | "partner",
+  "originalText": string,
+  "schedule": {
+    "events": [
+      { "dayOfWeek": "mon|tue|wed|thu|fri|sat|sun", "time": "HH:mm", "locationName"?: string, "lat"?: number, "lng"?: number }
+    ]
+  },
+  "frequency": { "targetPerWeek": number, "windowDays": 7 },
+  "partner": { "required": boolean, "name"?: string },
+  "verification": {
+    "signals": string[]  // subset of ["time","location","photo","manual","partner"]
+  }
+}
+Strictly follow the schema. No extra keys.
+`;
+
+    const userPrompt = `Goal text:\n${input.prompt}\nReturn JSON only.`;
+
+    const safeParse = (raw: string): GoalSpec => {
+      let txt = (raw || '').trim();
+      try {
+        txt = txt.replace(/^```json\s*/i, '').replace(/^```/i, '').replace(/```\s*$/i, '').trim();
+        const first = txt.indexOf('{');
+        const last = txt.lastIndexOf('}');
+        if (first !== -1 && last !== -1 && last > first) txt = txt.slice(first, last + 1);
+        const parsed = JSON.parse(txt);
+        console.log("[AI] LLM raw response:", parsed);
+        
+        // Ensure default values for new fields
+        if (parsed.schedule) {
+          parsed.schedule.weekBoundary = parsed.schedule.weekBoundary || 'startWeekday';
+          parsed.schedule.enforcePartialWeeks = parsed.schedule.enforcePartialWeeks || false;
+        }
+        return parsed;
+      } catch (error) {
+        console.error("[AI] JSON parse error:", error);
+        // Return minimal valid GoalSpec structure
+        return {
+          title: '',
+          verification: {
+            methods: [],
+            mandatory: [],
+            sufficiency: false,
+            rationale: 'Failed to parse AI response'
+          },
+          schedule: {
+            weekBoundary: 'startWeekday',
+            enforcePartialWeeks: false
+          }
+        };
+      }
+    };
+
+    // Prefer proxy if provided
+    if (proxyUrl) {
+      const resp = await fetch(proxyUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          prompt: input.prompt,
+          title: input.title,
+          targetLocationName: input.targetLocationName,
+          placeId: input.placeId,
+          locale: input.locale || 'ko-KR',
+          timezone: input.timezone || 'Asia/Seoul',
+          userHints: input.userHints,
+          type: 'goal_spec' 
+        })
+      });
+      const data = await resp.json();
+      return data;
+    }
+
+    if (!apiKey) {
+      // Fallback to local heuristic - convert AIGoal to GoalSpec
+      const aiGoal = this.generateWithLocalHeuristic(input.prompt);
+      return {
+        title: aiGoal.title || '',
+        verification: {
+          methods: aiGoal.verificationMethods || [],
+          mandatory: aiGoal.mandatoryVerificationMethods || [],
+          sufficiency: (aiGoal.mandatoryVerificationMethods?.length || 0) > 0,
+          rationale: 'Generated from local heuristic'
+        },
+        schedule: {
+          weekBoundary: 'startWeekday',
+          enforcePartialWeeks: false
+        }
+      };
+    }
+
+    // Use OpenAI API with enhanced prompt
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        temperature: 0.1,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'user', content: userPrompt }
+        ]
+      })
+    });
+    
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content || '{}';
+    console.log("[AI] LLM raw response:", content);
+    return safeParse(content);
+  }
+
+  /**
+   * Legacy compileGoalSpec function - kept for backward compatibility
+   */
+  static async compileGoalSpecLegacy(input: {
     prompt: string;
     title?: string;
     targetLocationName?: string;

@@ -19,7 +19,7 @@ import { LocationSearch } from '../components';
 import { FrequencyTarget, PartnerPicker, ScheduleWhen } from '../components/createGoal';
 import { Categories } from '../constants';
 import { classifyGoalTypeFromTitle, computeVerificationPlan, CreateGoalState as CreateGoalFeatureState, CreateGoalProvider, GoalType, INITIAL_CREATE_GOAL_STATE, RULE_TIPS, useCreateGoal, validateCreateView } from '../features/createGoal';
-import { AIGoalDraft, mergeAIGoal, updateDraftWithDates, validateAIGoal } from '../features/goals/aiDraft';
+import { AIGoalDraft, mergeAIGoal, parseGoalSpec, updateDraftWithDates, validateAIGoal } from '../features/goals/aiDraft';
 import { useAuth } from '../hooks/useAuth';
 import { AIService } from '../services/ai';
 import { CalendarEventService } from '../services/calendarEventService';
@@ -1148,6 +1148,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       if (!aiContext) {
         // Initial generation
         console.log('[CreateGoalModal] Initial AI generation');
+        console.log('[CreateGoalModal] AI input:', aiPrompt.trim());
         // Step 0: Compile GoalSpec first (semantic-first)
         try {
           setGoalSpecLoading(true);
@@ -1159,6 +1160,12 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
             locale: 'ko-KR',
             timezone: 'Asia/Seoul'
           });
+          console.log('[CreateGoalModal] LLM raw response:', spec);
+          
+          // Parse and coerce the GoalSpec
+          const parsedSpec = parseGoalSpec(JSON.stringify(spec));
+          console.log('[CreateGoalModal] Coerced type:', parsedSpec.type);
+          
           if (!spec || typeof spec !== 'object' || !spec.verification || !spec.schedule) {
             Alert.alert('AI Error', 'Failed to parse GoalSpec. Please refine your input.');
             setGoalSpecLoading(false);

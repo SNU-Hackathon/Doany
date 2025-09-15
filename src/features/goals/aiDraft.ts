@@ -7,6 +7,7 @@ export type VerificationMethod = "location" | "time" | "screentime" | "photo" | 
 export interface AIGoalDraft {
   title?: string;
   category?: string;
+  type?: "schedule" | "frequency" | "partner";  // NEW: Goal type classification
   verificationMethods?: VerificationMethod[];
   // Methods that AI determined are mandatory and should be locked in UI
   mandatoryVerificationMethods?: VerificationMethod[];
@@ -33,6 +34,90 @@ export interface AIGoalDraft {
   lastAskedField?: string;    // track what we last asked to avoid re-asking
   needsWeeklySchedule?: boolean; // AI determines if weekly schedule is needed
   weeklySchedule?: { [key: string]: string };
+  // NEW: Enhanced structure for type classification
+  schedule?: {
+    events?: Array<{
+      dayOfWeek?: string;
+      time?: string;
+      locationName?: string;
+      lat?: number;
+      lng?: number;
+    }>;
+  };
+  partner?: {
+    required?: boolean;
+    name?: string;
+  };
+  verification?: {
+    signals?: string[];
+  };
+}
+
+// NEW: Regular expressions for type classification
+const DOW_REGEX = /\b(mon|monday|tue|tuesday|wed|wednesday|thu|thursday|fri|friday|sat|saturday|sun|sunday)\b/i;
+const TIME_REGEX = /\b(\d{1,2})(?::(\d{2}))?\s?(am|pm)?\b/i;
+
+/**
+ * Parse GoalSpec JSON and apply structure-based type coercion
+ */
+export function parseGoalSpec(jsonText: string): AIGoalDraft {
+  const safe = tryParse(jsonText);
+  return coerceGoalType(safe);
+}
+
+/**
+ * Safe JSON parsing with fallback
+ */
+function tryParse(text: string): any {
+  try { 
+    return JSON.parse(text); 
+  } catch { 
+    return {}; 
+  }
+}
+
+/**
+ * Structure-based type coercion to prevent misclassification
+ * Rules: (events with dayOfWeek+time) > (frequency value) > (partner.required)
+ */
+function coerceGoalType(spec: any): AIGoalDraft {
+  if (!spec || typeof spec !== "object") return spec;
+  
+  const originalText: string = spec.originalText ?? "";
+  const hasScheduleEvents =
+    !!spec.schedule?.events?.length &&
+    spec.schedule.events.every((e: any) => !!e?.dayOfWeek && !!e?.time);
+  const hasFrequency = Number(spec.frequency?.targetPerWeek) > 0;
+  const partnerRequired = !!spec.partner?.required;
+
+  // Heuristic from text (backup)
+  const textLooksSchedule = DOW_REGEX.test(originalText) && TIME_REGEX.test(originalText);
+
+  let type = spec.type;
+  if (hasScheduleEvents || textLooksSchedule) {
+    type = "schedule";
+  } else if (hasFrequency) {
+    type = "frequency";
+  } else if (partnerRequired) {
+    type = "partner";
+  } else if (!type) {
+    // final fallback: prefer frequency over partner to avoid over-using partner
+    type = "frequency";
+  }
+
+  console.log("[aiDraft] Type coercion:", {
+    original: spec.type,
+    coerced: type,
+    hasScheduleEvents,
+    hasFrequency,
+    partnerRequired,
+    textLooksSchedule
+  });
+
+  return {
+    ...spec,
+    type,
+  };
 }
 
 /**
