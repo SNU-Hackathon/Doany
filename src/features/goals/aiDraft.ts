@@ -13,7 +13,26 @@ export interface AIGoalDraft {
   mandatoryVerificationMethods?: VerificationMethod[];
   frequency?: { 
     count?: number; 
+    targetPerWeek?: number;  // Add targetPerWeek field
     unit?: "per_day" | "per_week" | "per_month" 
+  };
+  schedule?: {
+    events?: Array<{
+      dayOfWeek?: string;
+      time?: string;
+      locationName?: string;
+      lat?: number;
+      lng?: number;
+    }>;
+    startDate?: string;  // Add startDate to schedule
+    endDate?: string;    // Add endDate to schedule
+  };
+  partner?: {
+    required?: boolean;
+    name?: string;
+  };
+  verification?: {
+    signals?: string[];
   };
   startDate?: string;         // ISO (YYYY-MM-DD)
   duration?: {
@@ -34,23 +53,6 @@ export interface AIGoalDraft {
   lastAskedField?: string;    // track what we last asked to avoid re-asking
   needsWeeklySchedule?: boolean; // AI determines if weekly schedule is needed
   weeklySchedule?: { [key: string]: string };
-  // NEW: Enhanced structure for type classification
-  schedule?: {
-    events?: Array<{
-      dayOfWeek?: string;
-      time?: string;
-      locationName?: string;
-      lat?: number;
-      lng?: number;
-    }>;
-  };
-  partner?: {
-    required?: boolean;
-    name?: string;
-  };
-  verification?: {
-    signals?: string[];
-  };
 }
 
 // NEW: Regular expressions for type classification
@@ -62,7 +64,8 @@ const TIME_REGEX = /\b(\d{1,2})(?::(\d{2}))?\s?(am|pm)?\b/i;
  */
 export function parseGoalSpec(jsonText: string): AIGoalDraft {
   const safe = tryParse(jsonText);
-  return coerceGoalType(safe);
+  const coerced = coerceGoalType(safe);
+  return ensureVerificationSignals(coerced);
 }
 
 /**
@@ -117,6 +120,83 @@ function coerceGoalType(spec: any): AIGoalDraft {
   return {
     ...spec,
     type,
+  };
+}
+
+/**
+ * Ensure verification signals are never empty by applying fallback logic
+ * schedule → prefer ["time","manual","location"]; if no location capability, ["time","photo"]; else fallback to partner
+ * frequency → prefer ["manual","location"]; if no location capability, ["manual","photo"]; else fallback to partner
+ * partner → ["partner"]
+ */
+function ensureVerificationSignals(spec: AIGoalDraft): AIGoalDraft {
+  if (!spec || typeof spec !== "object") return spec;
+
+  const type = spec.type || "frequency";
+  const currentSignals = spec.verification?.signals || [];
+  
+  // If signals are already present and not empty, keep them
+  if (currentSignals.length > 0) {
+    console.log("[aiDraft] Verification signals already present:", currentSignals);
+    return spec;
+  }
+
+  let signals: string[] = [];
+  let finalType = type;
+  let partnerRequired = false;
+
+  if (type === "schedule") {
+    // Schedule: prefer ["time","manual","location"]; if no location capability, ["time","photo"]; else fallback to partner
+    const hasLocationCapability = true; // Assume location is available for now
+    if (hasLocationCapability) {
+      signals = ["time", "manual", "location"];
+    } else {
+      signals = ["time", "photo"];
+    }
+    // If still no signals, fallback to partner
+    if (signals.length === 0) {
+      signals = ["partner"];
+      finalType = "partner";
+      partnerRequired = true;
+    }
+  } else if (type === "frequency") {
+    // Frequency: prefer ["manual","location"]; if no location capability, ["manual","photo"]; else fallback to partner
+    const hasLocationCapability = true; // Assume location is available for now
+    if (hasLocationCapability) {
+      signals = ["manual", "location"];
+    } else {
+      signals = ["manual", "photo"];
+    }
+    // If still no signals, fallback to partner
+    if (signals.length === 0) {
+      signals = ["partner"];
+      finalType = "partner";
+      partnerRequired = true;
+    }
+  } else if (type === "partner") {
+    // Partner: always ["partner"]
+    signals = ["partner"];
+    partnerRequired = true;
+  }
+
+  console.log("[aiDraft] Verification signals ensured:", {
+    originalType: type,
+    finalType,
+    signals,
+    partnerRequired
+  });
+
+  return {
+    ...spec,
+    type: finalType,
+    verification: {
+      ...spec.verification,
+      signals
+    },
+    partner: {
+      ...spec.partner,
+      required: partnerRequired || spec.partner?.required || false
+    }
   };
 }
 

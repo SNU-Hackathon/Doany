@@ -1,5 +1,4 @@
 import type { ConfigContext, ExpoConfig } from '@expo/config';
-import 'dotenv/config';
 // Programmatic Expo config to inject Android Google Maps API key from env
 // This ensures react-native-maps tiles load on Android.
 
@@ -25,6 +24,13 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     // Preserve any runtime-config from Expo as a fallback
     name: base.name || config.name,
     slug: base.slug || config.slug,
+    // OTA Updates configuration - completely disabled
+    updates: {
+      enabled: false,
+      checkAutomatically: "NEVER",
+      fallbackToCacheTimeout: 0,
+      url: undefined
+    },
     android: {
       ...(base.android || {}),
       package: androidPackage,

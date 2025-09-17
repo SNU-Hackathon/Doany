@@ -24,6 +24,32 @@ export class GoalService {
   static async createGoal(goalData: CreateGoalForm & { userId: string }): Promise<string> {
     console.time('[GoalService] Create Goal');
     
+    // Type-specific validation before saving
+    const goalType = goalData.type;
+    console.log('[goalService] validating type=', goalType);
+    
+    if (goalType === 'frequency') {
+      const { validateFrequencyDraft } = await import('../features/createGoal/validation');
+      const isValid = validateFrequencyDraft(goalData);
+      if (!isValid) {
+        throw new Error('Invalid frequency goal: targetPerWeek must be > 0 and period must be valid');
+      }
+      console.log('[goalService] frequency validation passed');
+    } else if (goalType === 'partner') {
+      const isRequired = goalData.partner?.required === true;
+      const hasPartner = !!(goalData.partner?.id || goalData.partner?.inviteEmail);
+      if (isRequired && !hasPartner) {
+        throw new Error('Partner is required for this goal');
+      }
+      console.log('[goalService] partner validation passed');
+    } else if (goalType === 'schedule') {
+      // Schedule validation - keep existing logic
+      if (!goalData.weeklySchedule || Object.keys(goalData.weeklySchedule).length === 0) {
+        throw new Error('Schedule goal requires weekly schedule');
+      }
+      console.log('[goalService] schedule validation passed');
+    }
+    
     try {
       const batch = writeBatch(db);
       const goalRef = doc(collection(db, 'users', goalData.userId, 'goals'));

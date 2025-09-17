@@ -274,6 +274,7 @@ export interface CreateGoalForm {
   title: string;
   description: string;
   category: string;
+  type?: "schedule" | "frequency" | "partner";  // Add type field
   verificationMethods: VerificationType[];
   // Methods selected by AI as mandatory and locked in the UI
   lockedVerificationMethods?: VerificationType[];
@@ -281,6 +282,15 @@ export interface CreateGoalForm {
   frequency: GoalFrequency;
   duration: GoalDuration;
   notes?: string;
+  
+  // Partner support
+  partner?: {
+    required?: boolean;
+    name?: string;
+    id?: string;
+    inviteEmail?: string;
+    status?: "pending" | "accepted" | "declined";
+  };
   
   // Legacy fields for backward compatibility
   verificationType?: VerificationType;

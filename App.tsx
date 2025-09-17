@@ -3,7 +3,8 @@ import 'react-native-gesture-handler'; // ← RNGH 사이드 이펙트 import (�
 
 import { NavigationContainer } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
-import React from 'react';
+import * as Updates from 'expo-updates';
+import React, { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-get-random-values'; // Crypto polyfill
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
@@ -34,6 +35,26 @@ function AppNavigator() {
 // Root App component
 export default function App() {
   console.log('[App] App component mounting');
+
+  // Disable OTA updates completely
+  useEffect(() => {
+    const disableUpdates = async () => {
+      try {
+        console.log('[App] Checking updates status:', Updates.isEnabled);
+        if (Updates.isEnabled) {
+          console.log('[App] OTA updates are enabled, disabling...');
+          // Force disable updates
+          await Updates.checkForUpdateAsync();
+          console.log('[App] Updates check completed');
+        } else {
+          console.log('[App] OTA updates already disabled');
+        }
+      } catch (error) {
+        console.log('[App] Error with updates:', error);
+      }
+    };
+    disableUpdates();
+  }, []);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>

@@ -1239,22 +1239,24 @@ export default function SimpleDatePicker({
         <TouchableOpacity 
           testID="next-button"
           onPress={() => {
+            console.log('[SimpleDatePicker] Next button pressed, onRequestNext:', !!onRequestNext, 'loading:', loading, 'validationResult:', validationResult);
             if (onRequestNext) {
+              console.log('[SimpleDatePicker] Calling onRequestNext');
               onRequestNext(); // Always use validation path when available
             } else {
+              console.log('[SimpleDatePicker] Calling onNavigateToStep(2)');
               onNavigateToStep(2); // Fallback only when no validation handler
             }
           }}
-          className={`flex-1 rounded-lg py-3 flex-row items-center justify-center ${(!startDate || loading || (validationResult ? !validationResult.isCompatible : false)) ? 'bg-gray-400' : 'bg-blue-600'}`}
-          disabled={!startDate || loading || (validationResult ? !validationResult.isCompatible : false)}
+          className={`flex-1 rounded-lg py-3 flex-row items-center justify-center ${(loading || (validationResult ? !validationResult.isCompatible : false)) ? 'bg-gray-400' : 'bg-blue-600'}`}
+          disabled={loading || (validationResult ? !validationResult.isCompatible : false)}
         >
           <Text
-            className={`font-semibold mr-2 ${(!startDate || loading || (validationResult ? !validationResult.isCompatible : false)) ? 'text-gray-600' : 'text-white'}`}
+            className={`font-semibold mr-2 ${(loading || (validationResult ? !validationResult.isCompatible : false)) ? 'text-gray-600' : 'text-white'}`}
           >
             {loading ? 'Validating...' : 
-             (!startDate ? 'Select Date' :
-              (validationResult && !validationResult.isCompatible ? 'Fix Issues' : 
-               (onRequestNext ? 'Next' : 'Continue')))}
+             (validationResult && !validationResult.isCompatible ? 'Fix Issues' : 
+              (onRequestNext ? 'Next' : 'Continue'))}
           </Text>
           {loading ? (
             <ActivityIndicator size="small" color="#6B7280" />

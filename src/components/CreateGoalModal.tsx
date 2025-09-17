@@ -18,7 +18,7 @@ import {
 import { LocationSearch } from '../components';
 import { FrequencyTarget, PartnerPicker, ScheduleWhen } from '../components/createGoal';
 import { Categories } from '../constants';
-import { classifyGoalTypeFromTitle, computeVerificationPlan, CreateGoalState as CreateGoalFeatureState, CreateGoalProvider, GoalType, INITIAL_CREATE_GOAL_STATE, RULE_TIPS, useCreateGoal, validateCreateView } from '../features/createGoal';
+import { classifyGoalTypeFromTitle, computeVerificationPlan, CreateGoalState as CreateGoalFeatureState, CreateGoalProvider, GoalType, INITIAL_CREATE_GOAL_STATE, RULE_TIPS, useCreateGoal, validateCreateView, validateFrequencyDraft } from '../features/createGoal';
 import { AIGoalDraft, mergeAIGoal, parseGoalSpec, updateDraftWithDates, validateAIGoal } from '../features/goals/aiDraft';
 import { useAuth } from '../hooks/useAuth';
 import { AIService } from '../services/ai';
@@ -75,19 +75,66 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     }
   }, [aiBadgeState.title]);
 
-  // Validation computation
-  const validation = validateCreateView(aiBadgeState.type, aiBadgeState);
-  const { ok, issues } = validation;
+  // Type-aware validation computation
+  const getTypeAwareValidation = () => {
+    const type = aiDraft?.type || aiBadgeState.type;
+    
+    if (type === 'frequency') {
+      const isValid = validateFrequencyDraft(aiDraft);
+      const warnings = [];
+      
+      // Check if period was defaulted
+      const today = new Date();
+      const defaultStart = today.toISOString().split('T')[0];
+      const defaultEnd = new Date(today.getTime() + 6 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      
+      if (aiDraft?.schedule?.startDate === defaultStart && aiDraft?.schedule?.endDate === defaultEnd) {
+        warnings.push('Using a default 7-day window starting today');
+      }
+      
+      return {
+        ok: isValid,
+        issues: isValid ? [] : ['Invalid frequency goal configuration'],
+        warnings
+      };
+    }
+    
+    if (type === 'partner') {
+      const hasPartner = !!(aiBadgeState.partner?.id || aiBadgeState.partner?.inviteEmail);
+      const isRequired = aiDraft?.partner?.required === true;
+      
+      return {
+        ok: !isRequired || hasPartner,
+        issues: (isRequired && !hasPartner) ? ['Partner is required'] : [],
+        warnings: []
+      };
+    }
+    
+    // Schedule type - use existing validation
+    const validation = validateCreateView(aiBadgeState.type, aiBadgeState);
+    return {
+      ok: validation.ok,
+      issues: validation.issues,
+      warnings: []
+    };
+  };
+  
+  const validation = getTypeAwareValidation();
+  const { ok, issues, warnings } = validation;
   
   // AI 단계(step===0)에서는 issues를 표시하지 않음 (Verification Plan이 대체)
   const showIssues = state.step === 2; // Review에서만 표시
 
   // Log validation issues for debugging
   useEffect(() => {
-    if (!ok && issues.length > 0 && showIssues) {
-      console.log('[CreateGoal] Validation issues:', issues);
+    if (showIssues) {
+      const type = aiDraft?.type || aiBadgeState.type;
+      console.log('[Review] type=', type, 'warnings=', warnings, 'blocking=', !ok);
+      if (!ok && issues.length > 0) {
+        console.log('[CreateGoal] Validation issues:', issues);
+      }
     }
-  }, [ok, issues, showIssues]);
+  }, [ok, issues, warnings, showIssues, aiBadgeState.type]);
 
   // Helper function to get classification reasons
   const getClassificationReasons = (title: string, type: GoalType): string[] => {
@@ -267,20 +314,8 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         return;
       }
 
-      if (checkSufficiency) {
-        const currentMethods = formData.verificationMethods || [];
-        const currentMandatory = (formData.lockedVerificationMethods || []).concat(aiMandatoryMethods || []);
-        const processed = postProcessVerificationMethods(goalSpec, currentMethods, currentMandatory, rememberedPrompt || aiPrompt);
-        
-        if (!processed.sufficiency) {
-          Alert.alert(
-            'Insufficient Verification',
-            'This goal cannot be sufficiently proven with the authentication methods currently available. (One of Location/Photo/ScreenTime is required.)',
-            [{ text: 'OK' }]
-          );
-          return;
-        }
-      }
+      // Remove insufficient verification blocking - let Verification Plan handle it
+      // The ensureVerificationSignals function will ensure signals are never empty
 
       if (checkGoalSpec && (!goalSpec || !goalSpec.schedule)) {
         Alert.alert('AI Error', 'GoalSpec is missing. Please go back and regenerate.');
@@ -910,8 +945,57 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
 
   // Next request from Schedule with AI gating
   const handleRequestNextFromSchedule = useCallback(async () => {
+    console.log('[CreateGoalModal] handleRequestNextFromSchedule called, aiDraft.type:', aiDraft?.type);
+    
     if (scheduleValidating || scheduleValidateInFlight.current) {
       console.log('[CreateGoalModal] 스케줄 검증 중복 요청 차단');
+      return;
+    }
+
+    const type = aiDraft?.type;
+    if (!type) {
+      console.log('[CreateGoalModal] No aiDraft.type, returning');
+      return;
+    }
+
+    if (type === 'frequency') {
+      console.log('[CreateGoalModal] Frequency path: before period ensure with draft snippet', {
+        frequency: aiDraft.frequency,
+        schedule: aiDraft.schedule
+      });
+      
+      // Ensure period exists for frequency goals
+      const today = new Date();
+      const startDate = aiDraft.schedule?.startDate || today.toISOString().split('T')[0];
+      const endDate = aiDraft.schedule?.endDate || new Date(today.getTime() + 6 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      
+      // Update aiDraft with period if missing
+      if (!aiDraft.schedule?.startDate || !aiDraft.schedule?.endDate) {
+        setAiDraft(prev => ({
+          ...prev,
+          schedule: {
+            ...prev.schedule,
+            startDate,
+            endDate
+          }
+        }));
+      }
+      
+      console.log('[CreateGoalModal] Frequency path: period ensured with startDate/endDate', { startDate, endDate });
+      console.log('[CreateGoalModal] Frequency path: period ensured and skipping calendar validation');
+      
+      const ok = validateFrequencyDraft(aiDraft);
+      if (!ok) {
+        console.warn('[CreateGoalModal] Frequency validation failed');
+        return;
+      }
+      goToStep(2); // Review step
+      return;
+    }
+
+    if (type === 'partner') {
+      console.log('[CreateGoalModal] Partner path: skip calendar validation');
+      goToStep(2); // Review step
       return;
     }
 
@@ -1166,6 +1250,27 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
           const parsedSpec = parseGoalSpec(JSON.stringify(spec));
           console.log('[CreateGoalModal] Coerced type:', parsedSpec.type);
           
+          // Set AI draft with processed spec
+          setAiDraft(parsedSpec);
+          console.log("[CreateGoalModal] showing plan with:", { type: parsedSpec?.type, signals: parsedSpec?.verification?.signals });
+          
+          // Update AI badge state with processed spec
+          setAiBadgeState(prev => ({
+            ...prev,
+            type: parsedSpec?.type || 'frequency',
+            title: parsedSpec?.title || aiPrompt.trim(),
+            perWeek: parsedSpec?.frequency?.count || 3,
+            period: parsedSpec?.duration ? {
+              startMs: new Date(parsedSpec.duration.startDate || '').getTime(),
+              endMs: new Date(parsedSpec.duration.endDate || '').getTime()
+            } : undefined,
+            methods: {
+              manual: parsedSpec?.verification?.signals?.includes('manual') || false,
+              location: parsedSpec?.verification?.signals?.includes('location') || false,
+              photo: parsedSpec?.verification?.signals?.includes('photo') || false
+            }
+          }));
+          
           if (!spec || typeof spec !== 'object' || !spec.verification || !spec.schedule) {
             Alert.alert('AI Error', 'Failed to parse GoalSpec. Please refine your input.');
             setGoalSpecLoading(false);
@@ -1201,15 +1306,8 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
           setAiMandatoryMethods(processed.mandatory);
           setAiVerificationSummary(spec.verification?.rationale || '');
           
-          // Check sufficiency before proceeding
-          if (!processed.sufficiency) {
-            Alert.alert(
-              'Insufficient Verification',
-              'This goal cannot be sufficiently proven with the authentication methods currently available. (One of Location/Photo/ScreenTime is required.)',
-              [{ text: 'OK', onPress: () => { setGoalSpecLoading(false); setAppState('IDLE'); } }]
-            );
-            return;
-          }
+          // Remove sufficiency check - let Verification Plan handle it
+          // The ensureVerificationSignals function ensures signals are never empty
 
           // Handle missing fields from post-processing
           if (processed.missingFields && processed.missingFields.length > 0) {
@@ -1288,15 +1386,8 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
           setAiMandatoryMethods(processed.mandatory);
           setAiVerificationSummary(spec.verification?.rationale || '');
           
-          // Check sufficiency before proceeding
-          if (!processed.sufficiency) {
-            Alert.alert(
-              'Insufficient Verification',
-              'This goal cannot be sufficiently proven with the authentication methods currently available. (One of Location/Photo/ScreenTime is required.)',
-              [{ text: 'OK', onPress: () => { setGoalSpecLoading(false); setAppState('IDLE'); } }]
-            );
-            return;
-          }
+          // Remove sufficiency check - let Verification Plan handle it
+          // The ensureVerificationSignals function ensures signals are never empty
 
           // Handle missing fields from post-processing
           if (processed.missingFields && processed.missingFields.length > 0) {
@@ -1985,14 +2076,21 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     </View>
   );
 
-  // Type-specific sections based on aiBadgeState.type
+  // Type-specific sections based on aiDraft.type (final type after verification plan)
   const renderTypeSpecificSections = () => {
-    if (!aiBadgeState.type) return null;
     if (state.step === 0) return null; // AI 단계에서는 절대 렌더하지 않음
 
-    switch (aiBadgeState.type) {
-      case 'schedule':
-        return renderScheduleSection();
+    console.log("[CreateGoalModal] Rendering type-specific section for:", aiDraft.type, "at step:", state.step);
+
+    // Schedule 단계(step 1)에서는 타입에 관계없이 Schedule UI를 보여줌
+    if (state.step === 1) {
+      return renderScheduleSection();
+    }
+
+    // 다른 단계에서는 타입에 따라 렌더링
+    if (!aiDraft.type) return null;
+    
+    switch (aiDraft.type) {
       case 'frequency':
         return renderFrequencySection();
       case 'partner':
@@ -2003,8 +2101,8 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
   };
 
   const renderScheduleSection = () => (
-    <View style={{ marginBottom: 24 }}>
-      <Text style={{ fontSize: 18, fontWeight: '600', color: '#1f2937', marginBottom: 16 }}>Schedule</Text>
+    <View className="mb-6">
+      <Text className="text-lg font-semibold text-gray-800 mb-4">Schedule</Text>
       
       {/* When Section */}
       <ScheduleWhen
@@ -2013,8 +2111,8 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       />
 
       {/* Verification Methods */}
-      <View style={{ marginBottom: 20 }}>
-        <Text style={{ fontSize: 16, fontWeight: '500', color: '#374151', marginBottom: 12 }}>Verification Methods</Text>
+      <View className="mb-5">
+        <Text className="text-base font-medium text-gray-700 mb-3">Verification Methods</Text>
         
         {['manual', 'location', 'photo'].map((method) => (
           <TouchableOpacity
@@ -2028,50 +2126,30 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
                 }
               }));
             }}
-            style={{ 
-              flexDirection: 'row', 
-              alignItems: 'center', 
-              paddingVertical: 12,
-              paddingHorizontal: 16,
-              backgroundColor: 'white',
-              borderRadius: 8,
-              borderWidth: 1,
-              borderColor: '#d1d5db',
-              marginBottom: 8
-            }}
+            className="flex-row items-center py-3 px-4 bg-white rounded-lg border border-gray-300 mb-2"
           >
-            <View style={{
-              width: 20,
-              height: 20,
-              borderRadius: 4,
-              borderWidth: 2,
-              borderColor: aiBadgeState.methods[method as keyof typeof aiBadgeState.methods] ? '#3b82f6' : '#d1d5db',
-              backgroundColor: aiBadgeState.methods[method as keyof typeof aiBadgeState.methods] ? '#3b82f6' : 'white',
-              marginRight: 12,
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}>
+            <View className={`w-5 h-5 rounded border-2 mr-3 items-center justify-center ${
+              aiBadgeState.methods[method as keyof typeof aiBadgeState.methods] 
+                ? 'border-blue-500 bg-blue-500' 
+                : 'border-gray-300 bg-white'
+            }`}>
               {aiBadgeState.methods[method as keyof typeof aiBadgeState.methods] && (
-                <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>✓</Text>
+                <Text className="text-white text-xs font-bold">✓</Text>
               )}
             </View>
-            <Text style={{ 
-              color: '#374151', 
-              fontSize: 16,
-              textTransform: 'capitalize'
-            }}>
+            <Text className="text-gray-700 text-base capitalize">
               {method}
             </Text>
           </TouchableOpacity>
         ))}
         
-        <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 8, fontStyle: 'italic' }}>
+        <Text className="text-xs text-gray-500 mt-2 italic">
           Need Time and either (Manual + Location) or Photo
         </Text>
       </View>
 
       {/* Optional Partner Toggle */}
-      <View style={{ marginBottom: 20 }}>
+      <View className="mb-5">
         <TouchableOpacity
           onPress={() => {
             setAiBadgeState(prev => ({
@@ -2079,33 +2157,18 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
               partner: prev.partner ? undefined : { status: 'pending' }
             }));
           }}
-          style={{ 
-            flexDirection: 'row', 
-            alignItems: 'center', 
-            paddingVertical: 12,
-            paddingHorizontal: 16,
-            backgroundColor: 'white',
-            borderRadius: 8,
-            borderWidth: 1,
-            borderColor: '#d1d5db'
-          }}
+          className="flex-row items-center py-3 px-4 bg-white rounded-lg border border-gray-300"
         >
-          <View style={{
-            width: 20,
-            height: 20,
-            borderRadius: 4,
-            borderWidth: 2,
-            borderColor: aiBadgeState.partner ? '#3b82f6' : '#d1d5db',
-            backgroundColor: aiBadgeState.partner ? '#3b82f6' : 'white',
-            marginRight: 12,
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}>
+          <View className={`w-5 h-5 rounded border-2 mr-3 items-center justify-center ${
+            aiBadgeState.partner 
+              ? 'border-blue-500 bg-blue-500' 
+              : 'border-gray-300 bg-white'
+          }`}>
             {aiBadgeState.partner && (
-              <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>✓</Text>
+              <Text className="text-white text-xs font-bold">✓</Text>
             )}
           </View>
-          <Text style={{ color: '#374151', fontSize: 16 }}>
+          <Text className="text-gray-700 text-base">
             Require partner approval
           </Text>
         </TouchableOpacity>
@@ -2119,10 +2182,27 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       
       {/* Target Section */}
       <FrequencyTarget
-        perWeek={aiBadgeState.perWeek || 1}
-        period={aiBadgeState.period}
-        onPerWeekChange={(perWeek) => setAiBadgeState(prev => ({ ...prev, perWeek }))}
-        onPeriodChange={(period) => setAiBadgeState(prev => ({ ...prev, period }))}
+        perWeek={aiDraft.frequency?.count || aiBadgeState.perWeek || 1}
+        period={aiDraft.duration ? {
+          startMs: new Date(aiDraft.duration.startDate || '').getTime(),
+          endMs: new Date(aiDraft.duration.endDate || '').getTime()
+        } : aiBadgeState.period}
+        onPerWeekChange={(perWeek) => {
+          setAiBadgeState(prev => ({ ...prev, perWeek }));
+          setAiDraft(prev => ({ ...prev, frequency: { ...prev.frequency, count: perWeek } }));
+        }}
+        onPeriodChange={(period) => {
+          setAiBadgeState(prev => ({ ...prev, period }));
+          if (period) {
+            setAiDraft(prev => ({
+              ...prev,
+              duration: {
+                startDate: new Date(period.startMs).toISOString().split('T')[0],
+                endDate: new Date(period.endMs).toISOString().split('T')[0]
+              }
+            }));
+          }
+        }}
       />
 
       {/* Verification Methods */}
@@ -2201,6 +2281,22 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       <View style={{ marginBottom: 24 }}>
         <Text style={{ fontSize: 18, fontWeight: '600', color: '#1f2937', marginBottom: 16 }}>Partner Goal</Text>
         
+        {/* Partner Picker */}
+        <PartnerPicker
+          partner={aiBadgeState.partner}
+          onChange={(partner) => {
+            setAiBadgeState(prev => ({ ...prev, partner }));
+            // Convert Partner to aiDraft.partner format
+            setAiDraft(prev => ({ 
+              ...prev, 
+              partner: {
+                required: true,
+                name: partner?.inviteEmail || partner?.id || ''
+              }
+            }));
+          }}
+        />
+        
         {/* Period Section */}
         <View style={{ marginBottom: 20 }}>
           <Text style={{ fontSize: 16, fontWeight: '500', color: '#374151', marginBottom: 12 }}>Period</Text>
@@ -2255,44 +2351,110 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       </View>
     );
 
-  const renderValidationSummary = () => (
-    <View style={{ marginBottom: 24 }}>
-      <Text style={{ fontSize: 16, fontWeight: '600', color: '#1f2937', marginBottom: 12 }}>Summary & Warnings</Text>
-      
-      {!ok ? (
-        <View style={{ 
-          backgroundColor: '#fef2f2', 
-          borderRadius: 8, 
-          padding: 16, 
-          borderWidth: 1, 
-          borderColor: '#fecaca' 
-        }}>
-          <Text style={{ fontSize: 14, fontWeight: '600', color: '#dc2626', marginBottom: 8 }}>
-            Insufficient Verification
-          </Text>
-          <View style={{ marginLeft: 8 }}>
-            {issues.map((issue: string, index: number) => (
-              <Text key={index} style={{ fontSize: 13, color: '#dc2626', marginBottom: 4 }}>
-                • {issue}
+  const renderValidationSummary = () => {
+    const type = aiDraft?.type || aiBadgeState.type;
+    
+    return (
+      <View style={{ marginBottom: 24 }}>
+        <Text style={{ fontSize: 16, fontWeight: '600', color: '#1f2937', marginBottom: 12 }}>Summary & Warnings</Text>
+        
+        {/* Type-specific summary */}
+        {type === 'frequency' && (
+          <View style={{ 
+            backgroundColor: '#f8fafc', 
+            borderRadius: 8, 
+            padding: 16, 
+            borderWidth: 1, 
+            borderColor: '#e2e8f0',
+            marginBottom: 12
+          }}>
+            <Text style={{ fontSize: 14, fontWeight: '600', color: '#475569', marginBottom: 8 }}>
+              Frequency Goal
+            </Text>
+            <Text style={{ fontSize: 13, color: '#64748b' }}>
+              Target: {aiDraft?.frequency?.count || aiDraft?.frequency?.targetPerWeek || 0} times per week
+            </Text>
+            <Text style={{ fontSize: 13, color: '#64748b' }}>
+              Period: {aiDraft?.schedule?.startDate} to {aiDraft?.schedule?.endDate}
+            </Text>
+          </View>
+        )}
+        
+        {type === 'partner' && (
+          <View style={{ 
+            backgroundColor: '#f8fafc', 
+            borderRadius: 8, 
+            padding: 16, 
+            borderWidth: 1, 
+            borderColor: '#e2e8f0',
+            marginBottom: 12
+          }}>
+            <Text style={{ fontSize: 14, fontWeight: '600', color: '#475569', marginBottom: 8 }}>
+              Partner Goal
+            </Text>
+            <Text style={{ fontSize: 13, color: '#64748b' }}>
+              Partner: {aiBadgeState.partner?.inviteEmail || aiBadgeState.partner?.id || 'Not selected'}
+            </Text>
+          </View>
+        )}
+        
+        {/* Warnings (non-blocking) */}
+        {warnings.length > 0 && (
+          <View style={{ 
+            backgroundColor: '#fef3c7', 
+            borderRadius: 8, 
+            padding: 16, 
+            borderWidth: 1, 
+            borderColor: '#fbbf24',
+            marginBottom: 12
+          }}>
+            <Text style={{ fontSize: 14, fontWeight: '600', color: '#92400e', marginBottom: 8 }}>
+              ℹ️ Information
+            </Text>
+            {warnings.map((warning: string, index: number) => (
+              <Text key={index} style={{ fontSize: 13, color: '#92400e', marginBottom: 4 }}>
+                • {warning}
               </Text>
             ))}
           </View>
-        </View>
-      ) : (
-        <View style={{ 
-          backgroundColor: '#f0fdf4', 
-          borderRadius: 8, 
-          padding: 16, 
-          borderWidth: 1, 
-          borderColor: '#bbf7d0' 
-        }}>
-          <Text style={{ fontSize: 14, fontWeight: '600', color: '#16a34a' }}>
-            All set
-          </Text>
-        </View>
-      )}
-    </View>
-  );
+        )}
+        
+        {/* Blocking errors */}
+        {!ok ? (
+          <View style={{ 
+            backgroundColor: '#fef2f2', 
+            borderRadius: 8, 
+            padding: 16, 
+            borderWidth: 1, 
+            borderColor: '#fecaca' 
+          }}>
+            <Text style={{ fontSize: 14, fontWeight: '600', color: '#dc2626', marginBottom: 8 }}>
+              Insufficient Verification
+            </Text>
+            <View style={{ marginLeft: 8 }}>
+              {issues.map((issue: string, index: number) => (
+                <Text key={index} style={{ fontSize: 13, color: '#dc2626', marginBottom: 4 }}>
+                  • {issue}
+                </Text>
+              ))}
+            </View>
+          </View>
+        ) : (
+          <View style={{ 
+            backgroundColor: '#f0fdf4', 
+            borderRadius: 8, 
+            padding: 16, 
+            borderWidth: 1, 
+            borderColor: '#bbf7d0' 
+          }}>
+            <Text style={{ fontSize: 14, fontWeight: '600', color: '#16a34a' }}>
+              All set
+            </Text>
+          </View>
+        )}
+      </View>
+    );
+  };
 
   const renderManualFormSection = () => (
     <View>
@@ -2652,6 +2814,8 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     switch (item.type) {
       case 'ai':
         return renderAISection();
+      case 'schedule':
+        return renderScheduleSection();
       case 'datePicker':
         return (
           <SimpleDatePicker
@@ -2768,17 +2932,8 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       case 0: // AI Assistant
         sections.push({ type: 'ai', key: 'ai-section' });
         break;
-      case 1: // Schedule/Frequency/Partner
-        if (aiBadgeState.type === 'schedule') {
-          sections.push({ type: 'datePicker', key: 'date-picker-section' });
-        } else if (aiBadgeState.type === 'frequency') {
-          sections.push({ type: 'frequency', key: 'frequency-section' });
-        } else if (aiBadgeState.type === 'partner') {
-          sections.push({ type: 'partner', key: 'partner-section' });
-        } else {
-          // Fallback to datePicker for unknown types
-          sections.push({ type: 'datePicker', key: 'date-picker-section' });
-        }
+      case 1: // Schedule - always show schedule UI regardless of type
+        sections.push({ type: 'schedule', key: 'schedule-section' });
         break;
       case 2: // Review
         sections.push({ type: 'validation', key: 'validation-section' });
@@ -2803,9 +2958,10 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
 
   // Next step handler - must validate schedule before proceeding
   const onNext = useCallback(() => {
+    console.log('[CreateGoalModal] onNext called, aiDraft.type:', aiDraft?.type);
     // Always validate schedule before proceeding to next step
     handleRequestNextFromSchedule();
-  }, [handleRequestNextFromSchedule]);
+  }, [handleRequestNextFromSchedule, aiDraft?.type]);
 
   return (
     <Modal 
@@ -3159,78 +3315,19 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
                   
                   setShowSpecPlanModal(false);
                   
-                  // AI GoalSpec 처리 로직 (기존 기능 복원)
-                  if (goalSpec && aiDraft.title) {
-                    try {
-                      setGoalSpecLoading(true);
-                      
-                      // Post-process verification methods to enforce requirements
-                      const initialMethods = Array.isArray(goalSpec.verification?.methods) ? goalSpec.verification.methods : [];
-                      const initialMandatory = Array.isArray(goalSpec.verification?.mandatory) ? goalSpec.verification.mandatory : [];
-                      const processed = postProcessVerificationMethods(goalSpec, initialMethods, initialMandatory, aiPrompt.trim());
-                      
-                      // Update the spec with processed methods
-                      const updatedGoalSpec = {
-                        ...goalSpec,
-                        verification: {
-                          ...goalSpec.verification,
-                          methods: processed.methods,
-                          mandatory: processed.mandatory,
-                          sufficiency: processed.sufficiency
-                        }
-                      };
-                      
-                      setGoalSpec(updatedGoalSpec);
-                      
-                      // Show processed results to user
-                      setAiAnalyzedMethods(processed.methods);
-                      setAiMandatoryMethods(processed.mandatory);
-                      setAiVerificationSummary(updatedGoalSpec.verification?.rationale || '');
-                      
-                      // Check sufficiency before proceeding
-                      if (!processed.sufficiency) {
-                        Alert.alert(
-                          'Insufficient Verification',
-                          'This goal cannot be sufficiently proven with the authentication methods currently available. (One of Location/Photo/ScreenTime is required.)',
-                          [{ text: 'OK' }]
-                        );
-                        return;
-                      }
-
-                      // Handle missing fields from post-processing
-                      if (processed.missingFields && processed.missingFields.length > 0) {
-                        // Update the spec with missing fields
-                        if (!updatedGoalSpec.missingFields) updatedGoalSpec.missingFields = [];
-                        updatedGoalSpec.missingFields = [...new Set([...updatedGoalSpec.missingFields, ...processed.missingFields])];
-                        
-                        // Set follow-up question if provided
-                        if (processed.followUpQuestion) {
-                          setSpecFollowUpQuestion(processed.followUpQuestion);
-                          setSpecFollowUpAnswer('');
-                          setShowSpecPlanModal(true); // Reopen modal for follow-up
-                          return;
-                        }
-                      }
-                      
-                      // Proceed only if schedule doesn't require disambiguation
-                      if (updatedGoalSpec.schedule?.requiresDisambiguation && updatedGoalSpec.schedule?.followUpQuestion) {
-                        setSpecFollowUpQuestion(updatedGoalSpec.schedule.followUpQuestion);
-                        setSpecFollowUpAnswer('');
-                        setShowSpecPlanModal(true); // Reopen modal for follow-up
-                        return;
-                      }
-                      
-                    } catch (e) {
-                      console.error('AI GoalSpec processing error:', e);
-                      Alert.alert('AI Error', 'Failed to process GoalSpec. Please try again.');
-                      return;
-                    } finally {
-                      setGoalSpecLoading(false);
-                    }
-                  }
+                  // Determine final type based on verification signals
+                  const isPartner = !!aiDraft?.verification?.signals?.includes("partner");
+                  const finalType = isPartner ? "partner" : aiDraft?.type;
                   
-                  // 타입에 맞는 다음 단계로 이동
-                  goToStep(1);
+                  console.log("[CreateGoalModal] going to SCHEDULE step with finalType=", finalType);
+                  
+                  // Update AI draft with final type
+                  setAiDraft(prev => ({ ...prev, type: finalType }));
+                  
+                  // Close plan and advance to Schedule step
+                  setShowSpecPlanModal(false);
+                  goToStep(1); // Schedule step
+
                 }}
                 style={{ flex: 1, backgroundColor: '#3b82f6', borderRadius: 8, paddingVertical: 12 }}
               >

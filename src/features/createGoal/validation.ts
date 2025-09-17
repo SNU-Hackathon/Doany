@@ -10,6 +10,39 @@ export interface VerificationPlan {
   partnerRecommended?: boolean;        // Partner로 전환 권장
 }
 
+// Normalize date input to YYYY-MM-DD string
+export function toDateOnlyString(input?: string | Date): string | undefined {
+  if (!input) return undefined;
+  const d = (input instanceof Date) ? input : new Date(input);
+  if (isNaN(d.getTime())) return undefined;
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+// Simple frequency validation
+export function validateFrequencyDraft(draft: any): boolean {
+  try {
+    const target = Number(draft?.frequency?.count ?? draft?.frequency?.targetPerWeek ?? 0);
+    if (target <= 0) return false;
+
+    const startRaw = draft?.schedule?.startDate;
+    const endRaw = draft?.schedule?.endDate;
+    const start = toDateOnlyString(startRaw);
+    const end = toDateOnlyString(endRaw);
+
+    if (start && end) {
+      const s = new Date(start);
+      const e = new Date(end);
+      if (s.getTime() > e.getTime()) return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function computeVerificationPlan(type: PlanType, s: CreateGoalState): VerificationPlan {
   const methods: Array<'manual'|'location'|'photo'> = [];
   if (s.methods?.manual) methods.push('manual');

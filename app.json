@@ -16,6 +16,9 @@
         "NSPhotoLibraryAddUsageDescription": "We need access to save your verification photos."
       }
     },
+
+
+    
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
@@ -37,6 +40,11 @@
       "bundler": "metro",
       "output": "single",
       "favicon": "./assets/images/favicon.png"
+    },
+    "updates": {
+      "enabled": false,
+      "checkAutomatically": "NEVER",
+      "fallbackToCacheTimeout": 0
     },
     "plugins": [
       "expo-splash-screen",
