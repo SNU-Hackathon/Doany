@@ -51,10 +51,6 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
   const navigation = useNavigation<any>();
   const { state, actions } = useCreateGoal();
   
-  // Goal type: single source of truth
-  const goalType = state.goalType ?? formData.goalType ?? state.aiGuess ?? 'frequency';
-  const isFrequency = goalType === 'frequency';
-  
   // Local state for AI type badge
   const [aiBadgeState, setAiBadgeState] = useState<CreateGoalFeatureState>(INITIAL_CREATE_GOAL_STATE);
   const [showTypeSelector, setShowTypeSelector] = useState(false);
@@ -700,6 +696,9 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     calendarEvents: [],
   });
 
+  // Goal type: single source of truth
+  const goalType = (state as any).goalType ?? (formData as any).goalType ?? (state as any).aiGuess ?? 'frequency';
+  const isFrequency = goalType === 'frequency';
 
   // Defer AI evaluation until after initial mount so formData is defined
   useEffect(() => {
@@ -1983,9 +1982,10 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
           <Text style={{ color: '#1d4ed8', fontSize: 14 }}>Analyzing verification methods with AI...</Text>
         </View>
       )}
-      <SimpleDatePicker
-        startDate={aiDraft.startDate || null}
-        endDate={aiDraft.duration?.endDate || null}
+        <SimpleDatePicker
+          goalType={goalType}
+          startDate={aiDraft.startDate || null}
+          endDate={aiDraft.duration?.endDate || null}
         onStartDateChange={(date) => {
           // Update AI draft with new start date
           setAiDraft(prev => ({ ...prev, startDate: date }));
@@ -2897,6 +2897,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         return (
           <View>
             <SimpleDatePicker
+              goalType={goalType}
               startDate={formData.duration?.startDate || null}
               endDate={formData.duration?.endDate || null}
               onStartDateChange={(date) => setFormData(prev => ({ ...prev, duration: { ...prev.duration, startDate: date } }))}

@@ -72,6 +72,12 @@ const defer = (fn: () => void) => queueMicrotask(fn);export interface DateSelect
   onStartDateChange: (date: string) => void;
   onEndDateChange: (date: string) => void;
   onNavigateToStep: (stepIndex: number) => void;
+  verificationMethods?: VerificationType[];
+  onVerificationMethodsChange?: (methods: VerificationType[]) => void;
+  lockedVerificationMethods?: VerificationType[];
+  onRequestNext?: () => void;
+  loading?: boolean;
+  validationResult?: { isCompatible: boolean; issues: string[] } | null;
   goalTitle?: string;
   goalRawText?: string;
   aiSuccessCriteria?: string;
@@ -111,6 +117,12 @@ export default function SimpleDatePicker({
   onStartDateChange,
   onEndDateChange,
   onNavigateToStep,
+  verificationMethods = [],
+  onVerificationMethodsChange,
+  lockedVerificationMethods = [],
+  onRequestNext,
+  loading = false,
+  validationResult,
   goalTitle,
   goalRawText,
   aiSuccessCriteria,
