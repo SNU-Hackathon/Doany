@@ -51,6 +51,10 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
   const navigation = useNavigation<any>();
   const { state, actions } = useCreateGoal();
   
+  // Goal type: single source of truth
+  const goalType = state.goalType ?? formData.goalType ?? state.aiGuess ?? 'frequency';
+  const isFrequency = goalType === 'frequency';
+  
   // Local state for AI type badge
   const [aiBadgeState, setAiBadgeState] = useState<CreateGoalFeatureState>(INITIAL_CREATE_GOAL_STATE);
   const [showTypeSelector, setShowTypeSelector] = useState(false);
@@ -2100,6 +2104,41 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     }
   };
 
+  const renderVerificationSection = () => (
+    <View className="mb-6">
+      <Text className="text-lg font-semibold text-gray-800 mb-4">Verification Methods</Text>
+      
+      {['manual', 'location', 'photo'].map((method) => (
+        <TouchableOpacity
+          key={method}
+          onPress={() => {
+            const set = new Set(formData.verificationMethods);
+            if (set.has(method as any)) set.delete(method as any); else set.add(method as any);
+            setFormData(prev => ({ ...prev, verificationMethods: Array.from(set) }));
+          }}
+          className="flex-row items-center py-3 px-4 bg-white rounded-lg border border-gray-300 mb-2"
+        >
+          <View className={`w-5 h-5 rounded border-2 mr-3 items-center justify-center ${
+            formData.verificationMethods.includes(method as any)
+              ? 'border-blue-500 bg-blue-500' 
+              : 'border-gray-300 bg-white'
+          }`}>
+            {formData.verificationMethods.includes(method as any) && (
+              <Text className="text-white text-xs font-bold">✓</Text>
+            )}
+          </View>
+          <Text className="text-gray-700 text-base capitalize">
+            {method}
+          </Text>
+        </TouchableOpacity>
+      ))}
+      
+      <Text className="text-xs text-gray-500 mt-2 italic">
+        Select one or more methods to verify your progress
+      </Text>
+    </View>
+  );
+
   const renderScheduleSection = () => (
     <View className="mb-6">
       <Text className="text-lg font-semibold text-gray-800 mb-4">Schedule</Text>
@@ -2816,18 +2855,18 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         return renderAISection();
       case 'schedule':
         return renderScheduleSection();
+      case 'verification':
+        return renderVerificationSection();
       case 'datePicker':
         return (
           <SimpleDatePicker
+              goalType={goalType}
               startDate={formData.duration?.startDate || null}
               endDate={formData.duration?.endDate || null}
               onStartDateChange={(date) => setFormData(prev => ({ ...prev, duration: { ...prev.duration, startDate: date } }))}
               onEndDateChange={(date) => setFormData(prev => ({ ...prev, duration: { ...prev.duration, endDate: date } }))}
               onNavigateToStep={goToStep}
               onWeeklyScheduleChange={handleWeeklyScheduleChange}
-              verificationMethods={formData.verificationMethods}
-              onVerificationMethodsChange={(methods) => setFormData(prev => ({ ...prev, verificationMethods: methods }))}
-              lockedVerificationMethods={formData.lockedVerificationMethods || []}
               includeDates={formData.includeDates}
               excludeDates={formData.excludeDates}
               onIncludeExcludeChange={(inc: string[], exc: string[]) => setFormData(prev => ({ ...prev, includeDates: inc, excludeDates: exc }))}
@@ -2835,14 +2874,12 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
               goalRawText={rememberedPrompt || aiPrompt}
               aiSuccessCriteria={aiSuccessCriteria}
               blockingReasons={blockingReasons}
-              onRequestNext={handleRequestNextFromSchedule}
               initialSelectedWeekdays={formData.weeklyWeekdays}
               initialWeeklyTimeSettings={formData.weeklySchedule}
               targetLocation={formData.targetLocation}
               onOpenLocationPicker={openLocationPicker}
               onUseCurrentLocation={handleUseCurrentLocation}
               goalSpec={goalSpec}
-              loading={scheduleValidating}
               calendarEvents={formData.calendarEvents || []}
               onCalendarEventsChange={(events) => {
                 setFormData(prev => {
@@ -2934,11 +2971,11 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         break;
       case 1: // Schedule
         // 1) Calendar / weekly schedule editor
-        sections.push({ type: 'datePicker', key: 'date-picker-section' });
-        // 2) Location selection card (opens LocationSearch modal)
-        sections.push({ type: 'location', key: 'location-section' });
-        // 3) Lightweight schedule + verification toggles
-        sections.push({ type: 'schedule', key: 'schedule-section' });
+        sections.push({ type: 'datePicker', key: 'date-picker' });
+        // 2) Verification Methods (single source)
+        sections.push({ type: 'verification', key: 'verification' });
+        // 3) Target Location
+        sections.push({ type: 'location', key: 'location' });
         break;
       case 2: // Review
         sections.push({ type: 'validation', key: 'validation-section' });
@@ -2956,6 +2993,11 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
           sections.push({ type: 'manualForm', key: 'manual-form-section' });
         }
         break;
+    }
+
+    // Debug: Log sections for Schedule step
+    if (state.step === 1) {
+      console.log('[Sections@Schedule]', sections.map(s => s.type));
     }
 
     return sections;
@@ -3487,6 +3529,41 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
           removeClippedSubviews={true}
           extraData={{ formData, aiVerificationLoading, stateStep: state.step }}
         />
+
+        {/* Step Footer - Back/Next buttons */}
+        <View style={{ padding: 16, backgroundColor: '#f9fafb', borderTopWidth: 1, borderTopColor: '#e5e7eb' }}>
+          <View style={{ flexDirection: 'row', gap: 12 }}>
+            <TouchableOpacity 
+              style={{ flex: 1, backgroundColor: '#e5e7eb', borderRadius: 8, padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}
+              onPress={() => goToStep(state.step - 1)}
+              disabled={state.step === 0}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="chevron-back" size={16} color={state.step === 0 ? '#9ca3af' : '#374151'} />
+              <Text style={{ color: state.step === 0 ? '#9ca3af' : '#2563eb', fontWeight: '600', marginLeft: 8 }}>Back</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={{ 
+                flex: 1, 
+                backgroundColor: canProceedToNext() ? '#2563eb' : '#9ca3af', 
+                borderRadius: 8, 
+                padding: 12, 
+                flexDirection: 'row', 
+                alignItems: 'center', 
+                justifyContent: 'center' 
+              }}
+              onPress={onNext}
+              disabled={!canProceedToNext()}
+              activeOpacity={0.8}
+            >
+              <Text style={{ color: 'white', fontWeight: '600', marginRight: 8 }}>
+                {state.step === STEPS.length - 1 ? 'Create Goal' : 'Next'}
+              </Text>
+              <Ionicons name="chevron-forward" size={16} color="white" />
+            </TouchableOpacity>
+          </View>
+        </View>
 
       {/* Location Picker Overlay Modal */}
       <Modal

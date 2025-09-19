@@ -66,19 +66,16 @@ const defer = (fn: () => void) => queueMicrotask(fn);export interface DateSelect
   durationType: 'days' | 'weeks' | 'months';
   durationValue: number;
 }interface SimpleDatePickerProps {
+  goalType: 'frequency' | 'schedule';
   startDate: string | null;
   endDate: string | null;
   onStartDateChange: (date: string) => void;
   onEndDateChange: (date: string) => void;
   onNavigateToStep: (stepIndex: number) => void;
-  verificationMethods?: VerificationType[];
-  onVerificationMethodsChange?: (methods: VerificationType[]) => void;
-  lockedVerificationMethods?: VerificationType[];
   goalTitle?: string;
   goalRawText?: string;
   aiSuccessCriteria?: string;
   blockingReasons?: string[];
-  onRequestNext?: () => void;
   // Location selection in Schedule
   targetLocation?: TargetLocation;
   onOpenLocationPicker?: () => void;
@@ -88,10 +85,6 @@ const defer = (fn: () => void) => queueMicrotask(fn);export interface DateSelect
   goalId?: string;
   // GoalSpec for verification note
   goalSpec?: GoalSpec | null;
-  // Loading state for Next button
-  loading?: boolean;
-  // Validation result for Next button state
-  validationResult?: { isCompatible: boolean; issues: string[] } | null;
   // Calendar events for display
   calendarEvents?: CalendarEvent[];
   // Callback when calendar events change (for override events)
@@ -112,27 +105,22 @@ const defer = (fn: () => void) => queueMicrotask(fn);export interface DateSelect
 }
 
 export default function SimpleDatePicker({
+  goalType,
   startDate: initialStartDate,
   endDate: initialEndDate,
   onStartDateChange,
   onEndDateChange,
   onNavigateToStep,
-  verificationMethods = [],
-  onVerificationMethodsChange,
-  lockedVerificationMethods = [],
   goalTitle,
   goalRawText,
   aiSuccessCriteria,
   blockingReasons = [],
-  onRequestNext,
   targetLocation, 
   onOpenLocationPicker, 
   onUseCurrentLocation,
   userId,
   goalId,
   goalSpec,
-  loading = false,
-  validationResult,
   calendarEvents = [],
   onCalendarEventsChange,
   onWeeklyScheduleChange,
@@ -1062,7 +1050,7 @@ export default function SimpleDatePicker({
               Edit Period
             </Text>
           </TouchableOpacity>
-          {!isFrequencyGoal && (
+          {goalType === 'schedule' && (
             <TouchableOpacity
               onPress={() => setEditingMode('schedule')}
               className={`flex-1 rounded-lg py-3 ${editingMode === 'schedule' ? 'bg-green-600' : 'bg-green-100'}`}
@@ -1078,7 +1066,7 @@ export default function SimpleDatePicker({
         </View>
 
         {/* Frequency Goal - 주당 횟수 설정 */}
-        {isFrequencyGoal && (
+        {goalType === 'frequency' && (
           <View className="mb-3 p-4 bg-blue-50 rounded-lg">
             <Text className="text-blue-800 font-semibold text-base mb-3">주당 목표 횟수</Text>
             <View className="flex-row items-center justify-center space-x-4">
