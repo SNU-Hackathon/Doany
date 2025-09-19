@@ -39,11 +39,9 @@
  * ✅ Hypothesis #7: Replaced duplicate calendar in Verification with clean bullet summary
  * ✅ One-time-per-cell normalization: override > weekly > none (already implemented)
  */
-import { Ionicons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Modal,
   ScrollView,
   Text,
@@ -53,9 +51,8 @@ import {
 } from 'react-native';
 import { convertDurationToRange } from '../features/goals/aiDraft';
 import { CalendarEventService } from '../services/calendarEventService';
-import { CalendarEvent, GoalSpec, TargetLocation, VerificationType } from '../types';
+import { CalendarEvent, GoalSpec, TargetLocation } from '../types';
 import { getLocalYMD } from '../utils/dateUtils';
-import MapPreview from './MapPreview'; // Localized logger helpers
 const log = (...args: any[]) => console.log('[SimpleDatePicker]', ...args);
 const warn = (...args: any[]) => console.warn('[SimpleDatePicker]', ...args);
 const err = (...args: any[]) => console.error('[SimpleDatePicker]', ...args);// microtask deferral to avoid parent updates during render
@@ -72,12 +69,6 @@ const defer = (fn: () => void) => queueMicrotask(fn);export interface DateSelect
   onStartDateChange: (date: string) => void;
   onEndDateChange: (date: string) => void;
   onNavigateToStep: (stepIndex: number) => void;
-  verificationMethods?: VerificationType[];
-  onVerificationMethodsChange?: (methods: VerificationType[]) => void;
-  lockedVerificationMethods?: VerificationType[];
-  onRequestNext?: () => void;
-  loading?: boolean;
-  validationResult?: { isCompatible: boolean; issues: string[] } | null;
   goalTitle?: string;
   goalRawText?: string;
   aiSuccessCriteria?: string;
@@ -117,12 +108,6 @@ export default function SimpleDatePicker({
   onStartDateChange,
   onEndDateChange,
   onNavigateToStep,
-  verificationMethods = [],
-  onVerificationMethodsChange,
-  lockedVerificationMethods = [],
-  onRequestNext,
-  loading = false,
-  validationResult,
   goalTitle,
   goalRawText,
   aiSuccessCriteria,
@@ -797,7 +782,7 @@ export default function SimpleDatePicker({
 
     const mandatory = goalSpec.verification.mandatory || [];
     const constraints = goalSpec.verification.constraints || {};
-    const methods = verificationMethods || [];
+    const methods = [] as any[];
     
     // Determine place label (no hard-coded "gym" or venue names)
     const placeLabel = constraints.location?.name 
@@ -853,16 +838,6 @@ export default function SimpleDatePicker({
     return lines.join('\n');
   };
 
-  // Verification Methods (bottom section)
-  const allMethods: VerificationType[] = ['location', 'time', 'screentime', 'photo', 'manual'];
-  const toggleMethod = (method: VerificationType) => {
-    if (lockedVerificationMethods?.includes(method)) {
-      return; // locked methods cannot be toggled off
-    }
-    const set = new Set(verificationMethods);
-    if (set.has(method)) set.delete(method); else set.add(method);
-    onVerificationMethodsChange?.(Array.from(set));
-  };
 
   return (
     <View className="bg-white rounded-lg p-4 mx-0 my-4">
@@ -1118,157 +1093,7 @@ export default function SimpleDatePicker({
         </View>
       )}
 
-      {/* Verification Methods */}
-      <View className="mb-4 p-4 bg-white rounded-lg border border-gray-200">
-        <Text className="text-gray-800 font-semibold text-lg mb-3">Verification Methods</Text>
-        <View className="flex-row flex-wrap gap-2">
-          {allMethods.map((m) => {
-            const selected = verificationMethods?.includes(m);
-            const locked = lockedVerificationMethods?.includes(m);
-            return (
-              <TouchableOpacity
-                key={m}
-                onPress={() => toggleMethod(m)}
-                disabled={locked}
-                className={`px-3 py-2 rounded-full border flex-row items-center ${locked ? 'bg-blue-800 border-blue-800' : (selected ? 'bg-blue-600 border-blue-600' : 'bg-white border-gray-300')}`}
-                activeOpacity={0.8}
-              >
-                {locked && (
-                  <Ionicons name="lock-closed" size={14} color="#FFFFFF" />
-                )}
-                <Text
-                  className={`${selected || locked ? 'text-white' : 'text-gray-700'} font-medium ${locked ? 'ml-1' : ''}`}
-                >
-                  {m.charAt(0).toUpperCase() + m.slice(1)}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-        <Text className="text-xs text-gray-500 mt-2">Select one or more methods to verify your progress. AI-selected methods are locked.</Text>
 
-        {/* Verification Summary */}
-        {(() => {
-          const note = generateVerificationNote();
-          return note && (
-            <View className="mt-3 bg-gray-50 border border-gray-200 rounded-lg p-3">
-              {note.split('\n').map((line, i) => (
-                <View key={i} className="flex-row items-start mb-1">
-                  <Text className="text-gray-500 text-xs mr-1">•</Text>
-                  <Text className="text-gray-700 text-xs flex-1">{line}</Text>
-                </View>
-              ))}
-            </View>
-          );
-        })()}
-        {/* AI Success Criteria */}
-        {!!aiSuccessCriteria && (
-          <View className="mt-3 bg-blue-50 border border-blue-200 rounded-lg p-3">
-            <Text className="text-blue-800 text-xs">{aiSuccessCriteria}</Text>
-          </View>
-        )}
-        {/* Blocking reasons banner */}
-        {blockingReasons.length > 0 && (
-          <View className="mt-3 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-            {blockingReasons.map((r, i) => (
-              <Text key={i} className="text-yellow-800 text-xs">• {r}</Text>
-            ))}
-          </View>
-        )}
-        {/* Target Location selection (when Location method selected) */}
-        {(verificationMethods || []).includes('location' as any) && (
-          <View className="mt-3 p-3 bg-white rounded-lg border border-gray-200">
-            <Text className="text-gray-800 font-semibold mb-2">Target Location</Text>
-            {targetLocation ? (
-              <View>
-                <Text className="text-gray-800 text-sm">{targetLocation.name}</Text>
-                {!!targetLocation.address && (
-                  <Text className="text-gray-600 text-xs mt-1">{targetLocation.address}</Text>
-                )}
-                {/* Mini map preview */}
-                <View className="h-32 bg-gray-100 rounded-lg overflow-hidden mt-2">
-                  <MapPreview location={targetLocation as any} onPress={onOpenLocationPicker || (() => {})} />
-                </View>
-              </View>
-            ) : (
-              <Text className="text-gray-500 text-xs mb-2">Not set</Text>
-            )}
-            <View className="flex-row space-x-3 mt-2">
-              <TouchableOpacity onPress={onOpenLocationPicker} className="flex-1 bg-blue-600 rounded-lg py-2">
-                <Text className="text-white text-center text-sm font-semibold">Select Location</Text>
-              </TouchableOpacity>
-              {!!onUseCurrentLocation && (
-                <TouchableOpacity onPress={onUseCurrentLocation} className="flex-1 bg-green-600 rounded-lg py-2">
-                  <Text className="text-white text-center text-sm font-semibold">Use Current</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          </View>
-        )}
-      </View>
-
-      {/* Validation Error Banner */}
-      {validationResult && !validationResult.isCompatible && validationResult.issues.length > 0 && (
-        <View className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg shadow-sm">
-          <View className="flex-row items-center mb-3">
-            <Ionicons name="warning" size={20} color="#DC2626" />
-            <Text className="text-red-800 font-semibold ml-2 text-base">Schedule Requirements Not Met</Text>
-              </View>
-          <View className="ml-1">
-            {validationResult.issues.map((issue, index) => (
-              <Text key={index} className="text-red-700 text-sm mb-2 leading-5">
-                • {issue}
-              </Text>
-          ))}
-        </View>
-          <View className="mt-2 pt-2 border-t border-red-200">
-            <Text className="text-red-600 text-xs font-medium">
-              💡 Tip: Add more scheduled times or adjust your goal requirements to proceed.
-            </Text>
-          </View>
-        </View>
-      )}
-
-      {/* Navigation Buttons */}
-      <View className="flex-row space-x-3">
-        <TouchableOpacity onPress={() => onNavigateToStep(0)} className="flex-1 bg-gray-200 rounded-lg py-3 flex-row items-center justify-center">
-          <Ionicons name="chevron-back" size={16} color="#6B7280" />
-          <Text className="text-gray-700 font-semibold ml-2">Back</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          testID="next-button"
-          onPress={() => {
-            console.log('[SimpleDatePicker] Next button pressed, onRequestNext:', !!onRequestNext, 'loading:', loading, 'validationResult:', validationResult);
-            if (onRequestNext) {
-              console.log('[SimpleDatePicker] Calling onRequestNext');
-              onRequestNext(); // Always use validation path when available
-            } else {
-              console.log('[SimpleDatePicker] Calling onNavigateToStep(2)');
-              onNavigateToStep(2); // Fallback only when no validation handler
-            }
-          }}
-          className={`flex-1 rounded-lg py-3 flex-row items-center justify-center ${(loading || (validationResult ? !validationResult.isCompatible : false)) ? 'bg-gray-400' : 'bg-blue-600'}`}
-          disabled={loading || (validationResult ? !validationResult.isCompatible : false)}
-        >
-          <Text
-            className={`font-semibold mr-2 ${(loading || (validationResult ? !validationResult.isCompatible : false)) ? 'text-gray-600' : 'text-white'}`}
-          >
-            {loading ? 'Validating...' : 
-             (validationResult && !validationResult.isCompatible ? 'Fix Issues' : 
-              (onRequestNext ? 'Next' : 'Continue'))}
-          </Text>
-          {loading ? (
-            <ActivityIndicator size="small" color="#6B7280" />
-          ) : (
-            <Ionicons 
-              name={validationResult && !validationResult.isCompatible ? "warning" : "chevron-forward"} 
-              size={16} 
-              color={(!startDate || loading || (validationResult ? !validationResult.isCompatible : false)) ? '#6B7280' : 'white'} 
-            />
-          )}
-        </TouchableOpacity>
-      </View>
 
       {/* Date Edit Modal for Long Press */}
       <Modal 

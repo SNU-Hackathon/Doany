@@ -2002,19 +2002,13 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         }}
         onNavigateToStep={goToStep}
         onWeeklyScheduleChange={handleWeeklyScheduleChange}
-        verificationMethods={formData.verificationMethods}
-        onVerificationMethodsChange={(methods) => setFormData(prev => ({ ...prev, verificationMethods: methods }))}
-        lockedVerificationMethods={formData.lockedVerificationMethods || []}
         includeDates={formData.includeDates}
         excludeDates={formData.excludeDates}
         onIncludeExcludeChange={(inc: string[], exc: string[]) => setFormData(prev => ({ ...prev, includeDates: inc, excludeDates: exc }))}
         // Pass initial weekly schedule to show persistence
         initialSelectedWeekdays={formData.weeklyWeekdays}
         initialWeeklyTimeSettings={formData.weeklySchedule}
-        onRequestNext={handleRequestNextFromSchedule}
         goalSpec={goalSpec}
-        loading={scheduleValidating}
-        validationResult={lastValidationResult}
         calendarEvents={formData.calendarEvents || []}
         onCalendarEventsChange={(events) => {
           setFormData(prev => {
@@ -2104,26 +2098,31 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     }
   };
 
+  // Interactive verification methods state
+  const selectedMethods = formData.verificationMethods ?? [];
+  const toggleVerification = (m: 'manual'|'location'|'photo'|'time'|'screentime') => {
+    const next = selectedMethods.includes(m as any)
+      ? selectedMethods.filter(x => x !== m)
+      : [...selectedMethods, m as any];
+    setFormData(prev => ({ ...prev, verificationMethods: next }));
+  };
+
   const renderVerificationSection = () => (
     <View className="mb-6">
       <Text className="text-lg font-semibold text-gray-800 mb-4">Verification Methods</Text>
       
-      {['manual', 'location', 'photo'].map((method) => (
+      {['manual', 'location', 'photo', 'time', 'screentime'].map((method) => (
         <TouchableOpacity
           key={method}
-          onPress={() => {
-            const set = new Set(formData.verificationMethods);
-            if (set.has(method as any)) set.delete(method as any); else set.add(method as any);
-            setFormData(prev => ({ ...prev, verificationMethods: Array.from(set) }));
-          }}
+          onPress={() => toggleVerification(method as any)}
           className="flex-row items-center py-3 px-4 bg-white rounded-lg border border-gray-300 mb-2"
         >
           <View className={`w-5 h-5 rounded border-2 mr-3 items-center justify-center ${
-            formData.verificationMethods.includes(method as any)
+            selectedMethods.includes(method as any)
               ? 'border-blue-500 bg-blue-500' 
               : 'border-gray-300 bg-white'
           }`}>
-            {formData.verificationMethods.includes(method as any) && (
+            {selectedMethods.includes(method as any) && (
               <Text className="text-white text-xs font-bold">✓</Text>
             )}
           </View>
@@ -2904,9 +2903,6 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
               onEndDateChange={(date) => setFormData(prev => ({ ...prev, duration: { ...prev.duration, endDate: date } }))}
               onNavigateToStep={goToStep}
               onWeeklyScheduleChange={handleWeeklyScheduleChange}
-              verificationMethods={formData.verificationMethods}
-              onVerificationMethodsChange={(methods) => setFormData(prev => ({ ...prev, verificationMethods: methods }))}
-              lockedVerificationMethods={formData.lockedVerificationMethods || []}
               includeDates={formData.includeDates}
               excludeDates={formData.excludeDates}
               onIncludeExcludeChange={(inc: string[], exc: string[]) => setFormData(prev => ({ ...prev, includeDates: inc, excludeDates: exc }))}
@@ -2914,14 +2910,12 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
               goalRawText={rememberedPrompt || aiPrompt}
               aiSuccessCriteria={aiSuccessCriteria}
               blockingReasons={blockingReasons}
-              onRequestNext={handleRequestNextFromSchedule}
               initialSelectedWeekdays={formData.weeklyWeekdays}
               initialWeeklyTimeSettings={formData.weeklySchedule}
               targetLocation={formData.targetLocation}
               onOpenLocationPicker={openLocationPicker}
               onUseCurrentLocation={handleUseCurrentLocation}
               goalSpec={goalSpec}
-              loading={scheduleValidating}
               calendarEvents={formData.calendarEvents || []}
               onCalendarEventsChange={(events) => {
                 setFormData(prev => {
@@ -2975,8 +2969,9 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         sections.push({ type: 'datePicker', key: 'date-picker' });
         // 2) Verification Methods (single source)
         sections.push({ type: 'verification', key: 'verification' });
-        // 3) Target Location
-        sections.push({ type: 'location', key: 'location' });
+        // 3) Target Location (only when location method is selected)
+        const hasLocation = (formData.verificationMethods ?? []).includes('location' as any);
+        if (hasLocation) sections.push({ type: 'location', key: 'location' });
         break;
       case 2: // Review
         sections.push({ type: 'validation', key: 'validation-section' });
