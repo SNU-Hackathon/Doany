@@ -865,7 +865,10 @@ export default function SimpleDatePicker({
   };
 
   return (
-    <View className="bg-white rounded-lg p-4 mx-0 my-4">
+    <>
+      {/* DEBUG: NativeWind className 적용 여부 확인용 빨간 바 */}
+      <View style={{ height: 16, backgroundColor: '#ef4444', marginBottom: 8 }} />
+      <View className="bg-white rounded-lg p-4 mx-0 my-4">
       {/* Goal Title (from AI Assistant) */}
       {(!!goalTitle || !!goalRawText) && (
         <View className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-3">
@@ -1440,6 +1443,7 @@ export default function SimpleDatePicker({
           </View>
         </View>
       </Modal>
-    </View>
+      </View>
+    </>
   );
 }
