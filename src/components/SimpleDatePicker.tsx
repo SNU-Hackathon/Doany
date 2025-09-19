@@ -864,10 +864,26 @@ export default function SimpleDatePicker({
     onVerificationMethodsChange?.(Array.from(set));
   };
 
+  console.log('[SimpleDatePicker] Rendering with props:', {
+    startDate: initialStartDate,
+    endDate: initialEndDate,
+    goalTitle,
+    goalRawText
+  });
+
   return (
     <>
       {/* DEBUG: NativeWind className 적용 여부 확인용 빨간 바 */}
       <View style={{ height: 16, backgroundColor: '#ef4444', marginBottom: 8 }} />
+      {/* DEBUG: className 테스트 */}
+      <View className="h-4 bg-blue-500 mb-2" />
+      {/* DEBUG: 더 명확한 테스트 */}
+      <Text style={{ color: 'red', fontSize: 16, fontWeight: 'bold', marginBottom: 8 }}>
+        SimpleDatePicker RENDERED - className test below:
+      </Text>
+      <Text className="text-green-500 text-lg font-bold">
+        This should be GREEN if NativeWind works
+      </Text>
       <View className="bg-white rounded-lg p-4 mx-0 my-4">
       {/* Goal Title (from AI Assistant) */}
       {(!!goalTitle || !!goalRawText) && (
