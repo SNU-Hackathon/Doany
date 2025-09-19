@@ -1,6 +1,7 @@
 import * as Location from 'expo-location';
-import React from 'react';
+import React, { useState } from 'react';
 import { Alert, Text, TouchableOpacity, View } from 'react-native';
+import LocationSearch from './LocationSearch';
 import MapPreview from './MapPreview';
 
 type LocationSectionProps = {
@@ -9,10 +10,10 @@ type LocationSectionProps = {
 };
 
 export default function LocationSection({ value, onChange }: LocationSectionProps) {
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+
   const openLocationPicker = () => {
-    // Location picker logic would go here
-    // For now, we'll use a simple alert
-    Alert.alert('Location Picker', 'Location picker functionality will be implemented here');
+    setIsSearchOpen(true); // 내부 모달/스크린 열기
   };
 
   const handleUseCurrentLocation = async () => {
@@ -68,7 +69,9 @@ export default function LocationSection({ value, onChange }: LocationSectionProp
               <Text style={{ color: '#4b5563', fontSize: 14, marginTop: 4 }}>{value.address}</Text>
             )}
             <Text style={{ color: '#6b7280', fontSize: 12, marginTop: 4 }}>
-              GPS: {value.latitude?.toFixed(4)}, {value.longitude?.toFixed(4)}
+              GPS: {value?.latitude != null && value?.longitude != null
+                ? `${Number(value.latitude).toFixed(4)}, ${Number(value.longitude).toFixed(4)}`
+                : 'Not set'}
             </Text>
             
             {/* Mini map preview */}
@@ -110,6 +113,22 @@ export default function LocationSection({ value, onChange }: LocationSectionProp
           </Text>
         </TouchableOpacity>
       </View>
+      
+      {/* Location Search Modal */}
+      {isSearchOpen && (
+        <LocationSearch
+          onLocationSelect={(place) => {
+            const loc = { 
+              lat: Number(place.latitude), 
+              lng: Number(place.longitude), 
+              name: place.name ?? '',
+              address: place.address ?? ''
+            };
+            onChange?.(loc);
+            setIsSearchOpen(false);
+          }}
+        />
+      )}
     </View>
   );
 }

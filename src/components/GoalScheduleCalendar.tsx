@@ -7,7 +7,7 @@
  * 3. 타임존: Asia/Seoul 고정, 날짜 문자열은 YYYY-MM-DD
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { CalendarEvent, Verification } from '../types';
 
@@ -18,6 +18,7 @@ interface GoalScheduleCalendarProps {
   endDateISO?: string | null;
   weeklyWeekdays?: number[];
   weeklyTimeSettings?: WeeklyTimeSettings;
+  showScheduledWeekdays?: boolean;
   includeDates?: string[];
   excludeDates?: string[];
   verifications?: Verification[];
@@ -442,11 +443,12 @@ function getWeekNumber(date: Date): number {
   return weekNo;
 }
 
-export default function GoalScheduleCalendar({
+export default memo(function GoalScheduleCalendar({
   startDateISO,
   endDateISO,
   weeklyWeekdays = [],
   weeklyTimeSettings = {},
+  showScheduledWeekdays = true,
   includeDates = [],
   excludeDates = [],
   verifications = [],
@@ -801,6 +803,6 @@ export default function GoalScheduleCalendar({
       />
     </View>
   );
-}
+});
 
 

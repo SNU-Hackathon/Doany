@@ -1,9 +1,25 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { memo, useMemo, useRef, useState } from 'react';
 import { Dimensions, FlatList, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import LocationSection from '../../components/LocationSection';
 import SimpleDatePicker from '../../components/SimpleDatePicker';
 
 type GoalType = 'frequency' | 'schedule';
+
+// ⬇️ 파일 상단 컴포넌트 밖으로 Page 호이스팅(타입 고정 → 스크롤 위치 유지)
+const FOOTER_HEIGHT = 80;
+const PAGE_PADDING = 16;
+const Page = memo(function Page({ width, children }: { width: number; children: React.ReactNode }) {
+  return (
+    <ScrollView
+      style={{ width }}
+      contentContainerStyle={{ padding: PAGE_PADDING, paddingBottom: FOOTER_HEIGHT + 24 }}
+      keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
+    >
+      {children}
+    </ScrollView>
+  );
+});
 
 type Props = {
   goalType: GoalType;
@@ -32,8 +48,7 @@ export default function ScheduleFlow({ goalType, formData, setFormData, onDone }
   }, [goalType, formData?.verificationMethods]);
 
   const width = Dimensions.get('window').width;
-  const FOOTER_HEIGHT = 80; // 하단 CTA 대략 높이
-  const PAGE_PADDING = 16;
+  // (상단으로 이동)
   const listRef = useRef<FlatList>(null);
   const [idx, setIdx] = useState(0);
 
@@ -101,22 +116,12 @@ export default function ScheduleFlow({ goalType, formData, setFormData, onDone }
     return true;
   })();
 
-  const Page = ({children}: {children: React.ReactNode}) => (
-    <ScrollView
-      style={{ width }}
-      contentContainerStyle={{ padding: PAGE_PADDING, paddingBottom: FOOTER_HEIGHT + 24 }}
-      keyboardShouldPersistTaps="handled"
-      showsVerticalScrollIndicator={false}
-    >
-      {children}
-    </ScrollView>
-  );
 
   const renderPage = (page: typeof pages[number]) => {
     switch (page) {
       case 'period':
         return (
-          <Page>
+          <Page width={width}>
             <SimpleDatePicker
               goalType={goalType}
               weeklyTarget={weeklyTarget}
@@ -148,7 +153,7 @@ export default function ScheduleFlow({ goalType, formData, setFormData, onDone }
         );
       case 'weeklyTarget':
         return (
-          <Page>
+          <Page width={width}>
             <Text className="text-2xl font-bold text-gray-800 mb-6">주당 목표 횟수</Text>
             <View className="flex-row items-center justify-center mt-8">
               <TouchableOpacity
@@ -172,7 +177,7 @@ export default function ScheduleFlow({ goalType, formData, setFormData, onDone }
         );
       case 'verification':
         return (
-          <Page>
+          <Page width={width}>
             <Text className="text-2xl font-bold text-gray-800 mb-6">Verification Methods</Text>
             <Text className="text-gray-600 mb-6">진행 상황을 확인할 방법을 선택하세요</Text>
             <View className="space-y-3">
@@ -216,7 +221,7 @@ export default function ScheduleFlow({ goalType, formData, setFormData, onDone }
         );
       case 'location':
         return (
-          <Page>
+          <Page width={width}>
             <Text className="text-2xl font-bold text-gray-800 mb-6">Target Location</Text>
             <LocationSection
               value={formData?.targetLocation}

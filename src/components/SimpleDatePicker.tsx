@@ -151,9 +151,11 @@ export default function SimpleDatePicker({
   // 🔒 props → state 동기화: 값이 "실제로 달라졌을 때만"
   React.useEffect(() => {
     if (!eq(startDate, initialStartDate)) setStartDate(initialStartDate ?? today);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialStartDate]);
   React.useEffect(() => {
     if (!eq(endDate, initialEndDate)) setEndDate(initialEndDate ?? '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialEndDate]);
 
   // 🔒 자식 → 부모 통지: 마지막으로 보낸 값과 다를 때만 emit
@@ -1089,34 +1091,7 @@ export default function SimpleDatePicker({
           )}
         </View>
 
-        {/* Frequency Goal - 주당 횟수 설정 */}
-        {goalType === 'frequency' && (
-          <View className="mb-3 p-4 bg-blue-50 rounded-lg">
-            <Text className="text-blue-800 font-semibold text-base mb-3">주당 목표 횟수</Text>
-            <View className="flex-row items-center justify-center space-x-4">
-              <TouchableOpacity
-                onPress={() => onWeeklyTargetChange(Math.max(1, weeklyTarget - 1))}
-                className="w-10 h-10 bg-blue-200 rounded-full items-center justify-center"
-                activeOpacity={0.7}
-              >
-                <Text className="text-blue-700 text-xl font-bold">-</Text>
-              </TouchableOpacity>
-              <Text className="text-2xl font-bold text-blue-800 min-w-[60px] text-center">
-                {weeklyTarget}회
-              </Text>
-              <TouchableOpacity
-                onPress={() => onWeeklyTargetChange(Math.min(7, weeklyTarget + 1))}
-                className="w-10 h-10 bg-blue-200 rounded-full items-center justify-center"
-                activeOpacity={0.7}
-              >
-                <Text className="text-blue-700 text-xl font-bold">+</Text>
-              </TouchableOpacity>
-            </View>
-            <Text className="text-blue-600 text-sm text-center mt-2">
-              주당 {weeklyTarget}회 목표를 달성하세요
-            </Text>
-          </View>
-        )}
+        {/* 주당 횟수 UI 제거: WeeklyTarget 화면에서만 처리 */}
 
 
       {/* Selected Summary */}
