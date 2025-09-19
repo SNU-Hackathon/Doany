@@ -64,6 +64,8 @@ const defer = (fn: () => void) => queueMicrotask(fn);export interface DateSelect
   durationValue: number;
 }interface SimpleDatePickerProps {
   goalType: 'frequency' | 'schedule';
+  weeklyTarget: number;
+  onWeeklyTargetChange: (next: number) => void;
   startDate: string | null;
   endDate: string | null;
   onStartDateChange: (date: string) => void;
@@ -103,6 +105,8 @@ const defer = (fn: () => void) => queueMicrotask(fn);export interface DateSelect
 
 export default function SimpleDatePicker({
   goalType,
+  weeklyTarget,
+  onWeeklyTargetChange,
   startDate: initialStartDate,
   endDate: initialEndDate,
   onStartDateChange,
@@ -1058,17 +1062,17 @@ export default function SimpleDatePicker({
             <Text className="text-blue-800 font-semibold text-base mb-3">주당 목표 횟수</Text>
             <View className="flex-row items-center justify-center space-x-4">
               <TouchableOpacity
-                onPress={() => onPerWeekChange?.(Math.max(1, (perWeek || 3) - 1))}
+                onPress={() => onWeeklyTargetChange(Math.max(1, weeklyTarget - 1))}
                 className="w-10 h-10 bg-blue-200 rounded-full items-center justify-center"
                 activeOpacity={0.7}
               >
                 <Text className="text-blue-700 text-xl font-bold">-</Text>
               </TouchableOpacity>
               <Text className="text-2xl font-bold text-blue-800 min-w-[60px] text-center">
-                {perWeek || 3}회
+                {weeklyTarget}회
               </Text>
               <TouchableOpacity
-                onPress={() => onPerWeekChange?.((perWeek || 3) + 1)}
+                onPress={() => onWeeklyTargetChange(Math.min(7, weeklyTarget + 1))}
                 className="w-10 h-10 bg-blue-200 rounded-full items-center justify-center"
                 activeOpacity={0.7}
               >
@@ -1076,7 +1080,7 @@ export default function SimpleDatePicker({
               </TouchableOpacity>
             </View>
             <Text className="text-blue-600 text-sm text-center mt-2">
-              주당 {perWeek || 3}회 목표를 달성하세요
+              주당 {weeklyTarget}회 목표를 달성하세요
             </Text>
           </View>
         )}

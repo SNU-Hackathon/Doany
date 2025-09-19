@@ -1984,6 +1984,8 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       )}
         <SimpleDatePicker
           goalType={goalType}
+          weeklyTarget={weeklyTarget}
+          onWeeklyTargetChange={setWeeklyTarget}
           startDate={aiDraft.startDate || null}
           endDate={aiDraft.duration?.endDate || null}
         onStartDateChange={(date) => {
@@ -2098,8 +2100,25 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     }
   };
 
-  // Interactive verification methods state
-  const selectedMethods = formData.verificationMethods ?? [];
+  // Weekly target state
+  const weeklyTarget = (formData as any).weeklyTarget ?? (formData as any).weeklyMinimum ?? 3;
+  const setWeeklyTarget = (v: number) =>
+    setFormData(prev => ({ ...prev, weeklyTarget: v, weeklyMinimum: v }));
+
+  // Verification Methods: 타입별 whitelist
+  const ALLOWED: Record<'frequency'|'schedule', string[]> = {
+    frequency: ['manual','location','photo'],
+    schedule:  ['manual','location','photo','time','screentime'],
+  };
+  const allowed = ALLOWED[isFrequency ? 'frequency' : 'schedule'];
+  
+  // Filter selected methods to only include allowed ones
+  let selectedMethods = (formData.verificationMethods ?? []).filter(m => allowed.includes(m as any));
+  if ((formData.verificationMethods ?? []).length !== selectedMethods.length) {
+    // One-time correction if there's a mismatch
+    setFormData(prev => ({ ...prev, verificationMethods: selectedMethods }));
+  }
+
   const toggleVerification = (m: 'manual'|'location'|'photo'|'time'|'screentime') => {
     const next = selectedMethods.includes(m as any)
       ? selectedMethods.filter(x => x !== m)
@@ -2111,7 +2130,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     <View className="mb-6">
       <Text className="text-lg font-semibold text-gray-800 mb-4">Verification Methods</Text>
       
-      {['manual', 'location', 'photo', 'time', 'screentime'].map((method) => (
+      {allowed.map((method) => (
         <TouchableOpacity
           key={method}
           onPress={() => toggleVerification(method as any)}
@@ -2860,6 +2879,8 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         return (
           <SimpleDatePicker
               goalType={goalType}
+              weeklyTarget={weeklyTarget}
+              onWeeklyTargetChange={setWeeklyTarget}
               startDate={formData.duration?.startDate || null}
               endDate={formData.duration?.endDate || null}
               onStartDateChange={(date) => setFormData(prev => ({ ...prev, duration: { ...prev.duration, startDate: date } }))}
@@ -2897,6 +2918,8 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
           <View>
             <SimpleDatePicker
               goalType={goalType}
+              weeklyTarget={weeklyTarget}
+              onWeeklyTargetChange={setWeeklyTarget}
               startDate={formData.duration?.startDate || null}
               endDate={formData.duration?.endDate || null}
               onStartDateChange={(date) => setFormData(prev => ({ ...prev, duration: { ...prev.duration, startDate: date } }))}
