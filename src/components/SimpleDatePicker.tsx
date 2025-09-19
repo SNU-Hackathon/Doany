@@ -143,6 +143,33 @@ export default function SimpleDatePicker({
   const today = getLocalYMD(new Date());
   const dayShort = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];  const [startDate, setStartDate] = useState(initialStartDate || today);
   const [endDate, setEndDate] = useState(initialEndDate || '');
+
+  // 값 동등성 비교 helper
+  const toTs = (d: any) => (d ? new Date(d).getTime() : null);
+  const eq = (a: any, b: any) => toTs(a) === toTs(b);
+
+  // 🔒 props → state 동기화: 값이 "실제로 달라졌을 때만"
+  React.useEffect(() => {
+    if (!eq(startDate, initialStartDate)) setStartDate(initialStartDate ?? today);
+  }, [initialStartDate]);
+  React.useEffect(() => {
+    if (!eq(endDate, initialEndDate)) setEndDate(initialEndDate ?? '');
+  }, [initialEndDate]);
+
+  // 🔒 자식 → 부모 통지: 마지막으로 보낸 값과 다를 때만 emit
+  const lastEmittedRef = React.useRef<{ s: number | null; e: number | null }>({ s: null, e: null });
+  React.useEffect(() => {
+    if (!onStartDateChange || !onEndDateChange) return;
+    const s = toTs(startDate);
+    const e = toTs(endDate);
+    const last = lastEmittedRef.current;
+    if (last.s !== s || last.e !== e) {
+      lastEmittedRef.current = { s, e };
+      if (startDate) onStartDateChange(startDate);
+      if (endDate) onEndDateChange(endDate);
+    }
+  }, [startDate, endDate, onStartDateChange, onEndDateChange]);
+
   const [durationType, setDurationType] = useState<'days' | 'weeks' | 'months'>('weeks');
   const [durationValue, setDurationValue] = useState('2');  // Calendar navigation state
   const [currentMonth, setCurrentMonth] = useState(new Date(startDate || today));  // Weekly Schedule state removed - using calendar events only

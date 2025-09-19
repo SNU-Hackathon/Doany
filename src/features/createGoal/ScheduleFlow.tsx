@@ -58,25 +58,26 @@ export default function ScheduleFlow({ goalType, formData, setFormData, onDone }
     setFormData(prev => ({ ...prev, weeklyTarget: v, weeklyMinimum: v }));
 
   const allowed = ALLOWED[goalType];
-  // frequency에서는 manual 강제 포함 + 잠금
-  let baseSelected: string[] = (formData?.verificationMethods ?? []).filter(m => allowed.includes(m));
-  if (isFrequency && !baseSelected.includes('manual')) baseSelected = ['manual', ...baseSelected];
-  // 상태 보정
+  
+  // 🔒 보정은 "실제로 달라질 때만" 수행
   React.useEffect(() => {
-    setFormData(prev => {
-      const current = prev?.verificationMethods ?? [];
-      const filtered = current.filter((m: string) => allowed.includes(m));
-      const normalized = isFrequency
-        ? Array.from(new Set(['manual', ...filtered]))
-        : filtered;
-      if (JSON.stringify(normalized) !== JSON.stringify(current)) {
-        return { ...prev, verificationMethods: normalized };
-      }
-      return prev;
-    });
+    const current: string[] = formData?.verificationMethods ?? [];
+    const filtered = current.filter((m) => allowed.includes(m));
+    const normalized = isFrequency ? Array.from(new Set(['manual', ...filtered])) : filtered;
+    if (current.length !== normalized.length || current.some((m, i) => m !== normalized[i])) {
+      setFormData((prev) => ({ ...prev, verificationMethods: normalized }));
+    }
+    // goalType/allowed가 바뀔 때만 시도
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [goalType]);
-  const selected = baseSelected;
+  
+  // frequency에서는 manual 강제 포함 + 잠금
+  const selected: string[] = (() => {
+    const baseSelected = (formData?.verificationMethods ?? []).filter(m => allowed.includes(m));
+    return isFrequency && !baseSelected.includes('manual') 
+      ? ['manual', ...baseSelected]
+      : baseSelected;
+  })();
   const toggleMethod = (m: string) => {
     if (isFrequency && m === 'manual') return; // 잠금
     const next = selected.includes(m) ? selected.filter(x => x !== m) : [...selected, m];
@@ -122,8 +123,23 @@ export default function ScheduleFlow({ goalType, formData, setFormData, onDone }
               onWeeklyTargetChange={setWeeklyTarget}
               startDate={formData?.duration?.startDate || null}
               endDate={formData?.duration?.endDate || null}
-              onStartDateChange={(date) => setFormData(prev => ({ ...prev, duration: { ...prev?.duration, startDate: date } }))}
-              onEndDateChange={(date) => setFormData(prev => ({ ...prev, duration: { ...prev?.duration, endDate: date } }))}
+              // 🔒 부모 업데이트는 참으로 바뀔 때만 — 동일성 검사
+              onStartDateChange={(date) => {
+                setFormData(prev => {
+                  const prevStart = prev?.duration?.startDate ?? null;
+                  const ts = (d:any)=> (d? new Date(d).getTime(): null);
+                  if (ts(prevStart) === ts(date)) return prev;
+                  return { ...prev, duration: { ...prev?.duration, startDate: date } };
+                });
+              }}
+              onEndDateChange={(date) => {
+                setFormData(prev => {
+                  const prevEnd = prev?.duration?.endDate ?? null;
+                  const ts = (d:any)=> (d? new Date(d).getTime(): null);
+                  if (ts(prevEnd) === ts(date)) return prev;
+                  return { ...prev, duration: { ...prev?.duration, endDate: date } };
+                });
+              }}
               onNavigateToStep={() => {}} // Not used in sub-flow
               mode={isFrequency ? 'period' : 'period+weekly'}
               variant="compact" // 헤더/설명 축소
