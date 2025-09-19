@@ -44,12 +44,6 @@ const STEPS = [
 ];
 
 function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalModalProps) {
-  // ---- DEBUG marker: 이 로그가 보이면 올바른 파일이 로드된 것임
-  const __DBG_VERSION = 'CreateGoalModal.v2025-09-19-1';
-  useEffect(() => {
-    console.log('[CreateGoalModal] version:', __DBG_VERSION);
-  }, []);
-
   // Performance tracking
   console.time('[CreateGoalModal] Component Mount');
   
@@ -2817,7 +2811,6 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
 
   // Render function for FlatList sections
   const renderSection = ({ item }: { item: any }) => {
-    console.log('[CreateGoalModal] render section:', item?.type);
     switch (item.type) {
       case 'ai':
         return renderAISection();
@@ -2825,9 +2818,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         return renderScheduleSection();
       case 'datePicker':
         return (
-          <View style={{ borderWidth: 2, borderColor: '#22c55e', padding: 8, marginBottom: 12 }}>
-            <Text style={{ color: '#166534', fontWeight: '700', marginBottom: 6 }}>DEBUG: datePicker section</Text>
-            <SimpleDatePicker
+          <SimpleDatePicker
               startDate={formData.duration?.startDate || null}
               endDate={formData.duration?.endDate || null}
               onStartDateChange={(date) => setFormData(prev => ({ ...prev, duration: { ...prev.duration, startDate: date } }))}
@@ -2864,7 +2855,6 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
                 });
               }}
             />
-          </View>
         );
       case 'frequency':
         return (
@@ -2923,12 +2913,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
           </View>
         );
       case 'location':
-        return (
-          <View style={{ borderWidth: 2, borderColor: '#f59e0b', padding: 8, marginBottom: 12 }}>
-            <Text style={{ color: '#b45309', fontWeight: '700', marginBottom: 6 }}>DEBUG: location section</Text>
-            {renderLocationSection()}
-          </View>
-        );
+        return renderLocationSection();
       case 'manualForm':
         return renderManualFormSection();
       case 'validation':
@@ -2973,8 +2958,6 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         break;
     }
 
-    const types = sections.map((s: any) => s.type);
-    console.log('[CreateGoalModal] getSections@step', state.step, types);
     return sections;
   };
 
@@ -3499,10 +3482,9 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
           contentContainerStyle={{ padding: 16 }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
-          initialNumToRender={5}
-          windowSize={7}
-          removeClippedSubviews={false}  // DEBUG: clipping 방지
-          getItemLayout={undefined}      // 높이 추정 비활성화
+          initialNumToRender={3}
+          windowSize={3}
+          removeClippedSubviews={true}
           extraData={{ formData, aiVerificationLoading, stateStep: state.step }}
         />
 

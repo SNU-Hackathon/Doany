@@ -1,5 +1,6 @@
 // Main App component with single NavigationContainer and conditional auth gate
 import 'react-native-gesture-handler'; // ← RNGH 사이드 이펙트 import (가장 위쪽에 두는 게 안전)
+import 'react-native-reanimated';
 
 import { NavigationContainer } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
