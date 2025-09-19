@@ -19,6 +19,7 @@ import { LocationSearch } from '../components';
 import { FrequencyTarget, PartnerPicker, ScheduleWhen } from '../components/createGoal';
 import { Categories } from '../constants';
 import { classifyGoalTypeFromTitle, computeVerificationPlan, CreateGoalState as CreateGoalFeatureState, CreateGoalProvider, GoalType, INITIAL_CREATE_GOAL_STATE, RULE_TIPS, useCreateGoal, validateCreateView, validateFrequencyDraft } from '../features/createGoal';
+import ScheduleFlow from '../features/createGoal/ScheduleFlow';
 import { AIGoalDraft, mergeAIGoal, parseGoalSpec, updateDraftWithDates, validateAIGoal } from '../features/goals/aiDraft';
 import { useAuth } from '../hooks/useAuth';
 import { AIService } from '../services/ai';
@@ -2987,15 +2988,8 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       case 0: // AI Assistant
         sections.push({ type: 'ai', key: 'ai-section' });
         break;
-      case 1: // Schedule
-        // 1) Calendar / weekly schedule editor
-        sections.push({ type: 'datePicker', key: 'date-picker' });
-        // 2) Verification Methods (single source)
-        sections.push({ type: 'verification', key: 'verification' });
-        // 3) Target Location (only when location method is selected)
-        const hasLocation = (formData.verificationMethods ?? []).includes('location' as any);
-        if (hasLocation) sections.push({ type: 'location', key: 'location' });
-        break;
+      case 1: // Schedule - handled by ScheduleFlow
+        return null; // ScheduleFlow will handle this step
       case 2: // Review
         sections.push({ type: 'validation', key: 'validation-section' });
         sections.push({ type: 'manualForm', key: 'manual-form-section' });
@@ -3535,54 +3529,65 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
           </View>
         )}
 
-        {/* Main content using FlatList to avoid VirtualizedList nesting */}
-        <FlatList
-          data={getSections()}
-          renderItem={renderSection}
-          keyExtractor={(item: any) => item.key}
-          contentContainerStyle={{ padding: 16 }}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          initialNumToRender={3}
-          windowSize={3}
-          removeClippedSubviews={true}
-          extraData={{ formData, aiVerificationLoading, stateStep: state.step }}
-        />
+        {/* Main content - Schedule step uses ScheduleFlow, others use FlatList */}
+        {state.step === 1 ? (
+          <ScheduleFlow
+            goalType={goalType}
+            formData={formData}
+            setFormData={setFormData}
+            onDone={() => actions.setStep(2)}
+          />
+        ) : (
+          <FlatList
+            data={getSections()}
+            renderItem={renderSection}
+            keyExtractor={(item: any) => item.key}
+            contentContainerStyle={{ padding: 16 }}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            initialNumToRender={3}
+            windowSize={3}
+            removeClippedSubviews={true}
+            extraData={{ formData, aiVerificationLoading, stateStep: state.step }}
+          />
+        )}
 
-        {/* Step Footer - Back/Next buttons */}
-        <View style={{ padding: 16, backgroundColor: '#f9fafb', borderTopWidth: 1, borderTopColor: '#e5e7eb' }}>
-          <View style={{ flexDirection: 'row', gap: 12 }}>
-            <TouchableOpacity 
-              style={{ flex: 1, backgroundColor: '#e5e7eb', borderRadius: 8, padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}
-              onPress={() => goToStep(state.step - 1)}
-              disabled={state.step === 0}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="chevron-back" size={16} color={state.step === 0 ? '#9ca3af' : '#374151'} />
-              <Text style={{ color: state.step === 0 ? '#9ca3af' : '#2563eb', fontWeight: '600', marginLeft: 8 }}>Back</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={{ 
-                flex: 1, 
-                backgroundColor: canProceedToNext() ? '#2563eb' : '#9ca3af', 
-                borderRadius: 8, 
-                padding: 12, 
-                flexDirection: 'row', 
-                alignItems: 'center', 
-                justifyContent: 'center' 
-              }}
-              onPress={onNext}
-              disabled={!canProceedToNext()}
-              activeOpacity={0.8}
-            >
-              <Text style={{ color: 'white', fontWeight: '600', marginRight: 8 }}>
-                {state.step === STEPS.length - 1 ? 'Create Goal' : 'Next'}
-              </Text>
-              <Ionicons name="chevron-forward" size={16} color="white" />
-            </TouchableOpacity>
+        {/* Step Footer - Back/Next buttons (hidden during Schedule step) */}
+        {state.step !== 1 && (
+          <View style={{ padding: 16, backgroundColor: '#f9fafb', borderTopWidth: 1, borderTopColor: '#e5e7eb' }}>
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <TouchableOpacity 
+                style={{ flex: 1, backgroundColor: '#e5e7eb', borderRadius: 8, padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}
+                onPress={() => goToStep(state.step - 1)}
+                disabled={state.step === 0}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="chevron-back" size={16} color={state.step === 0 ? '#9ca3af' : '#374151'} />
+                <Text style={{ color: state.step === 0 ? '#9ca3af' : '#2563eb', fontWeight: '600', marginLeft: 8 }}>Back</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={{ 
+                  flex: 1, 
+                  backgroundColor: canProceedToNext() ? '#2563eb' : '#9ca3af', 
+                  borderRadius: 8, 
+                  padding: 12, 
+                  flexDirection: 'row', 
+                  alignItems: 'center', 
+                  justifyContent: 'center' 
+                }}
+                onPress={onNext}
+                disabled={!canProceedToNext()}
+                activeOpacity={0.8}
+              >
+                <Text style={{ color: 'white', fontWeight: '600', marginRight: 8 }}>
+                  {state.step === STEPS.length - 1 ? 'Create Goal' : 'Next'}
+                </Text>
+                <Ionicons name="chevron-forward" size={16} color="white" />
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
+        )}
 
       {/* Location Picker Overlay Modal */}
       <Modal

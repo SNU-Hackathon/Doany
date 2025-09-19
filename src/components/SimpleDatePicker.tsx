@@ -71,6 +71,8 @@ const defer = (fn: () => void) => queueMicrotask(fn);export interface DateSelect
   onStartDateChange: (date: string) => void;
   onEndDateChange: (date: string) => void;
   onNavigateToStep: (stepIndex: number) => void;
+  mode?: 'period' | 'period+weekly';
+  variant?: 'default' | 'compact'; // 헤더/서브텍스트 축소
   goalTitle?: string;
   goalRawText?: string;
   aiSuccessCriteria?: string;
@@ -112,6 +114,8 @@ export default function SimpleDatePicker({
   onStartDateChange,
   onEndDateChange,
   onNavigateToStep,
+  mode = 'period+weekly',
+  variant = 'default',
   goalTitle,
   goalRawText,
   aiSuccessCriteria,
@@ -861,14 +865,16 @@ export default function SimpleDatePicker({
         </View>
       )}
       {/* Header */}
-      <View className="mb-6">
-        <Text className="text-2xl font-bold text-gray-800 text-center">
-          {isFrequencyGoal ? 'Frequency Goal' : 'Schedule'}
-        </Text>
-        <Text className="text-gray-600 text-center mt-2">
-          {isFrequencyGoal ? 'Set your goal duration and frequency' : 'Set your goal duration and schedule'}
-        </Text>
-      </View>
+      {variant !== 'compact' && (
+        <View className="mb-6">
+          <Text className="text-2xl font-bold text-gray-800 text-center">
+            {isFrequencyGoal ? 'Frequency Goal' : 'Schedule'}
+          </Text>
+          <Text className="text-gray-600 text-center mt-2">
+            {isFrequencyGoal ? 'Set your goal duration and frequency' : 'Set your goal duration and schedule'}
+          </Text>
+        </View>
+      )}
 
       {/* Duration Controls */}
       <View className="mb-6 p-4 bg-blue-50 rounded-lg">
@@ -1041,7 +1047,7 @@ export default function SimpleDatePicker({
               Edit Period
             </Text>
           </TouchableOpacity>
-          {goalType === 'schedule' && (
+          {goalType === 'schedule' && mode === 'period+weekly' && (
             <TouchableOpacity
               onPress={() => setEditingMode('schedule')}
               className={`flex-1 rounded-lg py-3 ${editingMode === 'schedule' ? 'bg-green-600' : 'bg-green-100'}`}
