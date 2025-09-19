@@ -2,6 +2,7 @@ import React, { memo, useMemo, useRef, useState } from 'react';
 import { Dimensions, FlatList, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import LocationSection from '../../components/LocationSection';
 import SimpleDatePicker from '../../components/SimpleDatePicker';
+import { DateRange, minMaxFromRanges } from '../../utils/dateRanges';
 
 type GoalType = 'frequency' | 'schedule';
 
@@ -72,6 +73,21 @@ export default function ScheduleFlow({ goalType, formData, setFormData, onDone }
   const setWeeklyTarget = (v: number) =>
     setFormData(prev => ({ ...prev, weeklyTarget: v, weeklyMinimum: v }));
 
+  // ranges 기반으로 변경
+  const ranges: DateRange[] = formData.durationRanges ?? (formData.duration?.startDate && formData.duration?.endDate
+    ? [{ start: new Date(formData.duration.startDate), end: new Date(formData.duration.endDate) }]
+    : []);
+  const setRanges = (next: DateRange[]) => {
+    setFormData(prev => ({
+      ...prev,
+      durationRanges: next,
+      duration: (() => {
+        const { start, end } = minMaxFromRanges(next);
+        return { ...(prev?.duration ?? {}), startDate: start, endDate: end };
+      })()
+    }));
+  };
+
   const allowed = ALLOWED[goalType];
   
   // 🔒 보정은 "실제로 달라질 때만" 수행
@@ -126,25 +142,8 @@ export default function ScheduleFlow({ goalType, formData, setFormData, onDone }
               goalType={goalType}
               weeklyTarget={weeklyTarget}
               onWeeklyTargetChange={setWeeklyTarget}
-              startDate={formData?.duration?.startDate || null}
-              endDate={formData?.duration?.endDate || null}
-              // 🔒 부모 업데이트는 참으로 바뀔 때만 — 동일성 검사
-              onStartDateChange={(date) => {
-                setFormData(prev => {
-                  const prevStart = prev?.duration?.startDate ?? null;
-                  const ts = (d:any)=> (d? new Date(d).getTime(): null);
-                  if (ts(prevStart) === ts(date)) return prev;
-                  return { ...prev, duration: { ...prev?.duration, startDate: date } };
-                });
-              }}
-              onEndDateChange={(date) => {
-                setFormData(prev => {
-                  const prevEnd = prev?.duration?.endDate ?? null;
-                  const ts = (d:any)=> (d? new Date(d).getTime(): null);
-                  if (ts(prevEnd) === ts(date)) return prev;
-                  return { ...prev, duration: { ...prev?.duration, endDate: date } };
-                });
-              }}
+              ranges={ranges}
+              onRangesChange={setRanges}
               onNavigateToStep={() => {}} // Not used in sub-flow
               mode={isFrequency ? 'period' : 'period+weekly'}
               variant="compact" // 헤더/설명 축소

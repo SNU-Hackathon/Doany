@@ -1987,22 +1987,27 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
           goalType={goalType}
           weeklyTarget={weeklyTarget}
           onWeeklyTargetChange={setWeeklyTarget}
-          startDate={aiDraft.startDate || null}
-          endDate={aiDraft.duration?.endDate || null}
-        onStartDateChange={(date) => {
-          // Update AI draft with new start date
-          setAiDraft(prev => ({ ...prev, startDate: date }));
-          // Also mirror to formData duration.startDate
-          setFormData(prev => ({ ...prev, duration: { ...prev.duration, startDate: date } }));
-        }}
-        onEndDateChange={(date) => {
-          // Update AI draft with new end date
-          setAiDraft(prev => ({ 
-            ...prev, 
-            duration: { ...prev.duration, endDate: date } 
-          }));
-          setFormData(prev => ({ ...prev, duration: { ...prev.duration, endDate: date } }));
-        }}
+          ranges={aiDraft.startDate && aiDraft.duration?.endDate 
+            ? [{ start: new Date(aiDraft.startDate), end: new Date(aiDraft.duration.endDate) }] 
+            : []}
+          onRangesChange={(ranges) => {
+            if (ranges.length > 0) {
+              const range = ranges[0];
+              const startDate = range.start.toISOString().slice(0,10);
+              const endDate = range.end.toISOString().slice(0,10);
+              // Update AI draft
+              setAiDraft(prev => ({ 
+                ...prev, 
+                startDate,
+                duration: { ...prev.duration, endDate } 
+              }));
+              // Also mirror to formData
+              setFormData(prev => ({ 
+                ...prev, 
+                duration: { ...prev.duration, startDate, endDate } 
+              }));
+            }
+          }}
         onNavigateToStep={goToStep}
         onWeeklyScheduleChange={handleWeeklyScheduleChange}
         includeDates={formData.includeDates}
@@ -2882,10 +2887,20 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
               goalType={goalType}
               weeklyTarget={weeklyTarget}
               onWeeklyTargetChange={setWeeklyTarget}
-              startDate={formData.duration?.startDate || null}
-              endDate={formData.duration?.endDate || null}
-              onStartDateChange={(date) => setFormData(prev => ({ ...prev, duration: { ...prev.duration, startDate: date } }))}
-              onEndDateChange={(date) => setFormData(prev => ({ ...prev, duration: { ...prev.duration, endDate: date } }))}
+              ranges={formData.duration?.startDate && formData.duration?.endDate 
+                ? [{ start: new Date(formData.duration.startDate), end: new Date(formData.duration.endDate) }] 
+                : []}
+              onRangesChange={(ranges) => {
+                if (ranges.length > 0) {
+                  const range = ranges[0];
+                  const startDate = range.start.toISOString().slice(0,10);
+                  const endDate = range.end.toISOString().slice(0,10);
+                  setFormData(prev => ({ 
+                    ...prev, 
+                    duration: { ...prev.duration, startDate, endDate } 
+                  }));
+                }
+              }}
               onNavigateToStep={goToStep}
               onWeeklyScheduleChange={handleWeeklyScheduleChange}
               includeDates={formData.includeDates}
@@ -2921,10 +2936,20 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
               goalType={goalType}
               weeklyTarget={weeklyTarget}
               onWeeklyTargetChange={setWeeklyTarget}
-              startDate={formData.duration?.startDate || null}
-              endDate={formData.duration?.endDate || null}
-              onStartDateChange={(date) => setFormData(prev => ({ ...prev, duration: { ...prev.duration, startDate: date } }))}
-              onEndDateChange={(date) => setFormData(prev => ({ ...prev, duration: { ...prev.duration, endDate: date } }))}
+              ranges={formData.duration?.startDate && formData.duration?.endDate 
+                ? [{ start: new Date(formData.duration.startDate), end: new Date(formData.duration.endDate) }] 
+                : []}
+              onRangesChange={(ranges) => {
+                if (ranges.length > 0) {
+                  const range = ranges[0];
+                  const startDate = range.start.toISOString().slice(0,10);
+                  const endDate = range.end.toISOString().slice(0,10);
+                  setFormData(prev => ({ 
+                    ...prev, 
+                    duration: { ...prev.duration, startDate, endDate } 
+                  }));
+                }
+              }}
               onNavigateToStep={goToStep}
               onWeeklyScheduleChange={handleWeeklyScheduleChange}
               includeDates={formData.includeDates}

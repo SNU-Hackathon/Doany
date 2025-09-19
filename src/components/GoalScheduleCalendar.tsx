@@ -9,16 +9,23 @@
 
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { CalendarEvent, Verification } from '../types';
+import { DateRange, addRange, isDateInRanges, normalizeRange, subtractRange } from '../utils/dateRanges';
 
 type WeeklyTimeSettings = { [key: string]: string[] } | { [key: number]: string[] };
 
 interface GoalScheduleCalendarProps {
+  // 선택 상태를 단일 start/end 대신 ranges로 받음(하위 호환 위해 start/end도 유지 가능)
+  ranges: DateRange[];
+  onRangesChange?: (ranges: DateRange[]) => void;
+  interactionMode?: 'view'|'edit'; // view: 스크롤만, edit: 드래그로 선택
+  showScheduledWeekdays?: boolean;
+  // 기존 props(startDate/endDate 등)는 내부에서 min/max 계산용으로만 사용
   startDateISO?: string | null;
   endDateISO?: string | null;
   weeklyWeekdays?: number[];
   weeklyTimeSettings?: WeeklyTimeSettings;
-  showScheduledWeekdays?: boolean;
   includeDates?: string[];
   excludeDates?: string[];
   verifications?: Verification[];
@@ -444,11 +451,14 @@ function getWeekNumber(date: Date): number {
 }
 
 export default memo(function GoalScheduleCalendar({
+  ranges,
+  onRangesChange,
+  interactionMode = 'view',
+  showScheduledWeekdays = true,
   startDateISO,
   endDateISO,
   weeklyWeekdays = [],
   weeklyTimeSettings = {},
-  showScheduledWeekdays = true,
   includeDates = [],
   excludeDates = [],
   verifications = [],
@@ -456,6 +466,15 @@ export default memo(function GoalScheduleCalendar({
   calendarEvents = [],
   goalId
 }: GoalScheduleCalendarProps & { goalId?: string }) {
+  // 🔒 visibleMonth는 선택과 독립
+  const [visibleMonth, setVisibleMonth] = useState<Date>(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+  
+  // ---- 드래그 선택 상태
+  const dragAnchorRef = useRef<Date|null>(null);
+  const dragModeRef = useRef<'add'|'subtract'|null>(null);
+  const lastHoverRef = useRef<string|null>(null); // YYYY-MM-DD
+  const dateKey = (d: Date) => d.toISOString().slice(0,10);
+
   const getLocalYMD = (d: Date) => {
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -463,6 +482,53 @@ export default memo(function GoalScheduleCalendar({
     return `${y}-${m}-${dd}`;
   };
   const today = getLocalYMD(new Date());
+
+  // 🔁 visibleMonth 기반으로 달력 그리드 생성
+  const generateDaysForMonth = useCallback((month: Date) => {
+    const year = month.getFullYear();
+    const monthIndex = month.getMonth();
+    const firstDay = new Date(year, monthIndex, 1);
+    const lastDay = new Date(year, monthIndex + 1, 0);
+    const startDate = new Date(firstDay);
+    startDate.setDate(startDate.getDate() - firstDay.getDay());
+    
+    const days = [];
+    const currentDate = new Date(startDate);
+    
+    for (let i = 0; i < 42; i++) { // 6 weeks * 7 days
+      const dateStr = getLocalYMD(currentDate);
+      const isCurrentMonth = currentDate.getMonth() === monthIndex;
+      const isToday = dateStr === today;
+      
+      days.push({
+        dateStr,
+        day: currentDate.getDate(),
+        inRange: isCurrentMonth,
+        isToday,
+        requiredForDay: 0, // 기본값
+        success: 0,
+        fail: 0,
+        times: [],
+        overrideTimes: [],
+        overrideCount: 0,
+        dayEvents: []
+      });
+      
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+    
+    return days;
+  }, [today]);
+
+  // 현재 보이는 월들을 계산 (현재 월과 앞뒤 월)
+  const monthsInView = useMemo(() => {
+    const current = new Date(visibleMonth);
+    const prev = new Date(current);
+    prev.setMonth(prev.getMonth() - 1);
+    const next = new Date(current);
+    next.setMonth(next.getMonth() + 1);
+    return [prev, current, next];
+  }, [visibleMonth]);
 
   // Long press modal state
   const [longPressModalVisible, setLongPressModalVisible] = useState(false);
@@ -501,6 +567,37 @@ export default memo(function GoalScheduleCalendar({
     // Example: Quick add time, mark as completed, etc.
   }, []);
 
+  // ---- 드래그 선택 핸들러들
+  const commitPreview = useCallback((hover: Date) => {
+    if (!onRangesChange || !dragAnchorRef.current || !dragModeRef.current) return;
+    const a = dragAnchorRef.current;
+    const draft = normalizeRange(a, hover);
+    const next = dragModeRef.current === 'add' ? addRange(ranges, draft) : subtractRange(ranges, draft);
+    onRangesChange(next);
+  }, [onRangesChange, ranges]);
+
+  // DayCell에서 호출할 핸들러
+  const onLongPressDay = useCallback((day: Date, isSelected: boolean) => {
+    if (interactionMode !== 'edit') return;
+    dragAnchorRef.current = day;
+    dragModeRef.current = isSelected ? 'subtract' : 'add';
+    lastHoverRef.current = dateKey(day);
+  }, [interactionMode]);
+  
+  const onHoverDay = useCallback((day: Date) => {
+    if (interactionMode !== 'edit' || !dragAnchorRef.current) return;
+    const k = dateKey(day);
+    if (lastHoverRef.current === k) return; // 같은 셀이면 무시(성능)
+    lastHoverRef.current = k;
+    commitPreview(day);
+  }, [interactionMode, commitPreview]);
+  
+  const onRelease = useCallback(() => {
+    dragAnchorRef.current = null;
+    dragModeRef.current = null;
+    lastHoverRef.current = null;
+  }, []);
+
   const { perDateRequired, required } = useMemo(() =>
     computeScheduleCounts(startDateISO, endDateISO, [], {}, includeDates, excludeDates, enforcePartialWeeks, calendarEvents),
     [startDateISO, endDateISO, includeDates, excludeDates, enforcePartialWeeks, calendarEvents]
@@ -528,87 +625,7 @@ export default memo(function GoalScheduleCalendar({
     return sum;
   }, [successFailByDate, perDateRequired]);
 
-  const monthsInView = useMemo(() => {
-    const list: Date[] = [];
-    if (startDateISO && endDateISO) {
-      const start = new Date(startDateISO);
-      const end = new Date(endDateISO);
-      const cur = new Date(start.getFullYear(), start.getMonth(), 1);
-      const endMonth = new Date(end.getFullYear(), end.getMonth(), 1);
-      while (cur <= endMonth) {
-        list.push(new Date(cur));
-        cur.setMonth(cur.getMonth() + 1);
-      }
-    } else {
-      const anchor = new Date();
-      const start = new Date(anchor);
-      start.setMonth(anchor.getMonth() - 2);
-      for (let i = 0; i < 6; i++) {
-        const m = new Date(start);
-        m.setMonth(start.getMonth() + i);
-        list.push(m);
-      }
-    }
-    return list;
-  }, [startDateISO, endDateISO]);
-
-  const generateDaysForMonth = (m: Date) => {
-    const y = m.getFullYear();
-    const mm = m.getMonth();
-    const firstDay = new Date(y, mm, 1);
-    const lastDay = new Date(y, mm + 1, 0);
-    const startingDay = firstDay.getDay();
-    const days: any[] = [];
-    for (let i = 0; i < startingDay; i++) days.push(null);
-    for (let d = 1; d <= lastDay.getDate(); d++) {
-      const ds = getLocalYMD(new Date(y, mm, d));
-      const inRange = !!(startDateISO && endDateISO && ds >= startDateISO && ds <= endDateISO);
-      const requiredForDay = inRange ? (perDateRequired.get(ds) || 0) : 0;
-      const vf = successFailByDate.get(ds);
-      const isToday = ds === today;
-      
-      // Get time information for this date from calendar events
-      const dayEvents = localCalendarEvents?.filter(e => e.date === ds) || [];
-      const dayTimes = dayEvents
-        .filter(e => e.time)
-        .map(e => e.time)
-        .sort()
-        .filter((time, index, array) => array.indexOf(time) === index); // Remove duplicates
-      
-      // Debug logging for time display
-      if (dayEvents.length > 0) {
-        console.log(`[GoalScheduleCalendar] Date ${ds} has ${dayEvents.length} events:`, {
-          events: dayEvents.map(e => ({ time: e.time, source: e.source })),
-          times: dayTimes,
-          overrideCount: dayEvents.filter(e => e.source === 'override').length
-        });
-      }
-      
-      // Additional debug for empty times
-      if (dayEvents.length > 0 && dayTimes.length === 0) {
-        console.warn(`[GoalScheduleCalendar] Date ${ds} has events but no times:`, {
-          events: dayEvents,
-          eventsWithTime: dayEvents.filter(e => e.time),
-          eventsWithoutTime: dayEvents.filter(e => !e.time)
-        });
-      }
-      
-      days.push({
-        day: d,
-        dateStr: ds,
-        inRange,
-        requiredForDay,
-        success: vf?.success || 0,
-        fail: vf?.fail || 0,
-        isToday,
-        times: dayTimes, // Add times array
-        overrideTimes: dayEvents.filter(e => e.source === 'override').map(e => e.time), // Add overrideTimes array
-        overrideCount: dayEvents.filter(e => e.source === 'override').length, // Add overrideCount
-        dayEvents: dayEvents // Add full dayEvents array for debugging
-      });
-    }
-    return days;
-  };
+  // 기존 monthsInView와 generateDaysForMonth 제거됨 - visibleMonth 기반으로 변경
 
   // Achievement rate
   const achievementPct = required > 0 ? Math.round((successCount / required) * 100) : 0;
@@ -664,9 +681,31 @@ export default memo(function GoalScheduleCalendar({
       <View className="mb-2" style={{ height: VIEWPORT_HEIGHT }}>
         {/* Fixed month/year header and single day-of-week row */}
         <View className="mb-2">
-          <Text className="text-center text-lg font-bold text-gray-800">
-            {(headerMonth || monthsInView[0] || new Date()).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-          </Text>
+          <View className="flex-row items-center justify-between mb-2">
+            <TouchableOpacity
+              onPress={() => {
+                const prev = new Date(visibleMonth);
+                prev.setMonth(prev.getMonth() - 1);
+                setVisibleMonth(prev);
+              }}
+              className="p-2"
+            >
+              <Text className="text-blue-600 font-bold text-lg">←</Text>
+            </TouchableOpacity>
+            <Text className="text-center text-lg font-bold text-gray-800">
+              {(headerMonth || monthsInView[0] || new Date()).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+            </Text>
+            <TouchableOpacity
+              onPress={() => {
+                const next = new Date(visibleMonth);
+                next.setMonth(next.getMonth() + 1);
+                setVisibleMonth(next);
+              }}
+              className="p-2"
+            >
+              <Text className="text-blue-600 font-bold text-lg">→</Text>
+            </TouchableOpacity>
+          </View>
           <View className="flex-row mt-2">
             {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((day) => (
               <View key={day} className="flex-1">
@@ -694,20 +733,27 @@ export default memo(function GoalScheduleCalendar({
                 onLayout={(e: any) => onMonthLayout(idx, e.nativeEvent.layout.y, e.nativeEvent.layout.height)}
               >
                 <View className="flex-row flex-wrap">
-                  {days.map((d: any, index: number) => (
-                    <TouchableOpacity
-                      key={index}
-                      className="w-[14.28%] p-1"
-                      style={{ aspectRatio: 1 }}
-                      onPress={() => d && handleDatePress(d.dateStr)}
-                      onLongPress={() => {
-                        console.log('[GoalScheduleCalendar] TouchableOpacity onLongPress triggered for date:', d?.dateStr);
-                        d && handleDateLongPress(d.dateStr);
-                      }}
-                      delayLongPress={500}
-                      activeOpacity={0.7}
-                      pressRetentionOffset={{ top: 20, left: 20, bottom: 20, right: 20 }}
-                    >
+                  {days.map((d: any, index: number) => {
+                    const selected = d ? isDateInRanges(new Date(d.dateStr), ranges) : false;
+                    const Long = Gesture.LongPress().onStart(() => {
+                      if (d) {
+                        console.log('[GoalScheduleCalendar] LongPress triggered for date:', d.dateStr);
+                        onLongPressDay(new Date(d.dateStr), selected);
+                      }
+                    });
+                    const Pan = Gesture.Pan().onChange((_e) => {
+                      if (d) onHoverDay(new Date(d.dateStr));
+                    }).onFinalize(onRelease);
+                    const gesture = Gesture.Simultaneous(Long, Pan);
+                    
+                    return (
+                      <GestureDetector key={index} gesture={gesture}>
+                        <TouchableOpacity
+                          className="w-[14.28%] p-1"
+                          style={{ aspectRatio: 1 }}
+                          onPress={() => d && handleDatePress(d.dateStr)}
+                          activeOpacity={0.7}
+                        >
                       {d ? (
                         <View className={`flex-1 rounded items-center justify-center relative ${
                           !d.inRange ? 'bg-gray-50' : d.requiredForDay > 0 ? 'bg-green-50' : 'bg-white'
@@ -780,14 +826,30 @@ export default memo(function GoalScheduleCalendar({
                       ) : (
                         <View className="flex-1" />
                       )}
-                    </TouchableOpacity>
-                  ))}
+                        </TouchableOpacity>
+                      </GestureDetector>
+                    );
+                  })}
                 </View>
               </View>
             );
           })}
         </ScrollView>
       </View>
+      
+      {/* Legend */}
+      {showScheduledWeekdays && (
+        <View className="flex-row justify-center mt-4 mb-2">
+          <View className="flex-row items-center mr-4">
+            <View className="w-3 h-3 bg-blue-500 rounded-full mr-2" />
+            <Text className="text-xs text-gray-600">Selected range</Text>
+          </View>
+          <View className="flex-row items-center">
+            <View className="w-3 h-3 bg-green-500 rounded-full mr-2" />
+            <Text className="text-xs text-gray-600">Scheduled weekdays</Text>
+          </View>
+        </View>
+      )}
       
       {/* Long press modal for date editing */}
       <DateEditModal

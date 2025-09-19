@@ -52,6 +52,7 @@ import {
 import { convertDurationToRange } from '../features/goals/aiDraft';
 import { CalendarEventService } from '../services/calendarEventService';
 import { CalendarEvent, GoalSpec, TargetLocation } from '../types';
+import { DateRange, minMaxFromRanges } from '../utils/dateRanges';
 import { getLocalYMD } from '../utils/dateUtils';
 const log = (...args: any[]) => console.log('[SimpleDatePicker]', ...args);
 const warn = (...args: any[]) => console.warn('[SimpleDatePicker]', ...args);
@@ -66,10 +67,8 @@ const defer = (fn: () => void) => queueMicrotask(fn);export interface DateSelect
   goalType: 'frequency' | 'schedule';
   weeklyTarget: number;
   onWeeklyTargetChange: (next: number) => void;
-  startDate: string | null;
-  endDate: string | null;
-  onStartDateChange: (date: string) => void;
-  onEndDateChange: (date: string) => void;
+  ranges: DateRange[];
+  onRangesChange?: (next: DateRange[]) => void;
   onNavigateToStep: (stepIndex: number) => void;
   mode?: 'period' | 'period+weekly';
   variant?: 'default' | 'compact'; // 헤더/서브텍스트 축소
@@ -109,10 +108,8 @@ export default function SimpleDatePicker({
   goalType,
   weeklyTarget,
   onWeeklyTargetChange,
-  startDate: initialStartDate,
-  endDate: initialEndDate,
-  onStartDateChange,
-  onEndDateChange,
+  ranges,
+  onRangesChange,
   onNavigateToStep,
   mode = 'period+weekly',
   variant = 'default',
@@ -141,49 +138,16 @@ export default function SimpleDatePicker({
   // Parent notifications must happen post-commit.
   
   const today = getLocalYMD(new Date());
-  const dayShort = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];  const [startDate, setStartDate] = useState(initialStartDate || today);
-  const [endDate, setEndDate] = useState(initialEndDate || '');
-
-  // 값 동등성 비교 helper
-  const toTs = (d: any) => (d ? new Date(d).getTime() : null);
-  const eq = (a: any, b: any) => toTs(a) === toTs(b);
-
-  // 🔒 props → state 동기화: 값이 "실제로 달라졌을 때만"
-  React.useEffect(() => {
-    if (!eq(startDate, initialStartDate)) setStartDate(initialStartDate ?? today);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialStartDate]);
-  React.useEffect(() => {
-    if (!eq(endDate, initialEndDate)) setEndDate(initialEndDate ?? '');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialEndDate]);
-
-  // 🔒 자식 → 부모 통지: 마지막으로 보낸 값과 다를 때만 emit
-  const lastEmittedRef = React.useRef<{ s: number | null; e: number | null }>({ s: null, e: null });
-  React.useEffect(() => {
-    if (!onStartDateChange || !onEndDateChange) return;
-    const s = toTs(startDate);
-    const e = toTs(endDate);
-    const last = lastEmittedRef.current;
-    if (last.s !== s || last.e !== e) {
-      lastEmittedRef.current = { s, e };
-      if (startDate) onStartDateChange(startDate);
-      if (endDate) onEndDateChange(endDate);
-    }
-  }, [startDate, endDate, onStartDateChange, onEndDateChange]);
+  const dayShort = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  
+  // 기존 startDate/endDate 대신 ranges에서 min~max 계산해 요약에 사용
+  const { start, end } = minMaxFromRanges(ranges);
 
   const [durationType, setDurationType] = useState<'days' | 'weeks' | 'months'>('weeks');
   const [durationValue, setDurationValue] = useState('2');  // Calendar navigation state
-  const [currentMonth, setCurrentMonth] = useState(new Date(startDate || today));  // Weekly Schedule state removed - using calendar events only
+  const [currentMonth, setCurrentMonth] = useState(new Date(start?.toISOString().slice(0,10) || today));  // Weekly Schedule state removed - using calendar events only
   const [editingMode, setEditingMode] = useState<'period' | 'schedule'>('period');
-  // Calendar state  // Ensure an initial endDate exists so that the current period is active
-  useEffect(() => {
-    if (!endDate && startDate) {
-      const numValue = parseInt(durationValue) || 1;
-      const range = convertDurationToRange(startDate, durationType, numValue);
-      setEndDate(range.endDate);
-    }
-  }, [endDate, startDate, durationType, durationValue]);  // Time picker modal state
+  // Calendar state - ranges 기반으로 변경됨  // Time picker modal state
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [editingDayIndex, setEditingDayIndex] = useState<number>(-1);
   const [editingTimeIndex, setEditingTimeIndex] = useState<number>(-1);
@@ -209,28 +173,20 @@ export default function SimpleDatePicker({
     return events;
   }, [calendarEvents, localCalendarEvents]);
 
-  // Weekly schedule removed - using calendar events only  // OPTIONAL: prefer effect-based parent notification (safer)
-  useEffect(() => {
-    if (!startDate) return;
-    onStartDateChange && onStartDateChange(startDate);
-  }, [startDate]);
-  useEffect(() => {
-    if (!endDate) return;
-    onEndDateChange && onEndDateChange(endDate);
-  }, [endDate]);
+  // Weekly schedule removed - using calendar events only
 
   // 모드 전환 시 스크롤 이동
   useEffect(() => {
-    if (editingMode === 'schedule' && startDate) {
+    if (editingMode === 'schedule' && start) {
       // 스케줄 모드: 시작월로 이동
-      const startMonth = new Date(startDate);
+      const startMonth = new Date(start);
       scrollToTargetMonth(startMonth);
     } else if (editingMode === 'period') {
       // 기간 편집 모드: 현재 월로 이동
       const currentMonth = new Date();
       scrollToTargetMonth(currentMonth);
     }
-  }, [editingMode, startDate]);  // Weekly schedule initialization removed  // Removed 'weekly overrides calendar excludes' effect to allow per-day overrides to persist  // Include/exclude logic removed - using calendar events only  // Calendar navigation functions (moved after monthsInView declaration)  // Generate calendar days for current month
+  }, [editingMode, start]);  // Weekly schedule initialization removed  // Removed 'weekly overrides calendar excludes' effect to allow per-day overrides to persist  // Include/exclude logic removed - using calendar events only  // Calendar navigation functions (moved after monthsInView declaration)  // Generate calendar days for current month
   // generateCalendarDays function removed - using calendar events only  // Precompute winning time per date: override > weekly
   const dateTimeMap = useMemo(() => {
     const map = new Map<string, string | null>();
@@ -255,7 +211,7 @@ export default function SimpleDatePicker({
     for (let i = 0; i < startingDay; i++) days.push(null);
     for (let d = 1; d <= lastDay.getDate(); d++) {
       const dateStr = getLocalYMD(new Date(y, m, d));
-      const inRange = !!(endDate && dateStr >= (startDate || today) && dateStr <= endDate);
+      const inRange = !!(end && dateStr >= (start?.toISOString().slice(0,10) || today) && dateStr <= end.toISOString().slice(0,10));
       
       // 기간 내에 있는 일정만 표시 (editingMode가 'schedule'일 때)
       const isWithinPeriod = editingMode === 'schedule' ? inRange : true;
@@ -274,28 +230,28 @@ export default function SimpleDatePicker({
         dateStr,
         isToday: dateStr === today,
         isPast: dateStr < today,
-        isSelected: dateStr === startDate || (endDate && dateStr === endDate),
-        isInRange: endDate && dateStr > startDate && dateStr < endDate,
+        isSelected: dateStr === start?.toISOString().slice(0,10) || (end && dateStr === end.toISOString().slice(0,10)),
+        isInRange: end && dateStr > start?.toISOString().slice(0,10) && dateStr < end.toISOString().slice(0,10),
         isScheduled,
         isWithinRange: inRange,
         timeToShow
       });
     }
     return days;
-  }, [startDate, endDate, today, effectiveEvents, editingMode]);  // monthsInView: editingMode에 따라 뷰 범위 전환
+  }, [start, end, today, effectiveEvents, editingMode]);  // monthsInView: editingMode에 따라 뷰 범위 전환
   const todayDate = useMemo(() => new Date(), []);
   const clampToMonthStart = (d: Date) => new Date(d.getFullYear(), d.getMonth(), 1);
 
   // 달력 뷰 범위: editingMode에 따라 결정
   const monthsInView = useMemo(() => {
-    if (editingMode === 'schedule' && startDate && endDate) {
+    if (editingMode === 'schedule' && start && end) {
       // 스케줄 모드: 선택된 기간만 표시
-      const start = new Date(startDate);
-      const end = new Date(endDate);
+      const startDate = new Date(start);
+      const endDate = new Date(end);
       const list: Date[] = [];
       
-      const current = new Date(start.getFullYear(), start.getMonth(), 1);
-      const endMonth = new Date(end.getFullYear(), end.getMonth(), 1);
+      const current = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+      const endMonth = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
       
       while (current <= endMonth) {
         list.push(new Date(current));
@@ -315,7 +271,7 @@ export default function SimpleDatePicker({
       
     return list;
     }
-  }, [editingMode, startDate, endDate]);
+  }, [editingMode, start, end]);
 
   // 월별 캘린더 데이터 미리 계산 (훅 규칙 위반 방지)
   const monthKeyOf = (d: Date) => `${d.getFullYear()}-${d.getMonth()}`;
@@ -354,7 +310,7 @@ export default function SimpleDatePicker({
   };
   const goToToday = () => scrollToMonth(new Date());
   const goToStart = () => {
-    const d = (editingMode === 'schedule' && startDate) ? new Date(startDate) : todayDate;
+    const d = (editingMode === 'schedule' && start) ? new Date(start) : todayDate;
     scrollToMonth(d);
   };
   const goToYear = (_year: number) => {};  // Fixed header month tracking and measurements
@@ -368,8 +324,8 @@ export default function SimpleDatePicker({
   }, [monthsInView]);  // Smart scroll: go to startDate month if set, otherwise current month
   useEffect(() => {
     if (calendarScrollRef.current && monthsInView.length > 0) {
-      // Determine target month: startDate if set, otherwise current date
-      const targetDate = startDate ? new Date(startDate) : new Date();
+      // Determine target month: start if set, otherwise current date
+      const targetDate = start ? new Date(start) : new Date();
       const targetMonthIndex = monthsInView.findIndex(month => 
         month.getMonth() === targetDate.getMonth() && 
         month.getFullYear() === targetDate.getFullYear()
@@ -410,7 +366,7 @@ export default function SimpleDatePicker({
         return () => clearTimeout(timeoutId);
       }
     }
-  }, [monthsInView, startDate]);  const onMonthLayout = (index: number, y: number, h: number) => {
+  }, [monthsInView, start]);  const onMonthLayout = (index: number, y: number, h: number) => {
     const arr = monthsLayoutRef.current.slice();
     arr[index] = { y, h };
     monthsLayoutRef.current = arr;
@@ -537,11 +493,10 @@ export default function SimpleDatePicker({
       }
     } else {
       // 🔄 PERIOD MODE: Set start date
-    setStartDate(dateStr);
-
     const value = parseInt(durationValue) || 1;
     const range = convertDurationToRange(dateStr, durationType, value);
-    setEndDate(range.endDate);
+    const newRange = [{ start: new Date(dateStr), end: new Date(range.endDate) }];
+    onRangesChange?.(newRange);
 
       // 기간 변경으로 인해 밖으로 밀려난 일정들 삭제
       const newStartDate = dateStr;
@@ -582,9 +537,7 @@ export default function SimpleDatePicker({
         }
       }
 
-      // 즉시 부모 컴포넌트에 변경사항 알림
-      onStartDateChange(dateStr);
-      onEndDateChange(range.endDate);
+      // 즉시 부모 컴포넌트에 변경사항 알림 (onRangesChange로 처리됨)
     }
 
     log('handleDateSelect exit:', { 
@@ -598,10 +551,11 @@ export default function SimpleDatePicker({
 
   const handleDurationChange = async (value: string) => {
     setDurationValue(value);
-    if (startDate && value) {
+    if (start && value) {
       const numValue = parseInt(value) || 1;
-      const range = convertDurationToRange(startDate, durationType, numValue);
-      setEndDate(range.endDate);
+      const range = convertDurationToRange(start.toISOString().slice(0,10), durationType, numValue);
+      const newRange = [{ start: new Date(start), end: new Date(range.endDate) }];
+      onRangesChange?.(newRange);
 
       // 기간 변경으로 인해 밖으로 밀려난 일정들 삭제
       const newEndDate = range.endDate;
@@ -610,7 +564,7 @@ export default function SimpleDatePicker({
         if (!event.id || !event.date || !event.time) return false;
 
         // 기간 체크
-        return event.date < startDate || event.date > newEndDate;
+        return event.date < start?.toISOString().slice(0,10) || event.date > newEndDate;
       });
 
       if (eventsOutsidePeriod.length > 0) {
@@ -620,7 +574,7 @@ export default function SimpleDatePicker({
         // 기간 내 이벤트만 유지
         const eventsWithinPeriod = effectiveEvents.filter(event => {
           if (!event.id || !event.date || !event.time) return false;
-          return event.date >= startDate && event.date <= newEndDate;
+          return event.date >= start?.toISOString().slice(0,10) && event.date <= newEndDate;
         });
         
         console.log(`[SimpleDatePicker] 기간 내 남은 일정: ${eventsWithinPeriod.length}개`);
@@ -642,16 +596,17 @@ export default function SimpleDatePicker({
       }
       
       // 즉시 부모 컴포넌트에 변경사항 알림
-      onEndDateChange(range.endDate);
+      // onRangesChange로 처리됨
     }
   };
 
   const handleDurationTypeChange = async (type: 'days' | 'weeks' | 'months') => {
     setDurationType(type);
-    if (startDate && durationValue) {
+    if (start && durationValue) {
       const numValue = parseInt(durationValue) || 1;
-      const range = convertDurationToRange(startDate, type, numValue);
-      setEndDate(range.endDate);
+      const range = convertDurationToRange(start.toISOString().slice(0,10), type, numValue);
+      const newRange = [{ start: new Date(start), end: new Date(range.endDate) }];
+      onRangesChange?.(newRange);
 
       // 기간 변경으로 인해 밖으로 밀려난 일정들 삭제
       const newEndDate = range.endDate;
@@ -660,7 +615,7 @@ export default function SimpleDatePicker({
         if (!event.id || !event.date || !event.time) return false;
 
         // 기간 체크
-        return event.date < startDate || event.date > newEndDate;
+        return event.date < start?.toISOString().slice(0,10) || event.date > newEndDate;
       });
 
       if (eventsOutsidePeriod.length > 0) {
@@ -670,7 +625,7 @@ export default function SimpleDatePicker({
         // 기간 내 이벤트만 유지
         const eventsWithinPeriod = effectiveEvents.filter(event => {
           if (!event.id || !event.date || !event.time) return false;
-          return event.date >= startDate && event.date <= newEndDate;
+          return event.date >= start?.toISOString().slice(0,10) && event.date <= newEndDate;
         });
         
         console.log(`[SimpleDatePicker] 기간 내 남은 일정: ${eventsWithinPeriod.length}개`);
@@ -692,7 +647,7 @@ export default function SimpleDatePicker({
       }
 
       // 즉시 부모 컴포넌트에 변경사항 알림
-      onEndDateChange(range.endDate);
+      // onRangesChange로 처리됨
     }
   };
 
@@ -711,9 +666,9 @@ export default function SimpleDatePicker({
 
   // Helper function to check if date is within the selected period
   const isDateInPeriod = useCallback((dateStr: string): boolean => {
-    if (!startDate || !endDate) return false;
-    return dateStr >= startDate && dateStr <= endDate;
-  }, [startDate, endDate]);
+    if (!start || !end) return false;
+    return dateStr >= start.toISOString().slice(0,10) && dateStr <= end.toISOString().slice(0,10);
+  }, [start, end]);
 
   // Weekly Schedule functions removed - using calendar events only
 
@@ -933,8 +888,8 @@ export default function SimpleDatePicker({
             ))}
           </View>
         </View>
-        {endDate && (
-          <Text className="text-blue-700 text-base mt-3">Will end on: {new Date(endDate).toLocaleDateString()}</Text>
+        {end && (
+          <Text className="text-blue-700 text-base mt-3">Will end on: {end.toLocaleDateString()}</Text>
         )}
       </View>
 
@@ -946,11 +901,11 @@ export default function SimpleDatePicker({
               <View className="mb-2">
           <View className="flex-row items-center justify-between mb-2">
                 <TouchableOpacity
-              onPress={() => scrollToTargetMonth(startDate ? new Date(startDate) : new Date())}
+              onPress={() => scrollToTargetMonth(start ? new Date(start) : new Date())}
               className="px-3 py-1 bg-blue-100 rounded-full"
             >
               <Text className="text-blue-700 text-xs font-semibold">
-                {startDate ? 'Start Date' : 'Today'}
+                {start ? 'Start Date' : 'Today'}
               </Text>
                     </TouchableOpacity>
             
@@ -1095,12 +1050,12 @@ export default function SimpleDatePicker({
 
 
       {/* Selected Summary */}
-      {startDate && (
+      {start && (
         <View className="mb-3 p-3 bg-gray-50 rounded-lg">
           <Text className="text-gray-700 font-semibold text-base mb-1">Selected:</Text>
-          <Text className="text-gray-600 text-sm">Start: {new Date(startDate).toLocaleDateString()}</Text>
-          {endDate && (
-            <Text className="text-gray-600 text-sm">End: {new Date(endDate).toLocaleDateString()}</Text>
+          <Text className="text-gray-600 text-sm">Start: {start.toLocaleDateString()}</Text>
+          {end && (
+            <Text className="text-gray-600 text-sm">End: {end.toLocaleDateString()}</Text>
           )}
         </View>
       )}

@@ -482,8 +482,11 @@ export default function GoalDetailScreen({ route, navigation }: GoalDetailScreen
         <View className="bg-white rounded-lg p-6 mb-6 shadow-sm">
           <Text className="text-xl font-bold text-gray-800 mb-4">Schedule & Progress</Text>
           <GoalScheduleCalendar
-            startDateISO={goal.duration?.startDate || goal.startDate?.toISOString()}
-            endDateISO={goal.duration?.endDate || goal.endDate?.toISOString()}
+            ranges={goal.duration?.startDate && goal.duration?.endDate 
+              ? [{ start: new Date(goal.duration.startDate), end: new Date(goal.duration.endDate) }]
+              : goal.startDate && goal.endDate 
+                ? [{ start: goal.startDate, end: goal.endDate }]
+                : []}
             weeklyWeekdays={goal.weeklyWeekdays || []}
             weeklyTimeSettings={goal.weeklySchedule || {}}
             includeDates={goal.includeDates || []}
