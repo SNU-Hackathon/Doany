@@ -6,18 +6,21 @@ import { Text, TouchableOpacity, View } from 'react-native';
 import CalendarScreen from '../screens/CalendarScreen';
 import HomeScreen from '../screens/HomeScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import SpacesScreen from '../screens/SpacesScreen';
 
-type TabType = 'MyGoals' | 'Calendar' | 'Profile';
+type TabType = 'Home' | 'Goals' | 'Space' | 'Profile';
 
 export default function MainTabNavigator() {
-  const [activeTab, setActiveTab] = useState<TabType>('MyGoals');
+  const [activeTab, setActiveTab] = useState<TabType>('Home');
 
   const renderScreen = () => {
     switch (activeTab) {
-      case 'MyGoals':
+      case 'Home':
         return <HomeScreen />;
-      case 'Calendar':
+      case 'Goals':
         return <CalendarScreen />;
+      case 'Space':
+        return <SpacesScreen />;
       case 'Profile':
         return <ProfileScreen />;
       default:
@@ -27,10 +30,12 @@ export default function MainTabNavigator() {
 
   const getIconName = (tabName: TabType, focused: boolean): keyof typeof Ionicons.glyphMap => {
     switch (tabName) {
-      case 'MyGoals':
+      case 'Home':
+        return focused ? 'home' : 'home-outline';
+      case 'Goals':
         return focused ? 'checkmark-done' : 'checkmark-done-outline';
-      case 'Calendar':
-        return focused ? 'calendar' : 'calendar-outline';
+      case 'Space':
+        return focused ? 'people' : 'people-outline';
       case 'Profile':
         return focused ? 'person' : 'person-outline';
       default:
@@ -40,22 +45,24 @@ export default function MainTabNavigator() {
 
   return (
     <View style={{ flex: 1 }}>
-      {/* Header */}
-      <View style={{ 
-        backgroundColor: '#3B82F6', 
-        height: 60, 
-        justifyContent: 'center', 
-        alignItems: 'center',
-        paddingTop: 10
-      }}>
-        <Text style={{ 
-          color: '#FFFFFF', 
-          fontSize: 18, 
-          fontWeight: '600' 
+      {/* Header - Only show for non-Space tabs */}
+      {activeTab !== 'Space' && (
+        <View style={{ 
+          backgroundColor: '#1E3A8A', 
+          height: 60, 
+          justifyContent: 'center', 
+          alignItems: 'center',
+          paddingTop: 10
         }}>
-          {activeTab === 'MyGoals' ? 'My Goals' : activeTab}
-        </Text>
-      </View>
+          <Text style={{ 
+            color: '#FFFFFF', 
+            fontSize: 18, 
+            fontWeight: '600' 
+          }}>
+            {activeTab}
+          </Text>
+        </View>
+      )}
 
       {/* Screen Content */}
       <View style={{ flex: 1 }}>
@@ -72,7 +79,7 @@ export default function MainTabNavigator() {
         paddingBottom: 8,
         paddingTop: 8,
       }}>
-        {(['MyGoals', 'Calendar', 'Profile'] as TabType[]).map((tab) => {
+        {(['Home', 'Goals', 'Space', 'Profile'] as TabType[]).map((tab) => {
           const isActive = activeTab === tab;
           return (
             <TouchableOpacity
@@ -87,7 +94,7 @@ export default function MainTabNavigator() {
               <Ionicons
                 name={getIconName(tab, isActive)}
                 size={24}
-                color={isActive ? '#3B82F6' : '#6B7280'}
+                color={isActive ? '#1E3A8A' : '#6B7280'}
               />
             </TouchableOpacity>
           );
