@@ -21,20 +21,20 @@ export default function HomeScreen() {
 
   return (
     <View className="flex-1 bg-gray-50">
-      {/* Header Section */}
-      <View className="bg-white px-4 pt-12 pb-6">
+      {/* Navy Header Section */}
+      <View className="bg-navy px-4 pt-12 pb-4">
         <View className="flex-row items-center mb-4">
           <Image
             source={{ uri: 'https://images.unsplash.com/photo-1494790108755-2616b612b786?w=50' }}
             className="w-12 h-12 rounded-full mr-3"
           />
           <View className="flex-1">
-            <Text className="text-gray-600 text-base">Good Morning</Text>
-            <Text className="text-gray-900 text-xl font-bold">{userData.name}</Text>
-            <Text className="text-gray-700 text-sm">Day {userData.dayWithKangaroo} with your Kangaroo!</Text>
+            <Text className="text-blue-200 text-base">Good Morning</Text>
+            <Text className="text-white text-xl font-bold">{userData.name}</Text>
+            <Text className="text-blue-200 text-sm">Day {userData.dayWithKangaroo} with your Kangaroo!</Text>
           </View>
           <TouchableOpacity>
-            <Ionicons name="notifications-outline" size={24} color="#6B7280" />
+            <Ionicons name="notifications-outline" size={24} color="white" />
           </TouchableOpacity>
         </View>
       </View>

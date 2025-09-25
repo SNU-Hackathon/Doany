@@ -18,7 +18,7 @@ import {
 // import { LocationSearch } from '../components'; // Commented out to avoid web build issues
 import { FrequencyTarget, PartnerPicker, ScheduleWhen } from '../components/createGoal';
 import { Categories } from '../constants';
-import { classifyGoalTypeFromTitle, computeVerificationPlan, CreateGoalState as CreateGoalFeatureState, CreateGoalProvider, GoalType, INITIAL_CREATE_GOAL_STATE, RULE_TIPS, useCreateGoal, validateCreateView, validateFrequencyDraft } from '../features/createGoal';
+import { classifyGoalTypeFromTitle, computeVerificationPlan, CreateGoalState as CreateGoalFeatureState, CreateGoalProvider, GoalType, INITIAL_CREATE_GOAL_STATE, RULE_TIPS, useCreateGoal, validateFrequencyDraft } from '../features/createGoal';
 import ScheduleFlow from '../features/createGoal/ScheduleFlow';
 import { AIGoalDraft, mergeAIGoal, parseGoalSpec, updateDraftWithDates, validateAIGoal } from '../features/goals/aiDraft';
 import { useAuth } from '../hooks/useAuth';
@@ -81,7 +81,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     const type = aiDraft?.type || aiBadgeState.type;
     
     if (type === 'frequency') {
-      const isValid = validateFrequencyDraft(aiDraft);
+      // Always allow frequency goals to proceed - validation is done at save time
       const warnings = [];
       
       // Check if period was defaulted
@@ -94,28 +94,35 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       }
       
       return {
-        ok: isValid,
-        issues: isValid ? [] : ['Invalid frequency goal configuration'],
+        ok: true, // Always allow to proceed
+        issues: [], // No blocking issues
         warnings
       };
     }
     
     if (type === 'partner') {
-      const hasPartner = !!(aiBadgeState.partner?.id || aiBadgeState.partner?.inviteEmail);
-      const isRequired = aiDraft?.partner?.required === true;
-      
+      // Always allow partner goals to proceed - validation is done at save time
       return {
-        ok: !isRequired || hasPartner,
-        issues: (isRequired && !hasPartner) ? ['Partner is required'] : [],
+        ok: true, // Always allow to proceed
+        issues: [], // No blocking issues
         warnings: []
       };
     }
     
-    // Schedule type - use existing validation
-    const validation = validateCreateView(aiBadgeState.type, aiBadgeState);
+    // Schedule type - always allow to proceed
+    if (type === 'schedule') {
+      // Always allow schedule goals to proceed - validation is done at save time
+      return {
+        ok: true, // Always allow to proceed
+        issues: [], // No blocking issues
+        warnings: []
+      };
+    }
+    
+    // Fallback - always allow to proceed
     return {
-      ok: validation.ok,
-      issues: validation.issues,
+      ok: true, // Always allow to proceed
+      issues: [], // No blocking issues
       warnings: []
     };
   };
@@ -126,16 +133,16 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
   // AI 단계(step===0)에서는 issues를 표시하지 않음 (Verification Plan이 대체)
   const showIssues = state.step === 2; // Review에서만 표시
 
-  // Log validation issues for debugging
+  // Log validation issues for debugging - disabled to avoid unnecessary logs
   useEffect(() => {
-    if (showIssues) {
+    if (showIssues && __DEV__) {
       const type = aiDraft?.type || aiBadgeState.type;
-      console.log('[Review] type=', type, 'warnings=', warnings, 'blocking=', !ok);
-      if (!ok && issues.length > 0) {
-        console.log('[CreateGoal] Validation issues:', issues);
+      // Only log warnings, not blocking issues since we allow all goals to proceed
+      if (warnings.length > 0) {
+        console.log('[Review] type=', type, 'warnings=', warnings);
       }
     }
-  }, [ok, issues, warnings, showIssues, aiBadgeState.type]);
+  }, [warnings, showIssues, aiBadgeState.type]);
 
   // Helper function to get classification reasons
   const getClassificationReasons = (title: string, type: GoalType): string[] => {
@@ -706,8 +713,17 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
   });
 
   // Goal type: single source of truth
-  const goalType = (state as any).goalType ?? (formData as any).goalType ?? (state as any).aiGuess ?? 'frequency';
+  const goalType = (state as any).goalType ?? (formData as any).goalType ?? aiBadgeState.type ?? 'frequency';
   const isFrequency = goalType === 'frequency';
+  
+  // Debug logging
+  console.log('[CreateGoalModal] goalType debug:', {
+    stateGoalType: (state as any).goalType,
+    formDataGoalType: (formData as any).goalType,
+    aiBadgeStateType: aiBadgeState.type,
+    finalGoalType: goalType,
+    isFrequency
+  });
 
   // Defer AI evaluation until after initial mount so formData is defined
   useEffect(() => {
@@ -749,9 +765,14 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
   // Safety navigation effect: only auto-jump from AI (step 0) to Schedule (step 1)
   useEffect(() => {
     if ((appState === 'READY_TO_REVIEW' || appState === 'NEEDS_DATES') && state.step === 0) {
+      // Before moving to Schedule step, ensure AI data is in formData
+      if (aiDraft.title && (!formData.title || formData.title === '')) {
+        console.log('[CreateGoalModal] Updating formData with AI draft before Schedule step');
+        updateFormFromAI(aiDraft);
+      }
       goToStep(1);
     }
-  }, [appState, state.step]);
+  }, [appState, state.step, aiDraft.title, formData.title]);
 
 
 
@@ -1449,6 +1470,15 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
   // Update form data from AI draft
   const updateFormFromAI = (draft: AIGoalDraft) => {
     console.time('[CreateGoalModal] Form Update from AI');
+    console.log('[CreateGoalModal] updateFormFromAI called with draft:', {
+      title: draft.title,
+      type: draft.type,
+      verificationMethods: draft.verificationMethods,
+      duration: draft.duration,
+      frequency: draft.frequency,
+      weeklyWeekdays: (draft as any).weeklyWeekdays,
+      weeklySchedule: (draft as any).weeklySchedule
+    });
     
     const updatedForm: CreateGoalForm = {
       ...formData,
@@ -1466,6 +1496,10 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         lng: draft.targetLocation.lng || 0,
         address: draft.targetLocation.name || '',
       } : formData.targetLocation,
+      // Add missing schedule-related fields
+      weeklyWeekdays: (draft as any).weeklyWeekdays || formData.weeklyWeekdays,
+      weeklySchedule: (draft as any).weeklySchedule || formData.weeklySchedule,
+      type: draft.type || formData.type,
     };
 
     // If any place info exists, ensure 'location' is selected and locked
@@ -1538,6 +1572,15 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       (updatedForm as any).weeklySchedule = (draft as any).weeklyTimeSettings;
     }
 
+    console.log('[CreateGoalModal] updateFormFromAI - Updated form:', {
+      title: updatedForm.title,
+      weeklyWeekdays: updatedForm.weeklyWeekdays,
+      weeklySchedule: updatedForm.weeklySchedule,
+      duration: updatedForm.duration,
+      verificationMethods: updatedForm.verificationMethods,
+      type: updatedForm.type
+    });
+    
     setFormData(updatedForm);
     console.timeEnd('[CreateGoalModal] Form Update from AI');
   };
@@ -1769,12 +1812,64 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         ...formData,
         verificationMethods: Array.from(currentMethods),
         lockedVerificationMethods: Array.from(currentLocked),
+        // Ensure minimum required data
+        title: formData.title || aiDraft.title || 'New Goal',
+        type: formData.type || aiDraft.type || 'frequency',
+        successRate: formData.successRate || 80,
+        duration: formData.duration || aiDraft.duration || {
+          type: 'weeks',
+          value: 2,
+          startDate: new Date().toISOString().split('T')[0],
+          endDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+        }
       };
       // Create goal using the updated form data (with forced methods)
-      const goalId = await GoalService.createGoal({
+      console.log('[CreateGoalModal] Creating goal with data:', {
+        title: updatedFormData.title,
+        duration: updatedFormData.duration,
+        weeklyWeekdays: updatedFormData.weeklyWeekdays,
+        verificationMethods: updatedFormData.verificationMethods,
+        frequency: updatedFormData.frequency,
+        category: updatedFormData.category,
+        type: updatedFormData.type,
+        successRate: (updatedFormData as any).successRate
+      });
+      
+      const goalData = {
         ...updatedFormData,
         userId: user.id,
+      };
+      console.log('[CreateGoalModal] Full goal data to save:', goalData);
+      console.log('[CreateGoalModal] Key fields for debugging:', {
+        title: goalData.title,
+        type: goalData.type,
+        verificationMethods: goalData.verificationMethods,
+        weeklyWeekdays: goalData.weeklyWeekdays,
+        weeklySchedule: goalData.weeklySchedule,
+        duration: goalData.duration,
+        frequency: goalData.frequency,
+        successRate: goalData.successRate,
+        targetLocation: goalData.targetLocation
       });
+      
+      console.log('[CreateGoalModal] AI Draft state:', {
+        title: aiDraft.title,
+        type: aiDraft.type,
+        verificationMethods: aiDraft.verificationMethods,
+        duration: aiDraft.duration,
+        frequency: aiDraft.frequency
+      });
+      
+      console.log('[CreateGoalModal] FormData state:', {
+        title: formData.title,
+        type: formData.type,
+        verificationMethods: formData.verificationMethods,
+        duration: formData.duration,
+        frequency: formData.frequency
+      });
+      
+      const goalId = await GoalService.createGoal(goalData);
+      console.log('[CreateGoalModal] Goal created with ID:', goalId);
 
       // Use existing calendar events from formData
       try {
@@ -3065,10 +3160,18 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
 
   // Next step handler - must validate schedule before proceeding
   const onNext = useCallback(() => {
-    console.log('[CreateGoalModal] onNext called, aiDraft.type:', aiDraft?.type);
-    // Always validate schedule before proceeding to next step
+    console.log('[CreateGoalModal] onNext called, step:', state.step, 'aiDraft.type:', aiDraft?.type);
+    
+    // If we're on Review step (step 2), create the goal
+    if (state.step === 2) {
+      console.log('[CreateGoalModal] On Review step, creating goal...');
+      handleSubmit();
+      return;
+    }
+    
+    // Otherwise, validate schedule before proceeding to next step
     handleRequestNextFromSchedule();
-  }, [handleRequestNextFromSchedule, aiDraft?.type]);
+  }, [state.step, handleRequestNextFromSchedule, handleSubmit, aiDraft?.type]);
 
   return (
     <Modal 
@@ -3606,14 +3709,12 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
             <TouchableOpacity
               onPress={() => {
                 console.log('[CreateGoal] payload', aiBadgeState);
-                if (ok) {
-                  handleSubmit();
-                }
+                handleSubmit();
               }}
-              disabled={loading || state.step !== 2 || !ok}
+              disabled={loading || state.step !== 2}
               style={[
                 { padding: 12, borderRadius: 8 },
-                loading || state.step !== 2 || !ok ? { backgroundColor: '#e5e7eb' } : { backgroundColor: '#2563eb' }
+                loading || state.step !== 2 ? { backgroundColor: '#e5e7eb' } : { backgroundColor: '#2563eb' }
               ]}
             >
               {loading ? (
@@ -3680,7 +3781,32 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
             goalType={goalType}
             formData={formData}
             setFormData={setFormData}
-            onDone={() => actions.setStep(2)}
+            onDone={() => {
+              console.log('[CreateGoalModal] ScheduleFlow onDone - current formData:', {
+                title: formData.title,
+                duration: formData.duration,
+                weeklyWeekdays: formData.weeklyWeekdays,
+                verificationMethods: formData.verificationMethods,
+                type: formData.type
+              });
+              
+              // Ensure AI data is properly merged before going to Review
+              console.log('[CreateGoalModal] ScheduleFlow onDone - checking data sync:', {
+                aiDraftTitle: aiDraft.title,
+                formDataTitle: formData.title,
+                aiDraftType: aiDraft.type,
+                formDataType: formData.type
+              });
+              
+              if (aiDraft.title && !formData.title) {
+                console.log('[CreateGoalModal] Syncing AI data to formData...');
+                updateFormFromAI(aiDraft);
+              } else {
+                console.log('[CreateGoalModal] No AI sync needed or aiDraft.title missing');
+              }
+              
+              actions.setStep(2);
+            }}
           />
         ) : (
           <FlatList

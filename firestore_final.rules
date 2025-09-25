@@ -1,0 +1,117 @@
+// Firestore Security Rules (Final Version)
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---- USERS ROOT DOC (문서 자체) ----
+    match /users/{userId} {
+      // 자신의 프로필 문서 읽기/수정 허용
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null && request.auth.uid == userId
+        && request.resource.data.uid == userId; // 프로필 문서에 uid 필드 일치
+      allow update, delete: if request.auth != null && request.auth.uid == userId
+        && request.resource.data.uid == resource.data.uid; // uid 불변
+    }
+
+    // ---- USERS SUBCOLLECTIONS (명시적으로 분리) ----
+    // Goals
+    match /users/{userId}/goals/{goalId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+
+      // 생성: 문서의 userId가 경로 userId와 일치해야 함
+      allow create: if request.auth != null && request.auth.uid == userId
+        && request.resource.data.userId == userId;
+
+      // 업데이트: 소유자만 가능 + userId 불변
+      allow update: if request.auth != null && request.auth.uid == userId
+        && request.resource.data.userId == resource.data.userId
+        && resource.data.userId == userId;
+      
+      // 삭제: 소유자만 가능
+      allow delete: if request.auth != null && request.auth.uid == userId
+        && resource.data.userId == userId;
+    }
+
+    // Activities
+    match /users/{userId}/activities/{activityId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null && request.auth.uid == userId
+        && request.resource.data.userId == userId;
+      allow update: if request.auth != null && request.auth.uid == userId
+        && request.resource.data.userId == resource.data.userId
+        && resource.data.userId == userId;
+      allow delete: if request.auth != null && request.auth.uid == userId
+        && resource.data.userId == userId;
+    }
+
+    // Nested calendarEvents under a goal
+    match /users/{userId}/goals/{goalId}/calendarEvents/{eventId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null && request.auth.uid == userId
+        && request.resource.data.userId == userId
+        && request.resource.data.goalId == goalId;
+      allow update: if request.auth != null && request.auth.uid == userId
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.goalId == resource.data.goalId
+        && resource.data.userId == userId;
+      allow delete: if request.auth != null && request.auth.uid == userId
+        && resource.data.userId == userId;
+    }
+
+    // User-level calendarEvents
+    match /users/{userId}/calendarEvents/{eventId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null && request.auth.uid == userId
+        && request.resource.data.userId == userId;
+      allow update: if request.auth != null && request.auth.uid == userId
+        && request.resource.data.userId == resource.data.userId
+        && resource.data.userId == userId;
+      allow delete: if request.auth != null && request.auth.uid == userId
+        && resource.data.userId == userId;
+    }
+
+    // Debug (개발 편의용)
+    match /users/{userId}/__debug__/{debugDoc} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // ---- GLOBAL COLLECTIONS ----
+
+    // Verifications (user-specific access)
+    match /verifications/{verificationId} {
+      allow create: if request.auth != null
+        && request.auth.uid == request.resource.data.userId;
+
+      // userId 소유자만 접근 + update 시 userId 불변
+      allow read: if request.auth != null && request.auth.uid == resource.data.userId;
+      allow update: if request.auth != null 
+        && request.auth.uid == resource.data.userId
+        && request.resource.data.userId == resource.data.userId;
+      allow delete: if request.auth != null && request.auth.uid == resource.data.userId;
+    }
+
+    // Legacy/global goals (호환성 유지)
+    match /goals/{goalId} {
+      allow create: if request.auth != null
+        && request.auth.uid == request.resource.data.userId;
+
+      allow read: if request.auth != null && request.auth.uid == resource.data.userId;
+      allow update: if request.auth != null 
+        && request.auth.uid == resource.data.userId
+        && request.resource.data.userId == resource.data.userId;
+      allow delete: if request.auth != null && request.auth.uid == resource.data.userId;
+    }
+
+    // Places index: public read, admin write
+    match /placesIndex/{placeId} {
+      allow read: if true;
+      allow write: if request.auth != null
+        && request.auth.token.admin == true;
+    }
+
+    // Deny everything else
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -2,7 +2,7 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
-import { Text, TouchableOpacity, View } from 'react-native';
+import { TouchableOpacity, View } from 'react-native';
 import GoalsScreen from '../screens/GoalsScreen';
 import HomeScreen from '../screens/HomeScreen';
 import ProfileScreen from '../screens/ProfileScreen';
@@ -45,24 +45,7 @@ export default function MainTabNavigator() {
 
   return (
     <View style={{ flex: 1 }}>
-      {/* Header - Only show for non-Space tabs */}
-      {activeTab !== 'Space' && (
-        <View style={{ 
-          backgroundColor: '#1E3A8A', 
-          height: 60, 
-          justifyContent: 'center', 
-          alignItems: 'center',
-          paddingTop: 10
-        }}>
-          <Text style={{ 
-            color: '#FFFFFF', 
-            fontSize: 18, 
-            fontWeight: '600' 
-          }}>
-            {activeTab}
-          </Text>
-        </View>
-      )}
+      {/* Header removed to save space */}
 
       {/* Screen Content */}
       <View style={{ flex: 1 }}>

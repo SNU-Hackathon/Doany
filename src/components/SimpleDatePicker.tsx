@@ -147,6 +147,13 @@ export default function SimpleDatePicker({
   const [durationValue, setDurationValue] = useState('2');  // Calendar navigation state
   const [currentMonth, setCurrentMonth] = useState(new Date(start?.toISOString().slice(0,10) || today));  // Weekly Schedule state removed - using calendar events only
   const [editingMode, setEditingMode] = useState<'period' | 'schedule'>('period');
+
+  // Auto-switch to schedule editing mode when goal type is schedule and period is set
+  useEffect(() => {
+    if (goalType === 'schedule' && mode === 'period+weekly' && start && end) {
+      setEditingMode('schedule');
+    }
+  }, [goalType, mode, start, end]);
   // Calendar state - ranges 기반으로 변경됨  // Time picker modal state
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [editingDayIndex, setEditingDayIndex] = useState<number>(-1);
@@ -177,6 +184,11 @@ export default function SimpleDatePicker({
 
   // 모드 전환 시 스크롤 이동
   useEffect(() => {
+    // Skip auto-scroll if user manually selected a date
+    if (userManuallySelectedDate.current) {
+      return;
+    }
+    
     if (editingMode === 'schedule' && start) {
       // 스케줄 모드: 시작월로 이동
       const startMonth = new Date(start);
@@ -317,12 +329,19 @@ export default function SimpleDatePicker({
   const calendarScrollRef = useRef<ScrollView | null>(null);
   const monthsLayoutRef = useRef<{ y: number; h: number }[]>([]);
   const VIEWPORT_HEIGHT = 420;
-  const [headerMonth, setHeaderMonth] = useState<Date | null>(null);  useEffect(() => {
+  const [headerMonth, setHeaderMonth] = useState<Date | null>(null);
+  const userManuallySelectedDate = useRef(false);  useEffect(() => {
     monthsLayoutRef.current = [];
     // Initialize header with first month
     if (monthsInView.length > 0) setHeaderMonth(monthsInView[0]);
   }, [monthsInView]);  // Smart scroll: go to startDate month if set, otherwise current month
   useEffect(() => {
+    // Skip auto-scroll if user manually selected a date
+    if (userManuallySelectedDate.current) {
+      userManuallySelectedDate.current = false;
+      return;
+    }
+    
     if (calendarScrollRef.current && monthsInView.length > 0) {
       // Determine target month: start if set, otherwise current date
       const targetDate = start ? new Date(start) : new Date();
@@ -371,27 +390,42 @@ export default function SimpleDatePicker({
     arr[index] = { y, h };
     monthsLayoutRef.current = arr;
     // Height is fixed; no need to set from layout
-  };  // Throttle by rAF + binary search by y to pick month near viewport center
-  const ticking = useRef(false);
+  };  // Real-time header update function for better responsiveness
   const updateHeaderForScroll = (scrollY: number) => {
-    if (ticking.current) return;
-    ticking.current = true;
+    // Use requestAnimationFrame for smooth, real-time updates
     requestAnimationFrame(() => {
-    const layouts = monthsLayoutRef.current;
+      const layouts = monthsLayoutRef.current;
       if (layouts && layouts.length) {
-        const center = scrollY + VIEWPORT_HEIGHT / 2;
-        let lo = 0, hi = layouts.length - 1, ans = 0;
-        while (lo <= hi) {
-          const mid = (lo + hi) >> 1;
-          const y = layouts[mid]?.y ?? 0;
-          if (y <= center) { ans = mid; lo = mid + 1; } else { hi = mid - 1; }
+        const viewportTop = scrollY;
+        const viewportBottom = scrollY + VIEWPORT_HEIGHT * 0.85; // Actual calendar height
+        
+        let maxVisibleArea = 0;
+        let targetMonthIndex = 0;
+        
+        // Find the month with the most visible area
+        for (let i = 0; i < layouts.length; i++) {
+          const layout = layouts[i];
+          if (!layout) continue;
+          
+          const monthTop = layout.y;
+          const monthBottom = layout.y + layout.h;
+          
+          // Calculate visible area of this month
+          const visibleTop = Math.max(viewportTop, monthTop);
+          const visibleBottom = Math.min(viewportBottom, monthBottom);
+          const visibleHeight = Math.max(0, visibleBottom - visibleTop);
+          
+          if (visibleHeight > maxVisibleArea) {
+            maxVisibleArea = visibleHeight;
+            targetMonthIndex = i;
+          }
         }
-        const m = monthsInView[ans];
-    if (m && (!headerMonth || headerMonth.getMonth() !== m.getMonth() || headerMonth.getFullYear() !== m.getFullYear())) {
-      setHeaderMonth(m);
+        
+        const m = monthsInView[targetMonthIndex];
+        if (m && (!headerMonth || headerMonth.getMonth() !== m.getMonth() || headerMonth.getFullYear() !== m.getFullYear())) {
+          setHeaderMonth(m);
         }
       }
-      ticking.current = false;
     });
   };  // Function to scroll to a specific month
   const scrollToTargetMonth = (targetDate: Date) => {
@@ -418,6 +452,52 @@ export default function SimpleDatePicker({
           y: scrollY,
           animated: true
         });
+      }
+    }
+  };
+
+  // Function to scroll to today's week (showing today at the top of its week)
+  const scrollToTodayWeek = () => {
+    if (!calendarScrollRef.current || monthsInView.length === 0) return;
+    
+    const todayDate = new Date();
+    const todayStr = getLocalYMD(todayDate);
+    
+    const targetMonthIndex = monthsInView.findIndex(month => 
+      month.getMonth() === todayDate.getMonth() && 
+      month.getFullYear() === todayDate.getFullYear()
+    );
+    
+    if (targetMonthIndex !== -1) {
+      const layouts = monthsLayoutRef.current;
+      if (layouts && layouts[targetMonthIndex]) {
+        // Calculate the week offset within the month more accurately
+        const monthStart = new Date(todayDate.getFullYear(), todayDate.getMonth(), 1);
+        const firstWeekday = monthStart.getDay(); // 0 = Sunday
+        const todayDate_num = todayDate.getDate();
+        
+        // Calculate which week today is in (0-based)
+        const weekNumber = Math.floor((todayDate_num + firstWeekday - 1) / 7);
+        
+        // More accurate measurements based on actual calendar structure
+        // Month title + weekday headers ≈ 60px, each week row ≈ 40px
+        const monthHeaderHeight = 60;
+        const weekHeight = 40;
+        const weekOffset = weekNumber * weekHeight;
+        
+        // Position the today's week at the very top of the visible area
+        const scrollY = layouts[targetMonthIndex].y + monthHeaderHeight + weekOffset;
+        
+        calendarScrollRef.current.scrollTo({
+          y: Math.max(0, scrollY),
+          animated: true
+        });
+        
+        // Update header month to reflect the scrolled position
+        setHeaderMonth(monthsInView[targetMonthIndex]);
+      } else {
+        // Fallback to month scrolling
+        scrollToTargetMonth(todayDate);
       }
     }
   };
@@ -493,6 +573,9 @@ export default function SimpleDatePicker({
       }
     } else {
       // 🔄 PERIOD MODE: Set start date
+      // Mark as manual selection to prevent auto-scroll
+      userManuallySelectedDate.current = true;
+      
     const value = parseInt(durationValue) || 1;
     const range = convertDurationToRange(dateStr, durationType, value);
     const newRange = [{ start: new Date(dateStr), end: new Date(range.endDate) }];
@@ -832,55 +915,35 @@ export default function SimpleDatePicker({
 
 
   return (
-    <View className="bg-white rounded-lg p-4 mx-0 my-4">
-      {/* Goal Title (from AI Assistant) */}
-      {(!!goalTitle || !!goalRawText) && (
-        <View className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-3">
-          <Text className="text-blue-800 text-sm font-semibold">Goal</Text>
-          {!!goalTitle && (
-            <Text className="text-blue-900 text-base mt-1">{goalTitle}</Text>
-          )}
-          {!!goalRawText && (
-            <Text className="text-blue-800 text-xs mt-2">Original Input</Text>
-          )}
-          {!!goalRawText && (
-            <Text className="text-blue-900 text-sm mt-1">{goalRawText}</Text>
-          )}
-        </View>
-      )}
-      {/* Header */}
-      {variant !== 'compact' && (
-        <View className="mb-6">
-          <Text className="text-2xl font-bold text-gray-800 text-center">
-            {isFrequencyGoal ? 'Frequency Goal' : 'Schedule'}
-          </Text>
-          <Text className="text-gray-600 text-center mt-2">
-            {isFrequencyGoal ? 'Set your goal duration and frequency' : 'Set your goal duration and schedule'}
-          </Text>
-        </View>
-      )}
-
-      {/* Duration Controls */}
-      <View className="mb-6 p-4 bg-blue-50 rounded-lg">
-        <Text className="text-blue-800 font-semibold text-lg mb-3">Duration</Text>
-        <View className="flex-row items-center space-x-3">
-          <TextInput
-            className="bg-white border border-blue-300 rounded-lg px-4 text-center w-28 text-lg h-12"
-            value={durationValue}
-            onChangeText={handleDurationChange}
-            keyboardType="number-pad"
-            placeholder="1"
-            maxLength={3}
-          />
-          <View className="flex-row space-x-2 items-center">
+    <View className="bg-white rounded-lg">
+      {/* Compact Duration Header */}
+      <View className="bg-blue-50 rounded-2xl p-4 mb-4">
+        <Text className="text-lg font-bold text-gray-800 mb-3 text-center">
+          Select Duration & Period
+        </Text>
+        
+        {/* Duration Controls in horizontal layout */}
+        <View className="flex-row items-center justify-center">
+          <View className="bg-white border border-gray-300 rounded-lg px-4 py-3 mr-3">
+            <TextInput
+              className="text-center text-lg font-semibold"
+              style={{ width: 40, minWidth: 40 }}
+              value={durationValue}
+              onChangeText={handleDurationChange}
+              keyboardType="number-pad"
+              placeholder="2"
+              maxLength={3}
+            />
+          </View>
+          <View className="flex-row gap-2">
             {(['days', 'weeks', 'months'] as const).map((type) => (
               <TouchableOpacity
                 key={type}
-                className={`h-12 px-4 rounded-lg items-center justify-center ${durationType === type ? 'bg-blue-600' : 'bg-white border border-blue-300'}`}
+                className={`py-3 px-4 rounded-lg ${durationType === type ? 'bg-blue-600' : 'bg-white border border-gray-300'}`}
                 onPress={() => handleDurationTypeChange(type)}
               >
                 <Text
-                  className={`text-base font-semibold ${durationType === type ? 'text-white' : 'text-blue-600'}`}
+                  className={`text-center font-medium ${durationType === type ? 'text-white' : 'text-gray-700'}`}
                 >
                   {type}
                 </Text>
@@ -888,15 +951,12 @@ export default function SimpleDatePicker({
             ))}
           </View>
         </View>
-        {end && (
-          <Text className="text-blue-700 text-base mt-3">Will end on: {end.toLocaleDateString()}</Text>
-        )}
       </View>
 
       {/* Weekly Schedule UI removed - using calendar events only */}
       
       {/* Calendar */}
-      <View className="mb-3" style={{ height: VIEWPORT_HEIGHT * 0.7 }}>
+      <View className="mb-3" style={{ height: VIEWPORT_HEIGHT * 0.85 }}>
         {/* Fixed month/year header and single day-of-week row */}
               <View className="mb-2">
           <View className="flex-row items-center justify-between mb-2">
@@ -914,12 +974,12 @@ export default function SimpleDatePicker({
                       </Text>
             
             <TouchableOpacity 
-              onPress={() => scrollToTargetMonth(new Date())}
+              onPress={scrollToTodayWeek}
               className="px-3 py-1 bg-gray-100 rounded-full"
               activeOpacity={0.9}
             >
               <Text className="text-gray-700 text-xs font-semibold">Today</Text>
-              </TouchableOpacity>
+            </TouchableOpacity>
             </View>
           
           <View className="flex-row mt-2">
@@ -933,7 +993,7 @@ export default function SimpleDatePicker({
         <ScrollView
           ref={calendarScrollRef}
           onScroll={(e: any) => updateHeaderForScroll(e.nativeEvent.contentOffset.y)}
-          scrollEventThrottle={48}
+          scrollEventThrottle={16}
           showsVerticalScrollIndicator={false}
           bounces={false}
           alwaysBounceVertical={false}
@@ -958,7 +1018,7 @@ export default function SimpleDatePicker({
                   <View key={index} className="w-[14.28%] p-1" style={{ aspectRatio: 1 }}>
                     {dayData ? (
                       <TouchableOpacity
-                        className={`flex-1 justify-center items-center rounded relative ${dayData.isPast || (!isFrequencyGoal && editingMode === 'schedule' && !isDateInPeriod(dayData.dateStr)) ? 'bg-gray-200' : dayData.isSelected ? 'bg-blue-600' : !isFrequencyGoal && editingMode === 'schedule' && dayData.isScheduled ? 'bg-green-200' : dayData.isInRange ? 'bg-blue-100' : dayData.isToday ? 'bg-blue-50' : 'bg-gray-50'}`}
+                        className={`flex-1 justify-center items-center rounded relative ${dayData.isPast || (!isFrequencyGoal && editingMode === 'schedule' && !isDateInPeriod(dayData.dateStr)) ? 'bg-gray-200' : dayData.isSelected ? 'bg-blue-600' : !isFrequencyGoal && editingMode === 'schedule' && dayData.isScheduled ? 'bg-green-200' : dayData.isInRange ? 'bg-blue-100' : dayData.isToday ? 'bg-orange-200' : 'bg-gray-50'}`}
                         onPress={() => handleDateSelect(dayData.dateStr)}
                         onLongPress={() => {
                           if (!dayData.isPast && dayData.dateStr) {
@@ -970,7 +1030,7 @@ export default function SimpleDatePicker({
                         disabled={dayData.isPast || (!isFrequencyGoal && editingMode === 'schedule' && !isDateInPeriod(dayData.dateStr))}
                       >
                         <Text
-                          className={`text-sm font-semibold ${dayData.isPast ? 'text-gray-400' : dayData.isSelected ? 'text-white' : !isFrequencyGoal && editingMode === 'schedule' && dayData.isScheduled ? 'text-green-900' : dayData.isInRange ? 'text-blue-600' : dayData.isToday ? 'text-blue-800' : 'text-gray-800'}`}
+                          className={`text-sm font-semibold ${dayData.isPast ? 'text-gray-400' : dayData.isSelected ? 'text-white' : !isFrequencyGoal && editingMode === 'schedule' && dayData.isScheduled ? 'text-green-900' : dayData.isInRange ? 'text-blue-600' : dayData.isToday ? 'text-orange-800' : 'text-gray-800'}`}
                         >
                           {dayData.day}
                         </Text>
@@ -1045,6 +1105,15 @@ export default function SimpleDatePicker({
             </TouchableOpacity>
           )}
         </View>
+
+        {/* Schedule mode instructions */}
+        {goalType === 'schedule' && editingMode === 'schedule' && (
+          <View className="mt-3 p-3 bg-green-50 rounded-lg border border-green-200">
+            <Text className="text-green-800 text-sm text-center">
+              Tap dates to add/remove schedule. Long press to set specific times.
+            </Text>
+          </View>
+        )}
 
         {/* 주당 횟수 UI 제거: WeeklyTarget 화면에서만 처리 */}
 

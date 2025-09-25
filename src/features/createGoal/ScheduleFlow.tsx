@@ -13,7 +13,7 @@ const Page = memo(function Page({ width, children }: { width: number; children: 
   return (
     <ScrollView
       style={{ width }}
-      contentContainerStyle={{ padding: PAGE_PADDING, paddingBottom: FOOTER_HEIGHT + 24 }}
+      contentContainerStyle={{ padding: 12, paddingBottom: FOOTER_HEIGHT + 16 }}
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
     >
@@ -36,6 +36,12 @@ const ALLOWED: Record<GoalType, string[]> = {
 
 export default function ScheduleFlow({ goalType, formData, setFormData, onDone }: Props) {
   const isFrequency = goalType === 'frequency';
+  
+  // Debug logging
+  console.log('[ScheduleFlow] goalType debug:', {
+    goalType,
+    isFrequency
+  });
 
   // ---- 페이지 구성
   const pages = useMemo(() => {
@@ -45,7 +51,8 @@ export default function ScheduleFlow({ goalType, formData, setFormData, onDone }
     // location 메서드를 이미 선택했으면 location 페이지 포함
     const selected: string[] = formData?.verificationMethods ?? [];
     if (selected.includes('location')) base.push('location');
-    return base as Array<'period'|'weeklyTarget'|'verification'|'location'>;
+    base.push('successCriteria');
+    return base as Array<'period'|'weeklyTarget'|'verification'|'location'|'successCriteria'>;
   }, [goalType, formData?.verificationMethods]);
 
   const width = Dimensions.get('window').width;
@@ -147,6 +154,7 @@ export default function ScheduleFlow({ goalType, formData, setFormData, onDone }
               onNavigateToStep={() => {}} // Not used in sub-flow
               mode={isFrequency ? 'period' : 'period+weekly'}
               variant="compact" // 헤더/설명 축소
+              isFrequencyGoal={isFrequency}
             />
           </Page>
         );
@@ -226,6 +234,66 @@ export default function ScheduleFlow({ goalType, formData, setFormData, onDone }
               value={formData?.targetLocation}
               onChange={(loc: any) => setFormData(prev => ({ ...prev, targetLocation: loc }))}
             />
+          </Page>
+        );
+      case 'successCriteria':
+        return (
+          <Page width={width}>
+            <Text className="text-2xl font-bold text-gray-800 mb-6">성공 기준</Text>
+            <Text className="text-gray-600 mb-6">목표 달성의 기준을 설정하세요</Text>
+            
+            <View className="space-y-4">
+              <View className="bg-white rounded-lg border border-gray-200 p-4">
+                <Text className="text-lg font-semibold text-gray-800 mb-4">성공률 목표</Text>
+                <View className="flex-row items-center justify-center">
+                  <TouchableOpacity
+                    onPress={() => {
+                      console.log('[ScheduleFlow] Decreasing success rate');
+                      setFormData(prev => {
+                        const newValue = Math.max(10, (prev.successRate || 80) - 10);
+                        console.log('[ScheduleFlow] New success rate:', newValue);
+                        return { ...prev, successRate: newValue };
+                      });
+                    }}
+                    className="w-12 h-12 bg-blue-100 rounded-full items-center justify-center"
+                  >
+                    <Text className="text-blue-600 text-2xl font-bold">−</Text>
+                  </TouchableOpacity>
+                  <Text className="mx-8 text-4xl font-bold text-blue-800">
+                    {formData?.successRate || 80}%
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      console.log('[ScheduleFlow] Increasing success rate');
+                      setFormData(prev => {
+                        const newValue = Math.min(100, (prev.successRate || 80) + 10);
+                        console.log('[ScheduleFlow] New success rate:', newValue);
+                        return { ...prev, successRate: newValue };
+                      });
+                    }}
+                    className="w-12 h-12 bg-blue-100 rounded-full items-center justify-center"
+                  >
+                    <Text className="text-blue-600 text-2xl font-bold">＋</Text>
+                  </TouchableOpacity>
+                </View>
+                <Text className="text-gray-600 text-center mt-4">
+                  {formData?.successRate || 80}% 이상 달성 시 성공으로 인정
+                </Text>
+              </View>
+
+              <View className="bg-white rounded-lg border border-gray-200 p-4">
+                <Text className="text-lg font-semibold text-gray-800 mb-4">목표 설명</Text>
+                <Text className="text-gray-600 text-sm">
+                  {isFrequency 
+                    ? `주당 ${weeklyTarget}회 달성을 목표로 합니다.`
+                    : '설정된 일정에 따라 목표를 진행합니다.'
+                  }
+                </Text>
+                <Text className="text-gray-600 text-sm mt-2">
+                  선택한 검증 방법: {(formData?.verificationMethods || []).join(', ')}
+                </Text>
+              </View>
+            </View>
           </Page>
         );
     }

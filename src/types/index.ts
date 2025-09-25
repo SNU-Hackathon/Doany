@@ -154,6 +154,9 @@ export interface Goal {
     weekBoundary?: 'startWeekday' | 'isoWeek';
     enforcePartialWeeks?: boolean;
   };
+  
+  // Success criteria
+  successRate?: number; // Target success rate percentage (0-100)
 }
 
 export interface Verification {
@@ -314,4 +317,7 @@ export interface CreateGoalForm {
     weekBoundary?: 'startWeekday' | 'isoWeek';
     enforcePartialWeeks?: boolean;
   };
+  
+  // Success criteria
+  successRate?: number; // Target success rate percentage (0-100)
 }

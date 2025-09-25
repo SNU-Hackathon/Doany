@@ -67,6 +67,12 @@ export class GoalService {
 
       // Sanitize the payload to remove undefined values
       const sanitizedGoalData = sanitizeGoalPayload(goalData);
+      console.log('[GoalService] Sanitized goal data:', {
+        type: sanitizedGoalData.type,
+        successRate: sanitizedGoalData.successRate,
+        weeklyWeekdays: sanitizedGoalData.weeklyWeekdays,
+        verificationMethods: sanitizedGoalData.verificationMethods
+      });
       
       // Create goal document
 
@@ -75,6 +81,7 @@ export class GoalService {
         title: sanitizedGoalData.title,
         description: sanitizedGoalData.description,
         category: sanitizedGoalData.category,
+        type: sanitizedGoalData.type || 'frequency', // Add goal type
         verificationMethods: sanitizedGoalData.verificationMethods || [sanitizedGoalData.verificationType || 'manual'],
         lockedVerificationMethods: sanitizedGoalData.lockedVerificationMethods || [],
         targetLocation: cleanTargetLocation,
@@ -93,6 +100,8 @@ export class GoalService {
         excludeDates: sanitizedGoalData.excludeDates || [],
         // AI-generated schedule specifications
         schedule: sanitizedGoalData.schedule || null,
+        // Success criteria
+        successRate: sanitizedGoalData.successRate || 80, // Add success rate
         // Dual timestamps: server authoritative + client for instant UI sort
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -104,6 +113,14 @@ export class GoalService {
         startDate: sanitizedGoalData.startDate ? Timestamp.fromDate(sanitizedGoalData.startDate) : null,
         endDate: sanitizedGoalData.endDate ? Timestamp.fromDate(sanitizedGoalData.endDate) : null
       };
+
+      console.log('[GoalService] Final goalDoc to save:', {
+        type: goalDoc.type,
+        successRate: goalDoc.successRate,
+        weeklyWeekdays: goalDoc.weeklyWeekdays,
+        verificationMethods: goalDoc.verificationMethods,
+        title: goalDoc.title
+      });
 
       batch.set(goalRef, goalDoc);
       
@@ -270,22 +287,67 @@ export class GoalService {
   }
 
   // Delete goal with cleanup of related data
-  static async deleteGoal(goalId: string): Promise<void> {
+  static async deleteGoal(goalId: string, userId?: string): Promise<void> {
     console.time(`[GoalService] Delete Goal ${goalId}`);
+    console.log('[GoalService] deleteGoal called with:', { goalId, userId });
     
     try {
       const batch = writeBatch(db);
-      const goalRef = doc(db, 'goals', goalId);
       
+      // Try to delete from user-specific collection first, fallback to global
+      let goalRef;
+      if (userId) {
+        goalRef = doc(db, 'users', userId, 'goals', goalId);
+        console.log('[GoalService] Using user-specific path:', `users/${userId}/goals/${goalId}`);
+      } else {
+        goalRef = doc(db, 'goals', goalId);
+        console.log('[GoalService] Using global path:', `goals/${goalId}`);
+      }
+      
+      // Check if document exists before deleting
+      console.log('[GoalService] Checking if document exists...');
+      const docSnapshot = await getDoc(goalRef);
+      
+      if (!docSnapshot.exists()) {
+        console.warn('[GoalService] Document does not exist at path:', goalRef.path);
+        
+        // Try alternative path if user-specific failed
+        if (userId) {
+          console.log('[GoalService] Trying global path as fallback...');
+          const globalRef = doc(db, 'goals', goalId);
+          const globalSnapshot = await getDoc(globalRef);
+          
+          if (globalSnapshot.exists()) {
+            console.log('[GoalService] Found document in global path, using that instead');
+            goalRef = globalRef;
+          } else {
+            throw new Error(`Goal document not found at either path: users/${userId}/goals/${goalId} or goals/${goalId}`);
+          }
+        } else {
+          throw new Error(`Goal document not found at path: ${goalRef.path}`);
+        }
+      }
+      
+      console.log('[GoalService] Document exists, proceeding with deletion');
+      console.log('[GoalService] Document data:', docSnapshot.data());
+      
+      console.log('[GoalService] Adding delete operation to batch');
       batch.delete(goalRef);
       
       // Add deletion of related documents (progress, verifications, etc.)
       // This would be more efficient than multiple individual deletes
       
+      console.log('[GoalService] Committing batch delete...');
       await batch.commit();
-      console.log('[GoalService] Goal deleted:', goalId);
+      console.log('[GoalService] Batch commit successful');
+      console.log('[GoalService] Goal deleted:', goalId, userId ? `(user: ${userId})` : '(global)');
     } catch (error) {
       console.error('[GoalService] Error deleting goal:', error);
+      console.error('[GoalService] Error details:', {
+        message: error?.message,
+        code: error?.code,
+        name: error?.name
+      });
       throw error;
     } finally {
       console.timeEnd(`[GoalService] Delete Goal ${goalId}`);

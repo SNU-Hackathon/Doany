@@ -78,55 +78,7 @@ export default function SpacesScreen() {
           </View>
         </View>
 
-        {/* TOP RANKINGS Section */}
-        <View className="mb-6">
-          <Text className="text-lg font-bold text-gray-900 mb-4">TOP RANKINGS</Text>
-          
-          {/* Partner Goal Cards - Template Structure */}
-          {Array.from({ length: 5 }, (_, index) => (
-            <View key={index} className="bg-sunny rounded-2xl p-4 mb-3 shadow-sm">
-              <View className="flex-row items-center justify-between mb-2">
-                <View className="bg-lavender rounded-full px-3 py-1">
-                  <Text className="text-white text-xs font-medium">Partner</Text>
-                </View>
-                <TouchableOpacity>
-                  <Ionicons name="ellipsis-horizontal" size={20} color="#374151" />
-                </TouchableOpacity>
-              </View>
-              
-              <Text className="text-lg font-semibold text-gray-900 mb-1">
-                Sample Goal Title {index + 1}
-              </Text>
-              <Text className="text-sm text-gray-600 mb-2">
-                Sample Name | Partner: Sample Partner
-              </Text>
-              
-              {/* Progress Bar */}
-              <View className="bg-gray-200 rounded-full h-2 mb-3">
-                <View className="bg-green-500 h-2 rounded-full" style={{ width: '100%' }} />
-              </View>
-              
-              <View className="flex-row items-center justify-between">
-                <View className="flex-row items-center">
-                  <Text className="text-sm font-semibold text-gray-900">100% Completed!!!</Text>
-                  <View className="flex-row items-center ml-3">
-                    <Ionicons name="heart" size={16} color="#EF4444" />
-                    <Text className="text-sm text-gray-600 ml-1">
-                      {Math.floor(Math.random() * 10000) + 1000}
-                    </Text>
-                  </View>
-                </View>
-                <Text className="text-sm text-gray-600">
-                  Completed on {new Date().toLocaleDateString('en-US', { 
-                    month: 'short', 
-                    day: 'numeric', 
-                    year: 'numeric' 
-                  })}
-                </Text>
-              </View>
-            </View>
-          ))}
-        </View>
+        {/* Content area - TOP RANKINGS removed */}
       </ScrollView>
     </View>
   );
