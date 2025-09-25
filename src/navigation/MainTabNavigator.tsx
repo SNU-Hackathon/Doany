@@ -3,7 +3,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
-import CalendarScreen from '../screens/CalendarScreen';
+import GoalsScreen from '../screens/GoalsScreen';
 import HomeScreen from '../screens/HomeScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import SpacesScreen from '../screens/SpacesScreen';
@@ -18,7 +18,7 @@ export default function MainTabNavigator() {
       case 'Home':
         return <HomeScreen />;
       case 'Goals':
-        return <CalendarScreen />;
+        return <GoalsScreen />;
       case 'Space':
         return <SpacesScreen />;
       case 'Profile':

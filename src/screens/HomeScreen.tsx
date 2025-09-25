@@ -1,326 +1,156 @@
-// Home screen displaying user goals and progress with realtime updates
-
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
-import { StackNavigationProp } from '@react-navigation/stack';
-import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  RefreshControl,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
-import { CreateGoalModal } from '../components';
-import { useAuth } from '../hooks/useAuth';
-import { db } from '../services/firebase';
-import { VerificationService } from '../services/verificationService';
-import { Goal, RootStackParamList } from '../types';
-
-type HomeScreenNavigationProp = StackNavigationProp<RootStackParamList>;
-
-interface GoalWithProgress extends Goal {
-  successRate: number;
-  recentVerifications: number;
-}
-
-// Memoized goal item component for performance
-const GoalItem = React.memo(({ 
-  item, 
-  onPress 
-}: { 
-  item: GoalWithProgress; 
-  onPress: (goal: GoalWithProgress) => void;
-}) => {
-  const getProgressColor = (rate: number) => {
-    if (rate >= 80) return '#10B981'; // green-500
-    if (rate >= 60) return '#EAB308'; // yellow-500
-    if (rate >= 40) return '#F97316'; // orange-500
-    return '#EF4444'; // red-500
-  };
-
-  const getVerificationTypeIcon = (type: string) => {
-    switch (type) {
-      case 'location':
-        return 'location';
-      case 'time':
-        return 'time';
-      case 'screentime':
-        return 'phone-portrait';
-      case 'manual':
-        return 'checkmark-circle';
-      default:
-        return 'help-circle';
-    }
-  };
-
-  const formatFrequency = (frequency: { count: number; unit: string }) => {
-    return `${frequency.count}x ${frequency.unit.replace('per_', '')}`;
-  };
-
-  const primaryVerificationMethod = item.verificationMethods?.[0] || item.verificationType || 'manual';
-
-  return (
-    <TouchableOpacity
-      style={{
-        backgroundColor: 'white',
-        borderRadius: 8,
-        padding: 16,
-        marginBottom: 12,
-        borderWidth: 1,
-        borderColor: '#E5E7EB'
-      }}
-      onPress={() => onPress(item)}
-      activeOpacity={0.7}
-    >
-      <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 8 }}>
-        <View style={{ flex: 1, marginRight: 12 }}>
-          <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#1F2937' }} numberOfLines={2}>
-            {item.title}
-          </Text>
-          <Text style={{ fontSize: 14, color: '#6B7280', marginTop: 4 }}>
-            Category: {item.category}
-          </Text>
-        </View>
-        <View style={{ alignItems: 'flex-end' }}>
-          <View style={{
-            width: 48,
-            height: 48,
-            borderRadius: 24,
-            backgroundColor: getProgressColor(item.successRate),
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}>
-            <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 14 }}>
-              {Math.round(item.successRate)}%
-            </Text>
-          </View>
-        </View>
-      </View>
-
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Ionicons
-            name={getVerificationTypeIcon(primaryVerificationMethod) as any}
-            size={16}
-            color="#6B7280"
-          />
-          <Text style={{ fontSize: 14, color: '#6B7280', marginLeft: 8 }}>
-            {formatFrequency(item.frequency)}
-          </Text>
-        </View>
-        
-        <View style={{ alignItems: 'flex-end' }}>
-          <Text style={{ fontSize: 12, color: '#9CA3AF' }}>
-            {item.recentVerifications} recent
-          </Text>
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
-});
+import React from 'react';
+import { Image, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 
 export default function HomeScreen() {
-  const { user } = useAuth();
-  const navigation = useNavigation<HomeScreenNavigationProp>();
-  const [goals, setGoals] = useState<GoalWithProgress[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  
-  // Refs for cleanup
-  const mountedRef = useRef(true);
-
-  // Setup realtime listener for goals
-  useEffect(() => {
-    if (!user) return;
-
-    console.log('[HomeScreen] Setting up realtime listener for goals');
-    
-    const goalsQuery = query(
-      collection(db, 'users', user.id, 'goals'),
-      // Prefer server timestamp if present; client fallback handled after snapshot
-      orderBy('createdAtClient', 'desc')
-    );
-
-    const unsubscribe = onSnapshot(goalsQuery, async (snapshot) => {
-      if (!mountedRef.current) return;
-
-      try {
-        console.log('[HomeScreen] Goals snapshot received:', snapshot.docs.length, 'documents');
-        
-        // Process goals with progress data
-        const goalsWithProgress = await Promise.all(
-          snapshot.docs.map(async (doc) => {
-            const goal = { id: doc.id, ...doc.data() } as Goal;
-            try {
-              const [successRate, recentVerifications] = await Promise.all([
-                VerificationService.calculateGoalSuccessRate(goal.id),
-                VerificationService.getRecentGoalVerifications(goal.id, 7)
-              ]);
-
-              return {
-                ...goal,
-                successRate: successRate || 0,
-                recentVerifications: recentVerifications?.length || 0
-              } as GoalWithProgress;
-            } catch (error) {
-              console.warn(`[HomeScreen] Error loading progress for goal ${goal.id}:`, error);
-              return {
-                ...goal,
-                successRate: 0,
-                recentVerifications: 0
-              } as GoalWithProgress;
-            }
-          })
-        );
-
-        // Dedupe goals by ID to prevent duplicate key warnings
-        const dedupeGoals = (goals: GoalWithProgress[]) => {
-          return Array.from(new Map(goals.map(g => [g.id, g])).values());
-        };
-
-        // Client-side sort using client timestamp fallback
-        const processedGoals = dedupeGoals(goalsWithProgress).sort((a: any, b: any) => {
-          const aTs = a.createdAtClient?.toMillis?.() ?? a.createdAt?.getTime?.() ?? 0;
-          const bTs = b.createdAtClient?.toMillis?.() ?? b.createdAt?.getTime?.() ?? 0;
-          return bTs - aTs;
-        });
-        console.log('[GOAL:list:ids]', processedGoals.map(d => d.id).slice(0, 10));
-        setGoals(processedGoals);
-        setLoading(false);
-        setRefreshing(false);
-        
-        console.log(`[HomeScreen] Realtime update: ${processedGoals.length} goals`);
-
-      } catch (error) {
-        console.error('[HomeScreen] Error processing goals snapshot:', error);
-        if (mountedRef.current) {
-          Alert.alert('Error', 'Failed to process goals update. Please try again.');
-        }
-      }
-    }, (error) => {
-      console.error('[HomeScreen] Goals listener error:', error);
-      if (mountedRef.current) {
-        Alert.alert('Error', 'Failed to listen to goals updates. Please try again.');
-      }
-    });
-
-    // Cleanup function
-    return () => {
-      console.log('[HomeScreen] Cleaning up goals listener');
-      unsubscribe();
-    };
-  }, [user]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    // The realtime listener will handle the actual data update
-    // This is just for UI feedback
-  }, []);
-
-  const handleGoalPress = useCallback((goal: GoalWithProgress) => {
-    console.log('[GOAL:press]', { 
-      id: goal.id, 
-      title: goal.title,
-      userId: goal.userId,
-      timestamp: new Date().toISOString()
-    });
-    
-    navigation.navigate('GoalDetail', { goalId: goal.id });
-  }, [navigation]);
-
-  const handleCreateGoal = useCallback(() => {
-    setShowCreateModal(true);
-  }, []);
-
-  const handleGoalCreated = useCallback(() => {
-    setShowCreateModal(false);
-    // The realtime listener will automatically update the list
-  }, []);
-
-  // Memoized key extractor for FlatList performance
-  const keyExtractor = useCallback((item: GoalWithProgress) => item.id, []);
-
-  // Memoized render item function
-  const renderGoalItem = useCallback(({ item }: { item: GoalWithProgress }) => (
-    <GoalItem item={item} onPress={handleGoalPress} />
-  ), [handleGoalPress]);
-
-  // Memoized empty component
-  const renderEmptyComponent = useMemo(() => (
-    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 48 }}>
-      <Ionicons name="flag-outline" size={64} color="#D1D5DB" />
-      <Text style={{ fontSize: 20, fontWeight: '600', color: '#6B7280', marginTop: 16, textAlign: 'center' }}>
-        No Goals Yet
-      </Text>
-      <Text style={{ color: '#9CA3AF', textAlign: 'center', marginTop: 8, paddingHorizontal: 32 }}>
-        Start your journey by creating your first goal!
-      </Text>
-      <TouchableOpacity
-        style={{ backgroundColor: '#2563EB', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 8, marginTop: 24 }}
-        onPress={handleCreateGoal}
-      >
-        <Text style={{ color: 'white', fontWeight: '600' }}>Create Goal</Text>
-      </TouchableOpacity>
-    </View>
-  ), [handleCreateGoal]);
-
-  if (loading) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F9FAFB' }}>
-        <ActivityIndicator size="large" color="#3B82F6" />
-        <Text style={{ marginTop: 16, color: '#6B7280' }}>Loading your goals...</Text>
-      </View>
-    );
-  }
+  // Mock user data - these should be dynamic based on user's actual progress
+  const userData = {
+    name: 'Lee Seo June',
+    dayWithKangaroo: 57,
+    kangarooLevel: 3,
+    progressPercentage: 75,
+    streak: 13,
+    badges: [
+      { type: 'medal', earned: true },
+      { type: 'crown', earned: true },
+      { type: 'heart', earned: true },
+      { type: 'level1', earned: true },
+      { type: 'level2', earned: true }
+    ]
+  };
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#F9FAFB' }}>
-      {/* Header */}
-      <View style={{ backgroundColor: 'white', paddingHorizontal: 20, paddingTop: 60, paddingBottom: 20, borderBottomWidth: 1, borderBottomColor: '#E5E7EB' }}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Text style={{ fontSize: 28, fontWeight: 'bold', color: '#1F2937' }}>
-            My Goals
-          </Text>
-          <TouchableOpacity
-            style={{ backgroundColor: '#2563EB', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 }}
-            onPress={handleCreateGoal}
-          >
-            <Text style={{ color: 'white', fontWeight: '600' }}>+ New</Text>
+    <View className="flex-1 bg-gray-50">
+      {/* Header Section */}
+      <View className="bg-white px-4 pt-12 pb-6">
+        <View className="flex-row items-center mb-4">
+          <Image
+            source={{ uri: 'https://images.unsplash.com/photo-1494790108755-2616b612b786?w=50' }}
+            className="w-12 h-12 rounded-full mr-3"
+          />
+          <View className="flex-1">
+            <Text className="text-gray-600 text-base">Good Morning</Text>
+            <Text className="text-gray-900 text-xl font-bold">{userData.name}</Text>
+            <Text className="text-gray-700 text-sm">Day {userData.dayWithKangaroo} with your Kangaroo!</Text>
+          </View>
+          <TouchableOpacity>
+            <Ionicons name="notifications-outline" size={24} color="#6B7280" />
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* Goals List */}
-      <FlatList
-        data={goals}
-        renderItem={renderGoalItem}
-        keyExtractor={keyExtractor}
-        contentContainerStyle={{ padding: 20, paddingBottom: 100 }}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-        ListEmptyComponent={renderEmptyComponent}
-      />
+      <ScrollView className="flex-1 px-4">
+        {/* Achievement Banner */}
+        <TouchableOpacity className="bg-sunny rounded-2xl p-4 mb-6 mt-4">
+          <Text className="text-gray-900 text-lg font-semibold mb-2">
+            Achieve more goals and make the kangaroo jump higher!
+          </Text>
+          <Text className="text-gray-700 text-sm">
+            achieve more goals...
+          </Text>
+        </TouchableOpacity>
 
-      {/* Create Goal Modal */}
-      <CreateGoalModal
-        visible={showCreateModal}
-        onClose={() => setShowCreateModal(false)}
-        onGoalCreated={handleGoalCreated}
-      />
+        {/* Mascot Section */}
+        <View className="bg-white rounded-2xl p-6 mb-6 items-center">
+          {/* Badges Section */}
+          <View className="absolute top-4 left-4">
+            <Text className="text-orange-500 font-semibold mb-2">your badge</Text>
+            <View className="flex-row flex-wrap">
+              {userData.badges.map((badge, index) => (
+                <View key={index} className="mr-2 mb-2">
+                  {badge.type === 'medal' && (
+                    <View className="w-10 h-10 bg-orange-500 rounded-full items-center justify-center">
+                      <Ionicons name="medal" size={20} color="white" />
+                    </View>
+                  )}
+                  {badge.type === 'crown' && (
+                    <View className="w-10 h-10 bg-yellow-400 rounded-full items-center justify-center">
+                      <Text className="text-white text-xs font-bold">⭐</Text>
+                    </View>
+                  )}
+                  {badge.type === 'heart' && (
+                    <View className="w-10 h-10 bg-red-400 rounded-full items-center justify-center">
+                      <Ionicons name="heart" size={16} color="white" />
+                    </View>
+                  )}
+                  {badge.type === 'level1' && (
+                    <View className="bg-yellow-600 rounded-full px-2 py-1">
+                      <Text className="text-white text-xs font-bold">LV 1</Text>
+                    </View>
+                  )}
+                  {badge.type === 'level2' && (
+                    <View className="bg-purple-600 rounded-full px-2 py-1">
+                      <Text className="text-white text-xs font-bold">LV 2</Text>
+                    </View>
+                  )}
+                </View>
+              ))}
+            </View>
+          </View>
+
+          {/* Kangaroo Mascot Area */}
+          <View className="items-center mt-8">
+            <Text className="text-xl font-bold text-gray-900 mb-4">LV. {userData.kangarooLevel} Kangaroo</Text>
+            
+            {/* Placeholder for kangaroo image and environment */}
+            <View className="w-64 h-48 bg-green-100 rounded-2xl items-center justify-center mb-4 relative">
+              {/* Trees/Environment */}
+              <View className="absolute right-4 top-4">
+                <View className="w-12 h-16 bg-green-500 rounded-full" />
+                <View className="w-8 h-12 bg-green-600 rounded-full absolute top-2 left-2" />
+              </View>
+              
+              {/* Kangaroo placeholder */}
+              <View className="items-center">
+                <View className="w-16 h-20 bg-orange-400 rounded-full items-center justify-center">
+                  <Text className="text-white font-bold">🦘</Text>
+                </View>
+                <Text className="text-gray-600 text-sm mt-2">Kangaroo</Text>
+              </View>
+              
+              {/* Ground */}
+              <View className="absolute bottom-0 left-0 right-0 h-8 bg-green-300 rounded-b-2xl" />
+            </View>
+
+            {/* Progress Bar */}
+            <View className="w-full mb-4">
+              <View className="flex-row items-center justify-between mb-2">
+                <View className="bg-navy rounded-full w-8 h-8 items-center justify-center">
+                  <Text className="text-white text-xs font-bold">LV. {userData.kangarooLevel}</Text>
+                </View>
+                <View className="flex-1 mx-3 bg-gray-200 rounded-full h-3">
+                  <View 
+                    className="bg-sunny h-3 rounded-full" 
+                    style={{ width: `${userData.progressPercentage}%` }}
+                  />
+                </View>
+                <View className="flex-row items-center">
+                  <Text className="text-orange-500 font-bold text-lg">{userData.progressPercentage}%</Text>
+                  <Ionicons name="star" size={20} color="#F59E0B" className="ml-1" />
+                </View>
+              </View>
+            </View>
+          </View>
+        </View>
+
+        {/* Streak Section */}
+        <View className="bg-white rounded-2xl p-4 mb-6">
+          <View className="flex-row items-center">
+            <View className="w-12 h-12 bg-orange-100 rounded-full items-center justify-center mr-3">
+              <Ionicons name="flame" size={24} color="#F97316" />
+            </View>
+            <View className="flex-1">
+              <Text className="text-xl font-bold text-gray-900">{userData.streak}-Day Streak!</Text>
+              <View className="flex-row items-center">
+                <Ionicons name="sparkles" size={16} color="#F59E0B" />
+                <Text className="text-orange-500 font-medium ml-1">
+                  1 more day to unlock your ⭐ Badge!
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+      </ScrollView>
     </View>
   );
 }

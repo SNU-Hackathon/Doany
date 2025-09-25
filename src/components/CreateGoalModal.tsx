@@ -15,7 +15,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { LocationSearch } from '../components';
+// import { LocationSearch } from '../components'; // Commented out to avoid web build issues
 import { FrequencyTarget, PartnerPicker, ScheduleWhen } from '../components/createGoal';
 import { Categories } from '../constants';
 import { classifyGoalTypeFromTitle, computeVerificationPlan, CreateGoalState as CreateGoalFeatureState, CreateGoalProvider, GoalType, INITIAL_CREATE_GOAL_STATE, RULE_TIPS, useCreateGoal, validateCreateView, validateFrequencyDraft } from '../features/createGoal';
@@ -3628,31 +3628,18 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
             <Text style={{ color: 'white', fontSize: 18, fontWeight: '600', marginTop: 8 }}>Select Location</Text>
           </View>
 
-          {/* Use LocationSearch component instead of custom implementation */}
-          <LocationSearch
-            onLocationSelect={(location) => {
-              console.log('[CreateGoalModal] LocationSearch selected location:', location);
-              // Convert Location type to TargetLocation type
-              const targetLocation: TargetLocation = {
-                name: location.name,
-                lat: location.latitude,
-                lng: location.longitude,
-                address: location.address,
-                placeId: location.placeId
-              };
-              console.log('[CreateGoalModal] Converted to TargetLocation:', targetLocation);
-              setPickerSelectedLocation(targetLocation);
-              setPickerMarkers([{ lat: targetLocation.lat, lng: targetLocation.lng, title: targetLocation.name }]);
-            }}
-            placeholder="Search Places"
-            currentLocation={pickerSelectedLocation ? {
-              name: pickerSelectedLocation.name,
-              latitude: pickerSelectedLocation.lat,
-              longitude: pickerSelectedLocation.lng,
-              address: pickerSelectedLocation.address,
-              placeId: pickerSelectedLocation.placeId
-            } : null}
-          />
+          {/* Temporary placeholder - LocationSearch disabled for web compatibility */}
+          <View style={{ padding: 20, alignItems: 'center' }}>
+            <Text style={{ color: '#6B7280', textAlign: 'center' }}>
+              Location search is temporarily unavailable.
+            </Text>
+            <TouchableOpacity
+              style={{ marginTop: 16, backgroundColor: '#2563eb', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 }}
+              onPress={() => setShowLocationPicker(false)}
+            >
+              <Text style={{ color: 'white', fontWeight: '600' }}>Close</Text>
+            </TouchableOpacity>
+          </View>
 
           {/* Confirm */}
           <View style={{ padding: 16 }}>
