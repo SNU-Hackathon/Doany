@@ -192,6 +192,14 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
   const [showSpecPlanModal, setShowSpecPlanModal] = useState<boolean>(false);
   const [specFollowUpQuestion, setSpecFollowUpQuestion] = useState<string>('');
   const [specFollowUpAnswer, setSpecFollowUpAnswer] = useState<string>('');
+  
+  // Methods selection state for verification plan modal
+  const [planSelectedMethods, setPlanSelectedMethods] = useState<{[key: string]: boolean}>({
+    time: false,
+    location: false,
+    photo: false,
+    manual: false
+  });
 
   // Schedule validator state (Step 2)
   const [scheduleValidation, setScheduleValidation] = useState<ValidationResult | null>(null);
@@ -1797,14 +1805,17 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
 
   // Form sections as separate components for FlatList
   const renderAISection = () => (
-    <View style={{ marginBottom: 24, backgroundColor: '#EFF6FF', borderRadius: 8, padding: 16, borderWidth: 1, borderColor: '#BFDBFE' }}>
-      <Text style={{ color: '#1D4ED8', fontWeight: '600', marginBottom: 12 }}>🤖 AI Goal Assistant</Text>
-      
-      {/* Follow-up UI removed per request: scheduling handled in 2. Schedule */}
+    <View style={{ marginBottom: 24, backgroundColor: '#E0E7FF', borderRadius: 16, padding: 24, borderWidth: 1, borderColor: '#C7D2FE' }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
+        <View style={{ backgroundColor: '#6366F1', borderRadius: 8, padding: 8, marginRight: 12 }}>
+          <Text style={{ fontSize: 16 }}>🤖</Text>
+        </View>
+        <Text style={{ color: '#1F2937', fontWeight: '700', fontSize: 18 }}>AI Goal Assistant</Text>
+      </View>
 
       {/* Only show selected dates when not in AI Assistant step */}
       {state.step !== 0 && (aiDraft.startDate || aiDraft.duration) && (
-        <View style={{ marginBottom: 12 }}>
+        <View style={{ marginBottom: 16 }}>
           <Text style={{ color: '#1d4ed8', fontSize: 12, marginBottom: 8 }}>Selected:</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
             {aiDraft.startDate && (
@@ -1833,7 +1844,17 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       )}
 
         <TextInput
-          style={{ backgroundColor: 'white', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 12, borderWidth: 1, borderColor: '#bfdbfe', color: '#111827', minHeight: 80 }}
+          style={{ 
+            backgroundColor: '#F9FAFB', 
+            borderRadius: 12, 
+            paddingHorizontal: 16, 
+            paddingVertical: 16, 
+            borderWidth: 1, 
+            borderColor: '#E5E7EB', 
+            color: '#111827', 
+            minHeight: 100,
+            fontSize: 16
+          }}
           placeholder={"Describe your goal (e.g., 'Go to the gym 3 times a week')"}
           placeholderTextColor="#9CA3AF"
           value={aiPrompt}
@@ -1846,7 +1867,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
           editable={!loading}
         />
 
-        <View style={{ flexDirection: 'row', marginTop: 12, gap: 8 }}>
+        <View style={{ flexDirection: 'row', marginTop: 16, gap: 12 }}>
         <TouchableOpacity
           onPress={() => {
             if (loading) return;
@@ -1855,12 +1876,12 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
           disabled={loading || (appState === 'IDLE' && !aiPrompt.trim())}
           style={{
             flex: 1,
-            paddingVertical: 12,
-            borderRadius: 8,
-            backgroundColor: loading || (appState === 'IDLE' && !aiPrompt.trim()) ? '#9CA3AF' : '#2563eb'
+            paddingVertical: 16,
+            borderRadius: 12,
+            backgroundColor: loading || (appState === 'IDLE' && !aiPrompt.trim()) ? '#9CA3AF' : '#9CA3AF'
           }}
         >
-          <Text style={{ color: 'white', textAlign: 'center', fontWeight: '600' }}>
+          <Text style={{ color: 'white', textAlign: 'center', fontWeight: '600', fontSize: 16 }}>
             {loading ? 'Generating...' : 'Generate with AI'}
           </Text>
         </TouchableOpacity>
@@ -1871,14 +1892,15 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
             goToStep(1);
           }}
           style={{
-            paddingHorizontal: 16,
-            paddingVertical: 12,
-            borderRadius: 8,
+            paddingHorizontal: 24,
+            paddingVertical: 16,
+            borderRadius: 12,
+            backgroundColor: '#3B82F6',
             borderWidth: 1,
-            borderColor: '#93C5FD'
+            borderColor: '#3B82F6'
           }}
         >
-          <Text style={{ color: '#2563eb', fontWeight: '600' }}>Manual</Text>
+          <Text style={{ color: 'white', fontWeight: '600', fontSize: 16 }}>Manual</Text>
         </TouchableOpacity>
       </View>
 
@@ -3222,18 +3244,27 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
               <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#1f2937', marginBottom: 16 }}>Verification Plan</Text>
               
               {/* Type Badge and Description */}
-              <View style={{ marginBottom: 16 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-                  <View style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, backgroundColor: '#dbeafe' }}>
-                    <Text style={{ color: '#1e40af', fontSize: 12, fontWeight: '600' }}>
-                      {aiBadgeState.type?.toUpperCase() || 'UNKNOWN'}
-                    </Text>
-                  </View>
+              <View style={{ marginBottom: 20 }}>
+                <View style={{ 
+                  backgroundColor: aiBadgeState.type === 'schedule' ? '#3B82F6' : 
+                                  aiBadgeState.type === 'frequency' ? '#10B981' : 
+                                  aiBadgeState.type === 'partner' ? '#8B5CF6' : '#6B7280',
+                  paddingHorizontal: 12, 
+                  paddingVertical: 6, 
+                  borderRadius: 16, 
+                  alignSelf: 'flex-start',
+                  marginBottom: 12
+                }}>
+                  <Text style={{ color: 'white', fontSize: 14, fontWeight: '600' }}>
+                    {aiBadgeState.type === 'schedule' ? 'Schedule' :
+                     aiBadgeState.type === 'frequency' ? 'Frequency' :
+                     aiBadgeState.type === 'partner' ? 'Partner' : 'Unknown'}
+                  </Text>
                 </View>
-                <Text style={{ color: '#4b5563', fontSize: 14 }}>
-                  {aiBadgeState.type === 'schedule' && 'This goal will be tracked on a fixed schedule.'}
-                  {aiBadgeState.type === 'frequency' && 'This goal will be tracked by weekly frequency.'}
-                  {aiBadgeState.type === 'partner' && 'This goal will be verified by your partner\'s approval.'}
+                <Text style={{ color: '#6B7280', fontSize: 14, lineHeight: 20 }}>
+                  {aiBadgeState.type === 'schedule' && 'This goal will be tracked on a fixed schedule'}
+                  {aiBadgeState.type === 'frequency' && 'This goal will be tracked by weekly frequency'}
+                  {aiBadgeState.type === 'partner' && 'This goal will be verified by your partner\'s approval'}
                 </Text>
               </View>
 
@@ -3242,37 +3273,126 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
                 const plan = computeVerificationPlan(aiBadgeState.type || 'frequency', aiBadgeState);
                 return (
                   <View>
-                    <Text style={{ fontSize: 16, fontWeight: '600', color: '#1f2937', marginBottom: 8 }}>Methods:</Text>
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
-                      {plan.methods.length === 0 ? (
-                        <View style={{ paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, backgroundColor: '#f3f4f6' }}>
-                          <Text style={{ color: '#6b7280', fontSize: 12 }}>None selected</Text>
-                        </View>
-                      ) : plan.methods.map(m => (
-                        <View key={m} style={{ paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, backgroundColor: '#dbeafe' }}>
-                          <Text style={{ color: '#1e40af', fontSize: 12, fontWeight: '600' }}>{m}</Text>
-                        </View>
-                      ))}
-                    </View>
+                    <Text style={{ fontSize: 16, fontWeight: '600', color: '#1f2937', marginBottom: 12 }}>Methods:</Text>
                     
-                    {plan.mandatory.length > 0 && (
-                      <Text style={{ color: '#dc2626', fontSize: 12, marginBottom: 8 }}>
-                        Mandatory: {plan.mandatory.join(', ')}
+                    {/* Method Icons Grid */}
+                    {aiBadgeState.type === 'partner' ? (
+                      <Text style={{ color: '#EF4444', fontSize: 14, marginBottom: 12 }}>none selected</Text>
+                    ) : (
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-around', marginBottom: 16 }}>
+                        <TouchableOpacity 
+                          style={{ alignItems: 'center' }}
+                          onPress={() => {
+                            const methodKey = aiBadgeState.type === 'schedule' ? 'time' : 'manual';
+                            setPlanSelectedMethods(prev => ({
+                              ...prev,
+                              [methodKey]: !prev[methodKey]
+                            }));
+                          }}
+                        >
+                          <View style={{ 
+                            backgroundColor: (() => {
+                              const methodKey = aiBadgeState.type === 'schedule' ? 'time' : 'manual';
+                              const isSelected = planSelectedMethods[methodKey];
+                              const isMandatory = aiBadgeState.type === 'schedule' && methodKey === 'time' || 
+                                                 aiBadgeState.type === 'frequency' && methodKey === 'manual';
+                              
+                              if (isMandatory) {
+                                return aiBadgeState.type === 'schedule' ? '#3B82F6' : '#10B981';
+                              }
+                              return isSelected ? '#DBEAFE' : '#F3F4F6';
+                            })(),
+                            borderRadius: 20, 
+                            padding: 16, 
+                            marginBottom: 8 
+                          }}>
+                            <Text style={{ fontSize: 20 }}>🕐</Text>
+                          </View>
+                          <Text style={{ fontSize: 12, color: '#374151' }}>
+                            {aiBadgeState.type === 'schedule' ? 'Time' : 'manual'}
+                          </Text>
+                        </TouchableOpacity>
+                        
+                        <TouchableOpacity 
+                          style={{ alignItems: 'center' }}
+                          onPress={() => {
+                            setPlanSelectedMethods(prev => ({
+                              ...prev,
+                              location: !prev.location
+                            }));
+                          }}
+                        >
+                          <View style={{ 
+                            backgroundColor: planSelectedMethods.location ? '#DBEAFE' : '#F3F4F6', 
+                            borderRadius: 20, 
+                            padding: 16, 
+                            marginBottom: 8 
+                          }}>
+                            <Text style={{ fontSize: 20 }}>📍</Text>
+                          </View>
+                          <Text style={{ fontSize: 12, color: '#374151' }}>Location</Text>
+                        </TouchableOpacity>
+                        
+                        <TouchableOpacity 
+                          style={{ alignItems: 'center' }}
+                          onPress={() => {
+                            setPlanSelectedMethods(prev => ({
+                              ...prev,
+                              photo: !prev.photo
+                            }));
+                          }}
+                        >
+                          <View style={{ 
+                            backgroundColor: planSelectedMethods.photo ? '#DBEAFE' : '#F3F4F6', 
+                            borderRadius: 20, 
+                            padding: 16, 
+                            marginBottom: 8 
+                          }}>
+                            <Text style={{ fontSize: 20 }}>📷</Text>
+                          </View>
+                          <Text style={{ fontSize: 12, color: '#374151' }}>Photo</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                    
+                    {plan.mandatory.length > 0 && aiBadgeState.type !== 'partner' && (
+                      <Text style={{ color: '#EF4444', fontSize: 14, marginBottom: 12 }}>
+                        Mandatory: {aiBadgeState.type === 'schedule' ? 'time' : 
+                                    aiBadgeState.type === 'frequency' ? 'manual' : 
+                                    plan.mandatory.join(', ')}
                       </Text>
                     )}
                     
-                    {plan.reason && (
-                      <View style={{ marginTop: 12, padding: 12, backgroundColor: '#eff6ff', borderRadius: 8, borderWidth: 1, borderColor: '#bfdbfe' }}>
-                        <Text style={{ color: '#1e40af', fontSize: 14 }}>{plan.reason}</Text>
+                    {/* Information box based on type */}
+                    {aiBadgeState.type === 'schedule' && (
+                      <View style={{ backgroundColor: '#DBEAFE', borderRadius: 12, padding: 16, marginBottom: 16 }}>
+                        <Text style={{ color: '#1E40AF', fontSize: 14, lineHeight: 20 }}>
+                          Need Time and either Location or{'\n'}(Manual+Photo)
+                        </Text>
+                      </View>
+                    )}
+                    
+                    {aiBadgeState.type === 'frequency' && (
+                      <View style={{ backgroundColor: '#D1FAE5', borderRadius: 12, padding: 16, marginBottom: 16 }}>
+                        <Text style={{ color: '#047857', fontSize: 14, lineHeight: 20 }}>
+                          Manual is required and choose Location or{'\n'}Photo; set period & N/Week
+                        </Text>
+                      </View>
+                    )}
+                    
+                    {aiBadgeState.type === 'partner' && (
+                      <View style={{ backgroundColor: '#E0E7FF', borderRadius: 12, padding: 16, marginBottom: 16 }}>
+                        <Text style={{ color: '#3730A3', fontSize: 14, lineHeight: 20 }}>
+                          Select/invite a partner and set a period
+                        </Text>
                       </View>
                     )}
 
                     {/* Partner Recommendation */}
                     {plan.partnerRecommended && aiBadgeState.type !== 'partner' && (
-                      <View style={{ marginTop: 16, padding: 12, backgroundColor: '#fef3c7', borderRadius: 8, borderWidth: 1, borderColor: '#f59e0b' }}>
-                        <Text style={{ color: '#92400e', fontSize: 14, marginBottom: 8 }}>
-                          Your current selections may not be sufficient. You can proceed with{' '}
-                          <Text style={{ fontWeight: '600' }}>Partner approval</Text> instead.
+                      <View style={{ backgroundColor: '#F3E8FF', borderRadius: 12, padding: 16, marginTop: 8 }}>
+                        <Text style={{ color: '#1F2937', fontSize: 14, marginBottom: 12 }}>
+                          Your current selections may not be sufficient. You can proceed with Partner approval instead
                         </Text>
                         <TouchableOpacity
                           onPress={() => {
@@ -3283,7 +3403,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
                               setShowSpecPlanModal(true);
                             }, 100);
                           }}
-                          style={{ paddingVertical: 8, paddingHorizontal: 16, backgroundColor: '#f59e0b', borderRadius: 6, alignSelf: 'flex-start' }}
+                          style={{ paddingVertical: 12, paddingHorizontal: 20, backgroundColor: '#8B5CF6', borderRadius: 8, alignSelf: 'flex-start' }}
                         >
                           <Text style={{ color: 'white', fontSize: 14, fontWeight: '600' }}>Use Partner instead</Text>
                         </TouchableOpacity>
