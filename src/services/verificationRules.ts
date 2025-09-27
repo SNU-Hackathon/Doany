@@ -14,21 +14,23 @@ function withinWindow(t?: { present?: boolean; windowStart?: number | null; wind
   return isWithin(now, effectiveStart, effectiveEnd);
 }
 
-// Schedule: Time AND (Manual+Location OR Time+Photo)
+// Schedule: Time AND (Manual+Location OR Time+Photo OR Time+Location)
 export function evalScheduleRule(sig: VerificationSignals) {
-  const timeOk = !!sig.time?.present;
-  const manualLocOk = !!(sig.manual?.present && sig.location?.present);
+  const timeOk = withinWindow(sig.time);
+  const manualLocOk = !!(sig.manual?.present && sig.location?.present && sig.location.inside);
   const photoOk = !!(sig.photo?.present && 
     sig.photo.validationResult?.timeValid && 
     sig.photo.validationResult?.freshnessValid);
+  const timeLocOk = !!(sig.time?.present && sig.location?.present && sig.location.inside);
   
-  const either = manualLocOk || photoOk;
+  const either = manualLocOk || photoOk || timeLocOk;
   return { 
     pass: timeOk && either, 
     details: { 
       timeOk, 
       manualLocOk, 
       photoOk,
+      timeLocOk,
       photoTimeValid: sig.photo?.validationResult?.timeValid,
       photoFreshValid: sig.photo?.validationResult?.freshnessValid
     } 
@@ -40,7 +42,7 @@ export function evalFrequencyRule(sig: VerificationSignals) {
   const manualPhotoOk = !!(sig.manual?.present && 
     sig.photo?.present && 
     sig.photo.validationResult?.freshnessValid);
-  const manualLocOk = !!(sig.manual?.present && sig.location?.present);
+  const manualLocOk = !!(sig.manual?.present && sig.location?.present && sig.location.inside);
   
   return { 
     pass: manualLocOk || manualPhotoOk, 
