@@ -23,6 +23,7 @@ import {
 } from 'firebase/firestore';
 import { FirebaseStorage, getStorage } from 'firebase/storage';
 import { Platform } from 'react-native';
+import { createCatalogError, getErrorInfo } from '../constants/errorCatalog';
 
 // Firebase configuration using environment variables
 const firebaseConfig = {
@@ -293,13 +294,20 @@ export const createGoalDraft = async (uid: string, goalData: Omit<Goal, 'id' | '
     console.error('❌ Error creating goal:', error);
     console.timeEnd('📝 Create Goal');
     
-    // Provide user-friendly error messages
+    // Provide user-friendly error messages using error catalog
     if (error.code === 'permission-denied') {
-      throw new Error('Permission denied. Please sign in again.');
+      throw createCatalogError('STORAGE_PERMISSION_DENIED', error);
     } else if (error.code === 'unavailable') {
-      throw new Error('Service unavailable. Please check your internet connection.');
+      throw createCatalogError('STORAGE_UNAVAILABLE', error);
+    } else if (error.code === 'resource-exhausted') {
+      throw createCatalogError('STORAGE_QUOTA_EXCEEDED', error);
     } else {
-      throw new Error(`Failed to create goal: ${error.message}`);
+      // Check if error is already cataloged
+      const errorInfo = getErrorInfo(error);
+      if ((error as any).catalogKey) {
+        throw error;
+      }
+      throw createCatalogError('UNKNOWN_ERROR', error);
     }
   }
 };

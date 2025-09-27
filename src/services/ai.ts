@@ -1,6 +1,7 @@
 // AI service for goal generation and assistance with timeout, retry, and performance optimization
 
 import { Categories } from '../constants';
+import { createCatalogError } from '../constants/errorCatalog';
 import { validateGoalSpec, validateGoalSpecWithRecovery, validateTypeSpecificFields, type GoalSpec } from '../schemas/goalSpec';
 import { AIContext, AIGoal, CalendarEvent, ValidationResult, VerificationType } from '../types';
 import { sliceCompleteWeeks } from '../utils/dateSlices';
@@ -179,12 +180,12 @@ Output ONLY valid JSON matching the schema above. No explanations, no markdown, 
             return recovery.spec;
           } else {
             console.error("[AI] Recovery failed:", recovery.errors);
-            throw new Error(`AI response validation failed: ${recovery.errors.join(', ')}`);
+            throw createCatalogError('AI_VALIDATION_ERROR');
           }
         }
       } catch (error) {
         console.error("[AI] JSON parse or validation error:", error);
-        throw new Error(`Failed to parse and validate AI response: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        throw createCatalogError('AI_PARSE_ERROR', error);
       }
     };
 
@@ -1452,7 +1453,13 @@ Output ONLY valid JSON matching the schema above. No explanations, no markdown, 
       });
 
       if (!response.ok) {
-        throw new Error(`OpenAI API error: ${response.status}`);
+        if (response.status === 429) {
+          throw createCatalogError('AI_RATE_LIMIT');
+        } else if (response.status >= 500) {
+          throw createCatalogError('AI_SERVICE_UNAVAILABLE');
+        } else {
+          throw createCatalogError('AI_PARSE_ERROR', new Error(`OpenAI API error: ${response.status}`));
+        }
       }
 
       const data = await response.json();
@@ -1461,6 +1468,14 @@ Output ONLY valid JSON matching the schema above. No explanations, no markdown, 
       return parsed;
     } catch (error) {
       console.error('[AI] OpenAI generation failed, falling back to heuristic:', error);
+      // Check if error is recoverable, otherwise re-throw
+      if (!(error as any).catalogKey) {
+        throw error;
+      }
+      const errorInfo = getErrorInfo(error);
+      if (!errorInfo.recoverable) {
+        throw error;
+      }
       return this.generateWithLocalHeuristic(prompt);
     } finally {
       console.timeEnd('[AI] OpenAI Generation');
@@ -1496,7 +1511,13 @@ Output ONLY valid JSON matching the schema above. No explanations, no markdown, 
       });
 
       if (!response.ok) {
-        throw new Error(`Proxy API error: ${response.status}`);
+        if (response.status === 429) {
+          throw createCatalogError('AI_RATE_LIMIT');
+        } else if (response.status >= 500) {
+          throw createCatalogError('AI_SERVICE_UNAVAILABLE');
+        } else {
+          throw createCatalogError('AI_PARSE_ERROR', new Error(`Proxy API error: ${response.status}`));
+        }
       }
 
       const data = await response.json();
@@ -1504,6 +1525,10 @@ Output ONLY valid JSON matching the schema above. No explanations, no markdown, 
 
     } catch (error) {
       console.error('[AI] Proxy generation failed:', error);
+      // Re-throw with catalog error if not already cataloged
+      if (!(error as any).catalogKey) {
+        throw createCatalogError('AI_PARSE_ERROR', error);
+      }
       throw error;
     } finally {
       console.timeEnd('[AI] Proxy Generation');
