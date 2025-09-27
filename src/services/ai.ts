@@ -1472,10 +1472,6 @@ Output ONLY valid JSON matching the schema above. No explanations, no markdown, 
       if (!(error as any).catalogKey) {
         throw error;
       }
-      const errorInfo = getErrorInfo(error);
-      if (!errorInfo.recoverable) {
-        throw error;
-      }
       return this.generateWithLocalHeuristic(prompt);
     } finally {
       console.timeEnd('[AI] OpenAI Generation');

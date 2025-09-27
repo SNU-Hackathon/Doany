@@ -29,6 +29,7 @@ import { GoalService } from '../services/goalService';
 import { getPlaceDetails } from '../services/places';
 import { CreateGoalForm, GoalDuration, GoalFrequency, GoalSpec, TargetLocation, ValidationResult, VerificationType } from '../types';
 import { toIndexKeyMap } from '../utils/schedule';
+import { toast } from '../utils/toast';
 import MapPreview from './MapPreview';
 import SimpleDatePicker, { DateSelection } from './SimpleDatePicker';
 import ToastContainer from './ToastContainer';
@@ -50,6 +51,34 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
   // Performance tracking
   console.time('[CreateGoalModal] Component Mount');
   
+  const { user } = useAuth();
+  const navigation = useNavigation<any>();
+  const { state, actions } = useCreateGoal();
+  
+  // Local state for AI type badge
+  const [aiBadgeState, setAiBadgeState] = useState<CreateGoalFeatureState>(INITIAL_CREATE_GOAL_STATE);
+
+  // Form data state
+  const [formData, setFormData] = useState<CreateGoalForm>({
+    title: '',
+    description: '',
+    category: Categories[0],
+    verificationMethods: [],
+    frequency: { count: 1, unit: 'per_day' },
+    duration: {
+      type: 'range',
+      startDate: new Date().toISOString().split('T')[0],
+      endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    },
+    targetLocation: undefined,
+    partner: undefined,
+    lockedVerificationMethods: [],
+    weeklyWeekdays: [],
+    weeklySchedule: {},
+    calendarEvents: [],
+    type: 'frequency'
+  });
+
   // AI retry hook for robust error handling
   const aiRetry = useAIWithRetry({
     debounceMs: 800,
@@ -80,7 +109,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
 
     // Type-specific validation
     if (aiBadgeState.type === 'frequency') {
-      if (!formData.frequency?.targetCount || formData.frequency.targetCount <= 0) {
+      if (!formData.frequency?.count || formData.frequency.count <= 0) {
         errors.push('주간 목표 횟수를 설정해주세요');
       }
     }
@@ -106,13 +135,6 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
   useEffect(() => {
     validateFormSchema();
   }, [validateFormSchema]);
-  
-  const { user } = useAuth();
-  const navigation = useNavigation<any>();
-  const { state, actions } = useCreateGoal();
-  
-  // Local state for AI type badge
-  const [aiBadgeState, setAiBadgeState] = useState<CreateGoalFeatureState>(INITIAL_CREATE_GOAL_STATE);
   const [showTypeSelector, setShowTypeSelector] = useState(false);
   const [showWhyTooltip, setShowWhyTooltip] = useState(false);
   const [showRulePreview, setShowRulePreview] = useState(false);
@@ -749,27 +771,6 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
   const mountedRef = useRef(true);
   const optimisticGoalId = useRef<string | null>(null);
 
-  const [formData, setFormData] = useState<CreateGoalForm>({
-    title: '',
-    description: '',
-    category: Categories[0],
-    verificationMethods: [],
-    frequency: { count: 1, unit: 'per_day' },
-    duration: {
-      type: 'weeks',
-      value: 2,
-      startDate: new Date().toISOString(),
-    },
-    notes: '',
-    // Legacy fields for backward compatibility
-    verificationType: 'manual',
-    timeFrame: 'daily',
-    startDate: new Date(),
-    endDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
-    includeDates: [],
-    excludeDates: [],
-    calendarEvents: [],
-  });
 
   // Goal type: single source of truth
   const goalType = (state as any).goalType ?? (formData as any).goalType ?? aiBadgeState.type ?? 'frequency';
@@ -1315,21 +1316,20 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     // Remember the prompt for future reference
     setRememberedPrompt(aiPrompt.trim());
 
-    setAppState('GENERATING');
-    setLoading(true);
-    setFollowUpQuestion('');
+    try {
+      setAppState('GENERATING');
+      setLoading(true);
+      setFollowUpQuestion('');
 
-    let aiResult: any;
-    if (!aiContext) {
-      // Initial generation
-      console.log('[CreateGoalModal] Initial AI generation');
-      console.log('[CreateGoalModal] AI input:', aiPrompt.trim());
-      // Step 0: Compile GoalSpec first (semantic-first)
-      
-      const result = await aiRetry.executeWithDebounce(
-        async (signal) => {
+      let aiResult: any;
+      if (!aiContext) {
+        // Initial generation
+        console.log('[CreateGoalModal] Initial AI generation');
+        console.log('[CreateGoalModal] AI input:', aiPrompt.trim());
+        // Step 0: Compile GoalSpec first (semantic-first)
+        try {
           setGoalSpecLoading(true);
-          return await AIService.compileGoalSpec({
+          const spec = await AIService.compileGoalSpec({
             prompt: aiPrompt.trim(),
             title: aiDraft.title || formData.title,
             targetLocationName: (aiDraft as any)?.targetLocation?.name || formData.targetLocation?.name,
@@ -1337,9 +1337,6 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
             locale: 'ko-KR',
             timezone: 'Asia/Seoul'
           });
-        },
-        (spec) => {
-          // Success callback
           console.log('[CreateGoalModal] LLM raw response:', spec);
           
           // Parse and coerce the GoalSpec
@@ -1350,13 +1347,6 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
           setAiDraft(parsedSpec);
           
           toast.success('목표가 성공적으로 생성되었습니다');
-        },
-        (error) => {
-          // Error callback
-          console.error('[CreateGoalModal] AI generation failed:', error);
-          setGoalSpecLoading(false);
-        }
-      );
           console.log("[CreateGoalModal] showing plan with:", { type: parsedSpec?.type, signals: parsedSpec?.verification?.signals });
           
           // Update AI badge state with processed spec
@@ -1434,7 +1424,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
           }
           setShowSpecPlanModal(true);
         } catch (e) {
-          Alert.alert('AI Error', 'Failed to compile GoalSpec. Please try again.');
+          toast.error('AI 생성에 실패했습니다. 다시 시도해주세요.');
           setAppState('IDLE');
           return;
         } finally {
@@ -1513,7 +1503,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
           }
           setShowSpecPlanModal(true);
         } catch (e) {
-          Alert.alert('AI Error', 'Failed to refine GoalSpec. Please try again.');
+          toast.error('AI 개선에 실패했습니다. 다시 시도해주세요.');
           setAppState('IDLE');
           return;
         } finally {
@@ -1523,9 +1513,13 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       }
 
 
-    // Clean up loading state
-    setLoading(false);
-    console.timeEnd('[CreateGoalModal] AI Generation');
+    } catch (error: any) {
+      console.error('[CreateGoalModal] AI generation failed:', error);
+      toast.error('AI 어시스턴트에 문제가 발생했습니다. 수동으로 목표를 생성할 수 있습니다.');
+    } finally {
+      setLoading(false);
+      console.timeEnd('[CreateGoalModal] AI Generation');
+    }
   };
 
   // Update form data from AI draft
@@ -3990,8 +3984,6 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         </View>
       </Modal>
       </View>
-      
-      {/* Toast notifications */}
       <ToastContainer position="top" />
     </Modal>
   );
