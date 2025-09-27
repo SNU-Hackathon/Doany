@@ -15,15 +15,17 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import GoalScheduleCalendar from '../components/GoalScheduleCalendar';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import QuestList from '../components/QuestList';
 import { VERIFICATION_DEFAULTS } from '../config/verification';
 import { useAuth } from '../hooks/useAuth';
 import { CalendarEventService } from '../services/calendarEventService';
 import { db } from '../services/firebase';
 import { GoalService } from '../services/goalService';
 import { parsePickerExif, validateFreshness, validateGeofence, validateTimeWindow } from '../services/photo/ExifValidator';
+import { QuestService } from '../services/questService';
 import { VerificationService, verifyManual, verifyPhoto } from '../services/verificationService';
-import { CalendarEvent, Goal, RootStackParamList, Verification } from '../types';
+import { CalendarEvent, Goal, Quest, QuestStatus, RootStackParamList, Verification } from '../types';
 
 type GoalDetailScreenRouteProp = RouteProp<RootStackParamList, 'GoalDetail'>;
 type GoalDetailScreenNavigationProp = StackNavigationProp<RootStackParamList, 'GoalDetail'>;
@@ -36,6 +38,7 @@ interface GoalDetailScreenProps {
 export default function GoalDetailScreen({ route, navigation }: GoalDetailScreenProps) {
   const { goalId } = route.params;
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
   
   // Move all hooks to the top level
   const [goal, setGoal] = useState<Goal | null>(null);
@@ -45,6 +48,8 @@ export default function GoalDetailScreen({ route, navigation }: GoalDetailScreen
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
+  const [quests, setQuests] = useState<Quest[]>([]);
+  const [questsLoading, setQuestsLoading] = useState(false);
 
   const loadGoalData = useCallback(async () => {
     if (!goalId) return;
@@ -90,6 +95,10 @@ export default function GoalDetailScreen({ route, navigation }: GoalDetailScreen
       setVerifications(verificationsData);
       setSuccessRate(rate);
       setCalendarEvents(calendarEventsData);
+      
+      // Load quests for this goal
+      await loadQuestsForGoal(goalId);
+      
       console.log('[GOAL:fetch:success]', { 
         goalId, 
         title: goalData.title,
@@ -108,6 +117,82 @@ export default function GoalDetailScreen({ route, navigation }: GoalDetailScreen
       setRefreshing(false);
     }
   }, [goalId]);
+
+  const loadQuestsForGoal = useCallback(async (goalId: string) => {
+    if (!user) return;
+    
+    try {
+      setQuestsLoading(true);
+      const questsData = await QuestService.getQuestsForGoal(goalId, user.uid);
+      setQuests(questsData);
+      
+      // If no quests exist, generate them
+      if (questsData.length === 0 && goal) {
+        console.log('[GoalDetail] No quests found, generating quests for goal:', goalId);
+        await generateQuestsForGoal();
+      }
+      
+    } catch (error) {
+      console.error('[GoalDetail] Error loading quests:', error);
+    } finally {
+      setQuestsLoading(false);
+    }
+  }, [user]);
+
+  const generateQuestsForGoal = useCallback(async () => {
+    if (!user || !goal) return;
+    
+    try {
+      setQuestsLoading(true);
+      console.log('[GoalDetail] Generating quests for goal:', goal.id);
+      
+      // Generate quests using the goal data
+      const generatedQuests = await QuestService.generateAndSaveQuestsForGoal(
+        goal.id,
+        goal,
+        user.uid
+      );
+      
+      setQuests(generatedQuests);
+      console.log('[GoalDetail] Generated', generatedQuests.length, 'quests');
+      
+    } catch (error) {
+      console.error('[GoalDetail] Error generating quests:', error);
+    } finally {
+      setQuestsLoading(false);
+    }
+  }, [user, goal]);
+
+  const handleQuestPress = useCallback((quest: Quest) => {
+    // Navigate to QuestDetailScreen
+    // For now, we'll show an alert since we need to set up navigation
+    Alert.alert(
+      '퀀스트 상세',
+      `퀀스트: ${quest.title}\n상태: ${quest.status}`,
+      [{ text: '확인' }]
+    );
+  }, []);
+
+  const handleQuestStatusChange = useCallback(async (questId: string, status: QuestStatus) => {
+    if (!user) return;
+    
+    try {
+      await QuestService.updateQuestStatus(questId, status, user.uid);
+      
+      // Update local state
+      setQuests(prevQuests => 
+        prevQuests.map(quest => 
+          quest.id === questId ? { ...quest, status } : quest
+        )
+      );
+      
+      console.log('[GoalDetail] Updated quest status:', questId, 'to', status);
+      
+    } catch (error) {
+      console.error('[GoalDetail] Error updating quest status:', error);
+      Alert.alert('오류', '퀀스트 상태 업데이트에 실패했습니다');
+    }
+  }, [user]);
 
   useEffect(() => {
     loadGoalData();
@@ -172,19 +257,23 @@ export default function GoalDetailScreen({ route, navigation }: GoalDetailScreen
     loadGoalData();
   }, [loadGoalData]);
 
-  // Set up header with delete button
+  // Set up header with delete button (only if navigation.setOptions exists)
   useLayoutEffect(() => {
-    if (goal) {
-      navigation.setOptions({
-        headerRight: () => (
-          <TouchableOpacity
-            onPress={handleDeleteGoal}
-            style={{ marginRight: 16 }}
-          >
-            <Ionicons name="trash-outline" size={24} color="#FFFFFF" />
-          </TouchableOpacity>
-        ),
-      });
+    if (goal && navigation.setOptions) {
+      try {
+        navigation.setOptions({
+          headerRight: () => (
+            <TouchableOpacity
+              onPress={handleDeleteGoal}
+              style={{ marginRight: 16 }}
+            >
+              <Ionicons name="trash-outline" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+          ),
+        });
+      } catch (error) {
+        console.log('[GoalDetailScreen] setOptions not available in modal context');
+      }
     }
   }, [goal, navigation, handleDeleteGoal]);
 
@@ -353,15 +442,44 @@ export default function GoalDetailScreen({ route, navigation }: GoalDetailScreen
     );
   }
 
+  // Check if we're in a modal context (no navigation.setOptions)
+  const isModalContext = !navigation.setOptions;
+
   return (
-    <ScrollView 
-      className="flex-1 bg-gray-50"
-      contentContainerStyle={{ paddingBottom: 90 }} // Add bottom padding for tab bar
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-      }
-    >
-      <View className="px-4 pt-4">
+    <View className="flex-1 bg-gray-50">
+      {/* Custom Header for Modal Context */}
+      {isModalContext && (
+        <View 
+          className="bg-white border-b border-gray-200 px-4 flex-row items-center justify-between"
+          style={{ paddingTop: insets.top + 12, paddingBottom: 12 }}
+        >
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            className="flex-row items-center"
+            style={{ minHeight: 44, minWidth: 44 }} // 터치 영역 확보
+          >
+            <Ionicons name="arrow-back" size={24} color="#374151" />
+            <Text className="text-gray-700 font-medium ml-2">Back</Text>
+          </TouchableOpacity>
+          <Text className="text-lg font-semibold text-gray-900">Goal Details</Text>
+          <TouchableOpacity
+            onPress={handleDeleteGoal}
+            className="p-1"
+            style={{ minHeight: 44, minWidth: 44 }} // 터치 영역 확보
+          >
+            <Ionicons name="trash-outline" size={24} color="#DC2626" />
+          </TouchableOpacity>
+        </View>
+      )}
+      
+      <ScrollView 
+        className="flex-1 bg-gray-50"
+        contentContainerStyle={{ paddingBottom: 90 }} // Add bottom padding for tab bar
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      >
+        <View className="px-4 pt-4">
         {/* Goal Info Card */}
         <View className="bg-white rounded-lg p-6 mb-6 shadow-sm">
           <Text className="text-2xl font-bold text-gray-800 mb-2">
@@ -478,77 +596,26 @@ export default function GoalDetailScreen({ route, navigation }: GoalDetailScreen
           </TouchableOpacity>
         )}
 
-        {/* Schedule & Progress Calendar */}
-        <View className="bg-white rounded-lg p-6 mb-6 shadow-sm">
-          <Text className="text-xl font-bold text-gray-800 mb-4">Schedule & Progress</Text>
-          <GoalScheduleCalendar
-            ranges={goal.duration?.startDate && goal.duration?.endDate 
-              ? [{ start: new Date(goal.duration.startDate), end: new Date(goal.duration.endDate) }]
-              : goal.startDate && goal.endDate 
-                ? [{ start: goal.startDate, end: goal.endDate }]
-                : []}
-            weeklyWeekdays={goal.weeklyWeekdays || []}
-            weeklyTimeSettings={goal.weeklySchedule || {}}
-            includeDates={goal.includeDates || []}
-            excludeDates={goal.excludeDates || []}
-            verifications={verifications}
-            enforcePartialWeeks={goal.schedule?.enforcePartialWeeks || false}
-            calendarEvents={calendarEvents}
-            goalId={goalId}
-          />
-        </View>
 
-        {/* Verification History */}
-        <View className="bg-white rounded-lg p-6 mb-6 shadow-sm">
-          <Text className="text-xl font-bold text-gray-800 mb-4">
-            Verification History
+        {/* Quest List */}
+        <View className="flex-1">
+          <Text className="text-xl font-bold text-gray-800 mb-4 px-6">
+            퀀스트 목록
           </Text>
-
-          {verifications.length === 0 ? (
+          
+          {questsLoading ? (
             <View className="items-center py-8">
-              <Ionicons name="document-outline" size={48} color="#6B7280" />
+              <Ionicons name="hourglass-outline" size={48} color="#6B7280" />
               <Text className="text-gray-600 mt-2 text-center">
-                No verifications yet
+                퀀스트를 생성하는 중...
               </Text>
             </View>
           ) : (
-            verifications.map((verification) => (
-              <View 
-                key={verification.id}
-                className="flex-row items-center justify-between py-3 border-b border-gray-100 last:border-b-0"
-              >
-                <View className="flex-row items-center flex-1">
-                  <Ionicons 
-                    name={getVerificationIcon(verification.status)}
-                    size={24}
-                    color={verification.status === 'success' ? '#10B981' : '#EF4444'}
-                  />
-                  <View className="ml-3 flex-1">
-                    <Text className={`font-semibold ${getVerificationColor(verification.status)}`}>
-                      {verification.status === 'success' ? 'Success' : 'Failed'}
-                    </Text>
-                    <Text className="text-gray-600 text-sm">
-                      {formatDate(verification.timestamp)}
-                    </Text>
-                    {verification.location && (
-                      <Text className="text-gray-500 text-xs mt-1">
-                        📍 {verification.location.name}
-                      </Text>
-                    )}
-                  </View>
-                </View>
-                
-                {verification.screenshotUrl && (
-                  <TouchableOpacity
-                    onPress={() => {
-                      Alert.alert('Screenshot', 'Screenshot viewing will be implemented soon!');
-                    }}
-                  >
-                    <Ionicons name="image" size={20} color="#3B82F6" />
-                  </TouchableOpacity>
-                )}
-              </View>
-            ))
+            <QuestList
+              quests={quests}
+              onQuestPress={handleQuestPress}
+              onQuestStatusChange={handleQuestStatusChange}
+            />
           )}
         </View>
 
@@ -569,5 +636,6 @@ export default function GoalDetailScreen({ route, navigation }: GoalDetailScreen
         </View>
       </View>
     </ScrollView>
+    </View>
   );
 }

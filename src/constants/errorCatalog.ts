@@ -7,7 +7,7 @@ export interface ErrorInfo {
   message: string;
   recoverable: boolean;
   action?: string;
-  category: 'network' | 'validation' | 'auth' | 'storage' | 'ai' | 'unknown';
+  category: 'network' | 'validation' | 'auth' | 'storage' | 'ai' | 'security' | 'unknown';
 }
 
 export const ERROR_CATALOG: Record<string, ErrorInfo> = {
@@ -38,6 +38,12 @@ export const ERROR_CATALOG: Record<string, ErrorInfo> = {
     action: '다시 생성',
     category: 'ai'
   },
+  'AI_QUEST_GENERATION_ERROR': {
+    message: '퀀스트 생성 중 오류가 발생했습니다',
+    recoverable: true,
+    action: '다시 시도',
+    category: 'ai'
+  },
   'AI_VALIDATION_ERROR': {
     message: '목표 형식이 올바르지 않습니다',
     recoverable: true,
@@ -62,6 +68,12 @@ export const ERROR_CATALOG: Record<string, ErrorInfo> = {
     action: '잠시 후 다시 시도',
     category: 'ai'
   },
+  'AI_SECURITY_VIOLATION': {
+    message: '보안 정책 위반이 감지되었습니다',
+    recoverable: false,
+    action: '목표 내용을 다시 작성해주세요',
+    category: 'security'
+  },
 
   // Storage errors
   'STORAGE_PERMISSION_DENIED': {
@@ -79,6 +91,44 @@ export const ERROR_CATALOG: Record<string, ErrorInfo> = {
   'STORAGE_QUOTA_EXCEEDED': {
     message: '저장 공간이 부족합니다',
     recoverable: false,
+    category: 'storage'
+  },
+
+  // Quest management errors
+  'QUEST_GENERATION_ERROR': {
+    message: '퀀스트 생성 중 오류가 발생했습니다',
+    recoverable: true,
+    action: '다시 시도',
+    category: 'ai'
+  },
+  'QUEST_SAVE_ERROR': {
+    message: '퀀스트 저장에 실패했습니다',
+    recoverable: true,
+    action: '다시 시도',
+    category: 'storage'
+  },
+  'QUEST_FETCH_ERROR': {
+    message: '퀀스트를 불러올 수 없습니다',
+    recoverable: true,
+    action: '다시 시도',
+    category: 'storage'
+  },
+  'QUEST_UPDATE_ERROR': {
+    message: '퀀스트 업데이트에 실패했습니다',
+    recoverable: true,
+    action: '다시 시도',
+    category: 'storage'
+  },
+  'QUEST_DELETE_ERROR': {
+    message: '퀀스트 삭제에 실패했습니다',
+    recoverable: true,
+    action: '다시 시도',
+    category: 'storage'
+  },
+  'QUEST_STATS_ERROR': {
+    message: '퀀스트 통계를 불러올 수 없습니다',
+    recoverable: true,
+    action: '다시 시도',
     category: 'storage'
   },
 

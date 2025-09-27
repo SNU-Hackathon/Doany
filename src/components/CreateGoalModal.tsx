@@ -23,14 +23,26 @@ import ScheduleFlow from '../features/createGoal/ScheduleFlow';
 import { AIGoalDraft, mergeAIGoal, parseGoalSpec, updateDraftWithDates, validateAIGoal } from '../features/goals/aiDraft';
 import { useAIWithRetry } from '../hooks/useAIWithRetry';
 import { useAuth } from '../hooks/useAuth';
+import { useBurstyCallPrevention, useDuplicateRequestTelemetry, useInputDebounce } from '../hooks/useBurstyCallPrevention';
 import { AIService } from '../services/ai';
 import { CalendarEventService } from '../services/calendarEventService';
 import { GoalService } from '../services/goalService';
 import { getPlaceDetails } from '../services/places';
 import { CreateGoalForm, GoalDuration, GoalFrequency, GoalSpec, TargetLocation, ValidationResult, VerificationType } from '../types';
+import { getLocaleConfig } from '../utils/languageDetection';
 import { toIndexKeyMap } from '../utils/schedule';
+import {
+  generateRequestId,
+  getLoggingSessionId,
+  logStorage,
+  logUserAction,
+  logValidation,
+  PerformanceTimer,
+  setLoggingUserId
+} from '../utils/structuredLogging';
 import { toast } from '../utils/toast';
 import MapPreview from './MapPreview';
+import QuestPreview from './QuestPreview';
 import SimpleDatePicker, { DateSelection } from './SimpleDatePicker';
 import ToastContainer from './ToastContainer';
 
@@ -52,6 +64,27 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
   console.time('[CreateGoalModal] Component Mount');
   
   const { user } = useAuth();
+  
+  // Set up logging session
+  useEffect(() => {
+    if (user?.id) {
+      setLoggingUserId(user.id);
+    }
+  }, [user?.id]);
+  
+  // Log modal open
+  useEffect(() => {
+    if (visible) {
+      logUserAction({
+        action: 'modal_open',
+        message: 'CreateGoalModal opened',
+        context: {
+          sessionId: getLoggingSessionId(),
+          userId: user?.id,
+        },
+      });
+    }
+  }, [visible, user?.id]);
   const navigation = useNavigation<any>();
   const { state, actions } = useCreateGoal();
   
@@ -85,6 +118,25 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     maxRetries: 2,
     retryDelayMs: 1000,
   });
+
+  // Bursty call prevention hooks
+  const burstyCallPrevention = useBurstyCallPrevention({
+    debounceMs: 600,
+    maxRetries: 2,
+    retryDelayMs: 1000
+  });
+
+  const { debouncedCallback: debouncedAiPrompt } = useInputDebounce(
+    (value: string) => {
+      if (value.trim()) {
+        // Trigger AI generation with debounced input
+        handleAiGenerationDebounced(value.trim());
+      }
+    },
+    500
+  );
+
+  const telemetry = useDuplicateRequestTelemetry();
 
   // Schema validation state
   const [isSchemaValid, setIsSchemaValid] = useState(false);
@@ -128,6 +180,16 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
 
     setSchemaValidationErrors(errors);
     setIsSchemaValid(errors.length === 0);
+    
+    // Log validation result
+    logValidation({
+      validationType: 'form_schema',
+      passed: errors.length === 0,
+      errorCount: errors.length,
+      errors: errors.length > 0 ? errors : undefined,
+      message: errors.length === 0 ? 'Form validation passed' : 'Form validation failed',
+    });
+    
     return errors.length === 0;
   }, [formData, aiBadgeState.type]);
 
@@ -141,7 +203,14 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
   
   // Debug navigation state
   useEffect(() => {
-    console.log('[NAV] available screens:', navigation.getState()?.routeNames);
+    try {
+      const state = navigation.getState();
+      if (state?.routeNames) {
+        console.log('[NAV] available screens:', state.routeNames);
+      }
+    } catch (error) {
+      console.log('[NAV] Navigation not ready yet:', error.message);
+    }
   }, [navigation]);
 
   // AI classification effect
@@ -1306,15 +1375,58 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     }
   }, [visible]);
 
-  // AI generation with timeout and error handling
-  const handleAiGeneration = async () => {
-    if (!aiPrompt.trim()) return;
+  // Debounced AI generation function
+  const handleAiGenerationDebounced = useCallback(async (prompt: string) => {
+    if (!prompt.trim()) return;
 
-    console.time('[CreateGoalModal] AI Generation');
-    console.log('[CreateGoalModal] Starting AI generation:', aiPrompt);
+    await burstyCallPrevention.executeRequest(
+      async (signal: AbortSignal, requestId: string) => {
+        console.time('[CreateGoalModal] AI Generation');
+        console.log('[CreateGoalModal] Starting AI generation:', prompt);
+
+        // Log AI generation start
+        logUserAction({
+          action: 'ai_generate_click',
+          message: 'User clicked AI generate button (debounced)',
+          context: {
+            promptLength: prompt.trim().length,
+            requestId,
+            sessionId: getLoggingSessionId(),
+          },
+        });
+
+        return await executeAiGeneration(prompt, signal, requestId);
+      },
+      {
+        promptLength: prompt.trim().length,
+        sessionId: getLoggingSessionId(),
+      }
+    );
+  }, [burstyCallPrevention]);
+
+  // Core AI generation logic
+  const executeAiGeneration = async (prompt: string, signal: AbortSignal, requestId: string) => {
+    if (!prompt.trim()) return;
+
+    // Check if request was aborted
+    if (signal.aborted) {
+      console.log('[CreateGoalModal] Request aborted before starting');
+      return;
+    }
+
+    // Log AI generation click
+    logUserAction({
+      action: 'ai_generate_click',
+      message: 'User clicked AI generate button',
+      context: {
+        promptLength: prompt.trim().length,
+        requestId,
+        sessionId: getLoggingSessionId(),
+      },
+    });
 
     // Remember the prompt for future reference
-    setRememberedPrompt(aiPrompt.trim());
+    setRememberedPrompt(prompt.trim());
 
     try {
       setAppState('GENERATING');
@@ -1325,17 +1437,28 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       if (!aiContext) {
         // Initial generation
         console.log('[CreateGoalModal] Initial AI generation');
-        console.log('[CreateGoalModal] AI input:', aiPrompt.trim());
+        console.log('[CreateGoalModal] AI input:', prompt.trim());
+        
+        // Check if request was aborted
+        if (signal.aborted) {
+          console.log('[CreateGoalModal] Request aborted during initial generation');
+          return;
+        }
+        
         // Step 0: Compile GoalSpec first (semantic-first)
         try {
           setGoalSpecLoading(true);
+          
+          // Detect language and get appropriate locale configuration
+          const localeConfig = getLocaleConfig(prompt.trim());
+          
           const spec = await AIService.compileGoalSpec({
-            prompt: aiPrompt.trim(),
+            prompt: prompt.trim(),
             title: aiDraft.title || formData.title,
             targetLocationName: (aiDraft as any)?.targetLocation?.name || formData.targetLocation?.name,
             placeId: (aiDraft as any)?.targetLocation?.placeId || formData.targetLocation?.placeId,
-            locale: 'ko-KR',
-            timezone: 'Asia/Seoul'
+            locale: localeConfig.locale,
+            timezone: localeConfig.timezone
           });
           console.log('[CreateGoalModal] LLM raw response:', spec);
           
@@ -1343,9 +1466,33 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
           const parsedSpec = parseGoalSpec(JSON.stringify(spec));
           console.log('[CreateGoalModal] Coerced type:', parsedSpec.type);
           
+          // Validate GoalSpec BEFORE showing success message
+          if (!spec || typeof spec !== 'object' || !spec.verification) {
+            Alert.alert('AI Error', 'Failed to parse GoalSpec. Please refine your input.');
+            setGoalSpecLoading(false);
+            setAppState('IDLE');
+            return;
+          }
+          
+          // Additional validation based on goal type
+          if (parsedSpec.type === 'schedule' && !spec.schedule) {
+            Alert.alert('AI Error', 'Schedule goal requires schedule information. Please refine your input.');
+            setGoalSpecLoading(false);
+            setAppState('IDLE');
+            return;
+          }
+          
+          if (parsedSpec.type === 'frequency' && !spec.frequency) {
+            Alert.alert('AI Error', 'Frequency goal requires frequency information. Please refine your input.');
+            setGoalSpecLoading(false);
+            setAppState('IDLE');
+            return;
+          }
+          
           // Set AI draft with processed spec
           setAiDraft(parsedSpec);
           
+          // Show success message only after validation passes
           toast.success('목표가 성공적으로 생성되었습니다');
           console.log("[CreateGoalModal] showing plan with:", { type: parsedSpec?.type, signals: parsedSpec?.verification?.signals });
           
@@ -1365,22 +1512,15 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
               photo: parsedSpec?.verification?.signals?.includes('photo') || false
             }
           }));
-          
-          if (!spec || typeof spec !== 'object' || !spec.verification || !spec.schedule) {
-            Alert.alert('AI Error', 'Failed to parse GoalSpec. Please refine your input.');
-            setGoalSpecLoading(false);
-            setAppState('IDLE');
-            return;
-          }
-          setGoalSpec(spec);
+          setGoalSpec(spec as GoalSpec);
           
           // Update formData with schedule information from GoalSpec
           setFormData(prev => ({
             ...prev,
             schedule: {
               countRule: spec.schedule?.countRule,
-              timeWindows: spec.schedule?.timeWindows,
-              weekdayConstraints: spec.schedule?.weekdayConstraints,
+              timeWindows: (spec.schedule?.timeWindows || []) as any,
+              weekdayConstraints: spec.schedule?.weekdayConstraints || [],
               weekBoundary: spec.schedule?.weekBoundary || 'startWeekday',
               enforcePartialWeeks: spec.schedule?.enforcePartialWeeks || false
             }
@@ -1389,7 +1529,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
           // Post-process verification methods to enforce requirements
           const initialMethods = Array.isArray(spec.verification?.methods) ? spec.verification.methods : [];
           const initialMandatory = Array.isArray(spec.verification?.mandatory) ? spec.verification.mandatory : [];
-          const processed = postProcessVerificationMethods(spec, initialMethods, initialMandatory, aiPrompt.trim());
+          const processed = postProcessVerificationMethods(spec as any, initialMethods, initialMandatory, aiPrompt.trim());
           
           // Update the spec with processed methods
           spec.verification.methods = processed.methods;
@@ -1438,29 +1578,53 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         const refinementText = specFollowUpAnswer ? `${aiPrompt.trim()}\n\nAnswer: ${specFollowUpAnswer}` : aiPrompt.trim();
         try {
           setGoalSpecLoading(true);
+          
+          // Detect language and get appropriate locale configuration
+          const localeConfig = getLocaleConfig(refinementText);
+          
           const spec = await AIService.compileGoalSpec({
             prompt: refinementText,
             title: aiDraft.title || formData.title,
             targetLocationName: (aiDraft as any)?.targetLocation?.name || formData.targetLocation?.name,
             placeId: (aiDraft as any)?.targetLocation?.placeId || formData.targetLocation?.placeId,
-            locale: 'ko-KR',
-            timezone: 'Asia/Seoul'
+            locale: localeConfig.locale,
+            timezone: localeConfig.timezone
           });
-          if (!spec || typeof spec !== 'object' || !spec.verification || !spec.schedule) {
+          
+          // Parse and validate the refined GoalSpec
+          const parsedSpec = parseGoalSpec(JSON.stringify(spec));
+          
+          // Validate GoalSpec BEFORE proceeding
+          if (!spec || typeof spec !== 'object' || !spec.verification) {
             Alert.alert('AI Error', 'Failed to parse GoalSpec. Please refine your input.');
             setGoalSpecLoading(false);
             setAppState('IDLE');
             return;
           }
-          setGoalSpec(spec);
+          
+          // Additional validation based on goal type
+          if (parsedSpec.type === 'schedule' && !spec.schedule) {
+            Alert.alert('AI Error', 'Schedule goal requires schedule information. Please refine your input.');
+            setGoalSpecLoading(false);
+            setAppState('IDLE');
+            return;
+          }
+          
+          if (parsedSpec.type === 'frequency' && !spec.frequency) {
+            Alert.alert('AI Error', 'Frequency goal requires frequency information. Please refine your input.');
+            setGoalSpecLoading(false);
+            setAppState('IDLE');
+            return;
+          }
+          setGoalSpec(spec as GoalSpec);
           
           // Update formData with schedule information from GoalSpec
           setFormData(prev => ({
             ...prev,
             schedule: {
               countRule: spec.schedule?.countRule,
-              timeWindows: spec.schedule?.timeWindows,
-              weekdayConstraints: spec.schedule?.weekdayConstraints,
+              timeWindows: (spec.schedule?.timeWindows || []) as any,
+              weekdayConstraints: spec.schedule?.weekdayConstraints || [],
               weekBoundary: spec.schedule?.weekBoundary || 'startWeekday',
               enforcePartialWeeks: spec.schedule?.enforcePartialWeeks || false
             }
@@ -1469,7 +1633,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
           // Post-process verification methods to enforce requirements
           const initialMethods = Array.isArray(spec.verification?.methods) ? spec.verification.methods : [];
           const initialMandatory = Array.isArray(spec.verification?.mandatory) ? spec.verification.mandatory : [];
-          const processed = postProcessVerificationMethods(spec, initialMethods, initialMandatory, refinementText);
+          const processed = postProcessVerificationMethods(spec as any, initialMethods, initialMandatory, refinementText);
           
           // Update the spec with processed methods
           spec.verification.methods = processed.methods;
@@ -1514,13 +1678,27 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
 
 
     } catch (error: any) {
+      if (error.name === 'AbortError') {
+        console.log('[CreateGoalModal] AI generation aborted');
+        return;
+      }
+      
       console.error('[CreateGoalModal] AI generation failed:', error);
       toast.error('AI 어시스턴트에 문제가 발생했습니다. 수동으로 목표를 생성할 수 있습니다.');
+      
+      // Record failed request in telemetry
+      telemetry.recordRequest(requestId, Date.now() - Date.now(), false);
     } finally {
       setLoading(false);
       console.timeEnd('[CreateGoalModal] AI Generation');
     }
   };
+
+  // Legacy handleAiGeneration for backward compatibility
+  const handleAiGeneration = useCallback(() => {
+    if (!aiPrompt.trim()) return;
+    handleAiGenerationDebounced(aiPrompt.trim());
+  }, [aiPrompt, handleAiGenerationDebounced]);
 
   // Update form data from AI draft
   const updateFormFromAI = (draft: AIGoalDraft) => {
@@ -1842,10 +2020,32 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
   const handleSubmit = async () => {
     if (!user) return;
     
+    const storageTimer = new PerformanceTimer('goal_storage', generateRequestId());
+    
     try {
       setLoading(true);
       
       // Prepare goal data for creation
+      
+      // Pre-submission validation
+      const goalType = formData.type || aiDraft.type || 'frequency';
+      if (goalType === 'frequency') {
+        const targetPerWeek = formData.frequency?.count || aiDraft.frequency?.count || aiBadgeState.perWeek || 3;
+        if (!targetPerWeek || targetPerWeek <= 0) {
+          Alert.alert('Validation Error', 'Frequency goal must have a valid target per week (greater than 0).');
+          setLoading(false);
+          return;
+        }
+      }
+      
+      if (goalType === 'partner') {
+        const hasPartner = !!(formData.partner?.name || (formData.partner as any)?.id || (formData.partner as any)?.inviteEmail || (aiDraft as any)?.partner?.id);
+        if (!hasPartner) {
+          Alert.alert('Validation Error', 'Partner goal must have partner information.');
+          setLoading(false);
+          return;
+        }
+      }
 
       // Ensure mandatory verification aligns with presence of time/non-time schedules (both can apply)
       const flags = detectTimeManualFlags({
@@ -1893,7 +2093,13 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       const goalData = {
         ...updatedFormData,
         userId: user.id,
-      };
+        duration: {
+          type: formData.duration?.type || updatedFormData.duration?.type || 'range',
+          startDate: formData.duration?.startDate || updatedFormData.duration?.startDate || new Date().toISOString().split('T')[0],
+          endDate: formData.duration?.endDate || updatedFormData.duration?.endDate || new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          value: formData.duration?.value || updatedFormData.duration?.value || 2
+        }
+      } as CreateGoalForm & { userId: string };
       console.log('[CreateGoalModal] Full goal data to save:', goalData);
       console.log('[CreateGoalModal] Key fields for debugging:', {
         title: goalData.title,
@@ -1939,13 +2145,83 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         // Continue without calendar events - goal creation is more important
       }
 
+      // Log successful storage
+      const duration = storageTimer.end(true, { 
+        operation: 'goal_creation',
+        success: true 
+      });
+      
+      logStorage({
+        operation: 'goal_creation',
+        durationMs: duration,
+        success: true,
+        recordCount: 1,
+        message: 'Goal created successfully',
+      });
+      
+      logUserAction({
+        action: 'save_success',
+        message: 'Goal saved successfully',
+        success: true,
+        context: {
+          sessionId: getLoggingSessionId(),
+          goalType: aiBadgeState.type,
+        },
+      });
+
       // Close modal and notify parent
       onGoalCreated();
       onClose();
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('[CreateGoalModal] Error creating goal:', error);
-      Alert.alert('Error', 'Failed to create goal. Please try again.');
+      
+      // Provide more specific error messages
+      let errorMessage = 'Failed to create goal. Please try again.';
+      let errorTitle = 'Error';
+      
+      if (error.message?.includes('Invalid frequency goal')) {
+        errorTitle = 'Validation Error';
+        errorMessage = 'Frequency goal must have a valid target per week (greater than 0).';
+      } else if (error.message?.includes('Invalid partner goal')) {
+        errorTitle = 'Validation Error';
+        errorMessage = 'Partner goal must have partner information.';
+      } else if (error.code === 'permission-denied') {
+        errorTitle = 'Permission Error';
+        errorMessage = 'You do not have permission to create goals. Please check your account.';
+      } else if (error.code === 'unavailable') {
+        errorTitle = 'Network Error';
+        errorMessage = 'Service is temporarily unavailable. Please check your internet connection.';
+      } else if (error.message?.includes('Cannot read property')) {
+        errorTitle = 'Data Error';
+        errorMessage = 'Some required data is missing. Please refresh and try again.';
+      }
+      
+      Alert.alert(errorTitle, errorMessage);
+      
+      // Log failed storage
+      const duration = storageTimer.end(false, { 
+        operation: 'goal_creation',
+        error: error.message 
+      });
+      
+      logStorage({
+        operation: 'goal_creation',
+        durationMs: duration,
+        success: false,
+        errorCode: 'STORAGE_ERROR',
+        message: 'Goal creation failed',
+      });
+      
+      logUserAction({
+        action: 'save_failed',
+        message: 'Goal save failed',
+        success: false,
+        context: {
+          sessionId: getLoggingSessionId(),
+          error: error.message,
+        },
+      });
     } finally {
       setLoading(false);
     }
@@ -2011,6 +2287,8 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
           onChangeText={(text: string) => {
             setAiPrompt(text);
             setAiBadgeState(prev => ({ ...prev, title: text }));
+            // Apply debounced AI generation for auto-suggestions
+            debouncedAiPrompt(text);
           }}
           multiline
           textAlignVertical="top"
@@ -2023,16 +2301,16 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
             if (loading) return;
               handleAiGeneration();
           }}
-          disabled={loading || (appState === 'IDLE' && !aiPrompt.trim())}
+          disabled={loading || burstyCallPrevention.isInFlight || (appState === 'IDLE' && !aiPrompt.trim())}
           style={{
             flex: 1,
             paddingVertical: 16,
             borderRadius: 12,
-            backgroundColor: loading || (appState === 'IDLE' && !aiPrompt.trim()) ? '#9CA3AF' : '#9CA3AF'
+            backgroundColor: loading || burstyCallPrevention.isInFlight || (appState === 'IDLE' && !aiPrompt.trim()) ? '#9CA3AF' : '#3B82F6'
           }}
         >
           <Text style={{ color: 'white', textAlign: 'center', fontWeight: '600', fontSize: 16 }}>
-            {loading ? 'Generating...' : 'Generate with AI'}
+            {loading || burstyCallPrevention.isInFlight ? 'Generating...' : 'Generate with AI'}
           </Text>
         </TouchableOpacity>
 
@@ -2225,7 +2503,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
               <Text style={{ color: '#4b5563', fontSize: 14, marginTop: 4 }}>{formData.targetLocation.address}</Text>
             )}
             <Text style={{ color: '#6b7280', fontSize: 12, marginTop: 4 }}>
-              {formData.targetLocation.lat.toFixed(6)}, {formData.targetLocation.lng.toFixed(6)}
+              {formData.targetLocation.lat?.toFixed(6) || 'N/A'}, {formData.targetLocation.lng?.toFixed(6) || 'N/A'}
             </Text>
           </View>
         ) : (
@@ -2417,7 +2695,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       
       {/* Target Section */}
       <FrequencyTarget
-        perWeek={aiDraft.frequency?.count || aiBadgeState.perWeek || 1}
+        perWeek={aiDraft.frequency?.count || aiBadgeState.perWeek || 3}
         period={aiDraft.duration ? {
           startMs: new Date(aiDraft.duration.startDate || '').getTime(),
           endMs: new Date(aiDraft.duration.endDate || '').getTime()
@@ -2721,6 +2999,20 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         </View>
       </View>
 
+      {/* Quest Preview - Always render for debugging */}
+      <View style={{ backgroundColor: '#f0f0f0', padding: 16, marginBottom: 16, borderRadius: 8 }}>
+        <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 8 }}>퀘스트 미리보기 (디버그)</Text>
+        <Text>User ID: {user?.uid || 'No user'}</Text>
+        <Text>Form Data: {formData ? 'Available' : 'Not available'}</Text>
+        <Text>Goal Title: {formData?.title || 'No title'}</Text>
+        
+        {/* Always render QuestPreview */}
+        <QuestPreview 
+          goalData={formData || { title: '테스트 목표', type: 'frequency' }} 
+          userId={user?.uid || 'test_user'} 
+        />
+      </View>
+
       {/* Schedule Information */}
       <View style={{ marginBottom: 24 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
@@ -2909,7 +3201,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
                   <Text style={{ color: '#4b5563', fontSize: 12, marginTop: 4 }}>{formData.targetLocation.address}</Text>
                 )}
                 <Text style={{ color: '#6b7280', fontSize: 10 }}>
-                  {formData.targetLocation.lat.toFixed(6)}, {formData.targetLocation.lng.toFixed(6)}
+                  {formData.targetLocation.lat?.toFixed(6) || 'N/A'}, {formData.targetLocation.lng?.toFixed(6) || 'N/A'}
                 </Text>
               </View>
             ) : (
@@ -3000,7 +3292,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
               </View>
               
               <Text style={{ color: '#6b7280', fontSize: 12 }}>
-                Coordinates: {formData.targetLocation.lat.toFixed(6)}, {formData.targetLocation.lng.toFixed(6)}
+                Coordinates: {formData.targetLocation.lat?.toFixed(6) || 'N/A'}, {formData.targetLocation.lng?.toFixed(6) || 'N/A'}
               </Text>
             </View>
           ) : (
@@ -3629,8 +3921,10 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
                       // Recompile GoalSpec with the answer
                       const originalPrompt = rememberedPrompt || aiPrompt;
                       const title = aiDraft.title || formData.title;
-                      const timezone = 'Asia/Seoul';
-                      const locale = 'ko-KR';
+                      // Detect language and get appropriate locale configuration
+                      const localeConfig = getLocaleConfig(originalPrompt);
+                      const timezone = localeConfig.timezone;
+                      const locale = localeConfig.locale;
                       
                       const refined = await AIService.compileGoalSpec({
                         prompt: originalPrompt,
@@ -3641,12 +3935,12 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
                       });
                       
                       if (refined && typeof refined === 'object' && refined.verification && refined.schedule) {
-                        setGoalSpec(refined);
+                        setGoalSpec(refined as GoalSpec);
                         
                         // Post-process verification methods
                         const initialMethods = Array.isArray(refined.verification?.methods) ? refined.verification.methods : [];
                         const initialMandatory = Array.isArray(refined.verification?.mandatory) ? refined.verification.mandatory : [];
-                        const processed = postProcessVerificationMethods(refined, initialMethods, initialMandatory, originalPrompt);
+                        const processed = postProcessVerificationMethods(refined as any, initialMethods, initialMandatory, originalPrompt);
                         
                         // Update the spec with processed methods
                         refined.verification.methods = processed.methods;
@@ -3765,8 +4059,30 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
               onPress={() => {
                 if (!isSchemaValid) {
                   toast.error(`목표 저장 실패: ${schemaValidationErrors.join(', ')}`);
+                  
+                  // Log save attempt with validation failure
+                  logUserAction({
+                    action: 'save_attempt_failed',
+                    message: 'Save attempt failed due to validation errors',
+                    success: false,
+                    context: {
+                      validationErrors: schemaValidationErrors,
+                      sessionId: getLoggingSessionId(),
+                    },
+                  });
                   return;
                 }
+                
+                // Log save attempt
+                logUserAction({
+                  action: 'save_attempt',
+                  message: 'User attempted to save goal',
+                  context: {
+                    sessionId: getLoggingSessionId(),
+                    goalType: aiBadgeState.type,
+                  },
+                });
+                
                 console.log('[CreateGoal] payload', aiBadgeState);
                 handleSubmit();
               }}
@@ -3985,6 +4301,35 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       </Modal>
       </View>
       <ToastContainer position="top" />
+      
+      {/* Debug telemetry panel (development only) */}
+      {__DEV__ && (
+        <View style={{
+          position: 'absolute',
+          top: 50,
+          right: 10,
+          backgroundColor: 'rgba(0,0,0,0.8)',
+          padding: 8,
+          borderRadius: 4,
+          minWidth: 200,
+        }}>
+          <Text style={{ color: 'white', fontSize: 10, marginBottom: 4 }}>
+            AI Request Telemetry
+          </Text>
+          <Text style={{ color: 'white', fontSize: 8 }}>
+            In Flight: {burstyCallPrevention.isInFlight ? 'Yes' : 'No'}
+          </Text>
+          <Text style={{ color: 'white', fontSize: 8 }}>
+            Duplicate Rate: {telemetry.getDuplicateRate()?.toFixed(2) || '0.00'}
+          </Text>
+          <Text style={{ color: 'white', fontSize: 8 }}>
+            Requests: {telemetry.getMetrics().requestsLastMinute || 0}
+          </Text>
+          <Text style={{ color: 'white', fontSize: 8 }}>
+            Success Rate: {(telemetry.getMetrics().successRate * 100)?.toFixed(1) || '0.0'}%
+          </Text>
+        </View>
+      )}
     </Modal>
   );
 }

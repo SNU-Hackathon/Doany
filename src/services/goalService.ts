@@ -130,6 +130,18 @@ export class GoalService {
       await batch.commit();
       console.log('[GoalService] Goal created with ID:', goalRef.id);
       
+      // Generate quests for the new goal
+      try {
+        console.log('[GoalService] Generating quests for goal:', goalRef.id);
+        const { QuestService } = await import('./questService');
+        await QuestService.generateAndSaveQuestsForGoal(goalRef.id, goalDoc, goalData.userId);
+        console.log('[GoalService] Quests generated successfully');
+      } catch (questError) {
+        console.error('[GoalService] Error generating quests:', questError);
+        // Don't fail goal creation if quest generation fails
+        // The quests can be generated later when the goal is viewed
+      }
+      
       return goalRef.id;
     } catch (error) {
       console.error('[GoalService] Error creating goal:', error);

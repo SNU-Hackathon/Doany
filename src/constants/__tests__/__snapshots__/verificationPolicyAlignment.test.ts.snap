@@ -1,0 +1,134 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Verification Policy Alignment > Policy Snapshot Tests > should maintain consistent allowed combinations 1`] = `
+[
+  [
+    "time",
+    "location",
+  ],
+  [
+    "time",
+    "photo",
+  ],
+  [
+    "time",
+    "manual",
+  ],
+  [
+    "time",
+    "location",
+    "photo",
+  ],
+  [
+    "time",
+    "location",
+    "manual",
+  ],
+  [
+    "time",
+    "photo",
+    "manual",
+  ],
+  [
+    "manual",
+    "photo",
+  ],
+  [
+    "manual",
+    "location",
+  ],
+  [
+    "manual",
+    "photo",
+    "location",
+  ],
+  [
+    "partner",
+  ],
+  [
+    "partner",
+    "manual",
+  ],
+  [
+    "partner",
+    "photo",
+  ],
+  [
+    "partner",
+    "location",
+  ],
+  [
+    "partner",
+    "manual",
+    "photo",
+  ],
+  [
+    "partner",
+    "manual",
+    "location",
+  ],
+  [
+    "partner",
+    "photo",
+    "location",
+  ],
+  [
+    "manual",
+  ],
+]
+`;
+
+exports[`Verification Policy Alignment > Policy Snapshot Tests > should maintain consistent policy descriptions 1`] = `
+{
+  "examples": "EXAMPLES:
+GOOD: {"type":"schedule","originalText":"월수금 6시 러닝","schedule":{"events":[{"dayOfWeek":"mon","time":"06:00"},{"dayOfWeek":"wed","time":"06:00"},{"dayOfWeek":"fri","time":"06:00"}]},"verification":{"signals":["time","photo"]}}
+GOOD: {"type":"frequency","originalText":"일주일에 3번 독서","frequency":{"targetPerWeek":3,"windowDays":7},"verification":{"signals":["manual","photo"]}}
+GOOD: {"type":"partner","originalText":"매일 코치와 운동 검토","partner":{"required":true,"name":"코치"},"verification":{"signals":["partner"]}}",
+  "promptDescription": "VERIFICATION SIGNALS POLICY:
+- Schedule with time+place: ["time","location"]
+- Schedule with time only: ["time","photo"] or ["time","manual"]
+- Frequency goals: ["manual","photo"] (add location when meaningful)
+- Partner type: MUST include ["partner"], optionally combine with others if independently verifiable",
+}
+`;
+
+exports[`Verification Policy Alignment > Policy Snapshot Tests > should maintain consistent policy structure 1`] = `
+{
+  "frequency": {
+    "fallback": [
+      "manual",
+    ],
+    "primary": [
+      "manual",
+      "photo",
+    ],
+    "withLocation": [
+      "manual",
+      "location",
+    ],
+  },
+  "partner": {
+    "required": [
+      "partner",
+    ],
+    "withOthers": [
+      "partner",
+      "manual",
+    ],
+  },
+  "schedule": {
+    "fallback": [
+      "time",
+      "manual",
+    ],
+    "withTimeAndPlace": [
+      "time",
+      "location",
+    ],
+    "withTimeOnly": [
+      "time",
+      "photo",
+    ],
+  },
+}
+`;

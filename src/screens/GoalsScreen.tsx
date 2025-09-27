@@ -20,6 +20,7 @@ import { db } from '../services/firebase';
 import { GoalService } from '../services/goalService';
 import { VerificationService } from '../services/verificationService';
 import { Goal, RootStackParamList } from '../types';
+import GoalDetailScreen from './GoalDetailScreen';
 
 type GoalsScreenNavigationProp = StackNavigationProp<RootStackParamList>;
 
@@ -398,11 +399,23 @@ export default function GoalsScreen() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [goalToDelete, setGoalToDelete] = useState<GoalWithProgress | null>(null);
   const [deletingGoal, setDeletingGoal] = useState(false);
+  const [showGoalDetail, setShowGoalDetail] = useState(false);
+  const [selectedGoal, setSelectedGoal] = useState<GoalWithProgress | null>(null);
   
   const mountedRef = useRef(true);
 
   const categories = ['All', 'Health & Fitness', 'Study & Growth'];
   const types = ['All', 'Schedule', 'Frequency', 'Partner'];
+
+  // Check navigation readiness
+  useEffect(() => {
+    try {
+      const state = navigation.getState();
+      console.log('[GoalsScreen] Navigation state:', state?.routeNames ? 'Ready' : 'Not ready');
+    } catch (error) {
+      console.log('[GoalsScreen] Navigation not ready yet:', error.message);
+    }
+  }, [navigation]);
 
   // Setup realtime listener for goals
   useEffect(() => {
@@ -548,8 +561,9 @@ export default function GoalsScreen() {
 
   const handleGoalPress = useCallback((goal: GoalWithProgress) => {
     console.log('[GOAL:press]', { id: goal.id, title: goal.title });
-    navigation.navigate('GoalDetail', { goalId: goal.id });
-  }, [navigation]);
+    setSelectedGoal(goal);
+    setShowGoalDetail(true);
+  }, []);
 
   const handleCreateGoal = useCallback(() => {
     setShowCreateModal(true);
@@ -790,6 +804,39 @@ export default function GoalsScreen() {
             </View>
           </View>
         </View>
+      </Modal>
+
+      {/* Goal Detail Modal */}
+      <Modal
+        visible={showGoalDetail}
+        animationType="slide"
+        presentationStyle="fullScreen"
+      >
+        {selectedGoal && (
+          <GoalDetailScreen
+            route={{ params: { goalId: selectedGoal.id } } as any}
+            navigation={{
+              goBack: () => setShowGoalDetail(false),
+              navigate: () => {},
+              getState: () => ({ routeNames: [] }),
+              setOptions: undefined, // Modal context에서는 setOptions가 없음을 명시
+              push: () => {},
+              pop: () => {},
+              popToTop: () => {},
+              replace: () => {},
+              reset: () => {},
+              isFocused: () => true,
+              addListener: () => ({ remove: () => {} }),
+              removeListener: () => {},
+              canGoBack: () => true,
+              dispatch: () => {},
+              setParams: () => {},
+              getParent: () => undefined,
+              getFocusedRouteNameFromRoute: () => undefined,
+              getId: () => 'modal-goal-detail'
+            } as any}
+          />
+        )}
       </Modal>
     </View>
   );

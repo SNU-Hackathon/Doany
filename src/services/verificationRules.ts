@@ -1,5 +1,6 @@
 import { VERIFICATION_DEFAULTS } from '../config/verification';
-import type { GoalType, VerificationSignals } from '../types/firestore';
+import { type GoalType } from '../constants/verificationPolicy';
+import type { VerificationSignals } from '../types/firestore';
 import { isWithin } from '../utils/time';
 
 function withinWindow(t?: { present?: boolean; windowStart?: number | null; windowEnd?: number | null }, toleranceMinutes: number = VERIFICATION_DEFAULTS.timeToleranceMinutes) {
@@ -14,7 +15,7 @@ function withinWindow(t?: { present?: boolean; windowStart?: number | null; wind
   return isWithin(now, effectiveStart, effectiveEnd);
 }
 
-// Schedule: Time AND (Manual+Location OR Time+Photo OR Time+Location)
+// Schedule: Time AND (Manual+Location OR Time+Photo OR Time+Location OR Time+Manual)
 export function evalScheduleRule(sig: VerificationSignals) {
   const timeOk = withinWindow(sig.time);
   const manualLocOk = !!(sig.manual?.present && sig.location?.present && sig.location.inside);
@@ -22,8 +23,9 @@ export function evalScheduleRule(sig: VerificationSignals) {
     sig.photo.validationResult?.timeValid && 
     sig.photo.validationResult?.freshnessValid);
   const timeLocOk = !!(sig.time?.present && sig.location?.present && sig.location.inside);
+  const timeManualOk = !!(sig.time?.present && sig.manual?.present);
   
-  const either = manualLocOk || photoOk || timeLocOk;
+  const either = manualLocOk || photoOk || timeLocOk || timeManualOk;
   return { 
     pass: timeOk && either, 
     details: { 
@@ -31,6 +33,7 @@ export function evalScheduleRule(sig: VerificationSignals) {
       manualLocOk, 
       photoOk,
       timeLocOk,
+      timeManualOk,
       photoTimeValid: sig.photo?.validationResult?.timeValid,
       photoFreshValid: sig.photo?.validationResult?.freshnessValid
     } 
@@ -55,8 +58,41 @@ export function evalFrequencyRule(sig: VerificationSignals) {
   };
 }
 
+// Partner: Partner verification required
+export function evalPartnerRule(sig: VerificationSignals) {
+  const partnerOk = !!(sig.partner?.reviewed && sig.partner?.approved);
+  const manualOk = !!sig.manual?.present;
+  const photoOk = !!(sig.photo?.present && 
+    sig.photo.validationResult?.timeValid && 
+    sig.photo.validationResult?.freshnessValid);
+  const locationOk = !!(sig.location?.present && sig.location.inside);
+  
+  // Partner is always required, optionally combine with others
+  const hasAdditionalVerification = manualOk || photoOk || locationOk;
+  
+  return { 
+    pass: partnerOk && (hasAdditionalVerification || true), // Partner alone is sufficient
+    details: { 
+      partnerOk,
+      manualOk,
+      photoOk,
+      locationOk,
+      hasAdditionalVerification
+    } 
+  };
+}
+
 export function evaluateByGoalType(goalType: GoalType, sig: VerificationSignals) {
-  return goalType === 'schedule' ? evalScheduleRule(sig) : evalFrequencyRule(sig);
+  switch (goalType) {
+    case 'schedule':
+      return evalScheduleRule(sig);
+    case 'frequency':
+      return evalFrequencyRule(sig);
+    case 'partner':
+      return evalPartnerRule(sig);
+    default:
+      return evalFrequencyRule(sig); // Default fallback
+  }
 }
 
 // Inline smoke tests for rule validation

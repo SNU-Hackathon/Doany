@@ -735,15 +735,20 @@ export default memo(function GoalScheduleCalendar({
                 <View className="flex-row flex-wrap">
                   {days.map((d: any, index: number) => {
                     const selected = d ? isDateInRanges(new Date(d.dateStr), ranges) : false;
-                    const Long = Gesture.LongPress().onStart(() => {
-                      if (d) {
-                        console.log('[GoalScheduleCalendar] LongPress triggered for date:', d.dateStr);
-                        onLongPressDay(new Date(d.dateStr), selected);
-                      }
-                    });
-                    const Pan = Gesture.Pan().onChange((_e) => {
-                      if (d) onHoverDay(new Date(d.dateStr));
-                    }).onFinalize(onRelease);
+                    const Long = Gesture.LongPress()
+                      .runOnJS(true)
+                      .onStart(() => {
+                        if (d) {
+                          console.log('[GoalScheduleCalendar] LongPress triggered for date:', d.dateStr);
+                          onLongPressDay(new Date(d.dateStr), selected);
+                        }
+                      });
+                    const Pan = Gesture.Pan()
+                      .runOnJS(true)
+                      .onChange((_e) => {
+                        if (d) onHoverDay(new Date(d.dateStr));
+                      })
+                      .onFinalize(onRelease);
                     const gesture = Gesture.Simultaneous(Long, Pan);
                     
                     return (

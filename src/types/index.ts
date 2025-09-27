@@ -2,6 +2,7 @@
 
 export interface User {
   id: string;
+  uid: string; // Firebase Auth uid
   email: string;
   displayName: string;
   createdAt: Date;
@@ -175,6 +176,7 @@ export type RootStackParamList = {
   Main: undefined;
   
   GoalDetail: { goalId: string };
+  QuestDetail: { questId: string };
   LocationPicker: { 
     returnTo?: string; 
     onSelect?: (location: TargetLocation) => void;
@@ -321,3 +323,6 @@ export interface CreateGoalForm {
   // Success criteria
   successRate?: number; // Target success rate percentage (0-100)
 }
+
+// Quest types
+export * from './quest';
