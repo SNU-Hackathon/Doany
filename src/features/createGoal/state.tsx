@@ -1,6 +1,6 @@
 import React, { createContext, ReactNode, useContext, useReducer } from 'react';
 
-export type GoalType = 'schedule' | 'frequency' | 'partner';
+export type GoalType = 'schedule' | 'frequency' | 'milestone';
 
 export interface CreateGoalState {
   type: GoalType;                // current selection (user can override)
@@ -20,8 +20,8 @@ export interface CreateGoalState {
   methods: { manual: boolean; location: boolean; photo: boolean };
   photo?: { exifEnabled?: boolean }; // just a flag for Create view guidance
 
-  // partner
-  partner?: { id?: string; inviteEmail?: string; status?: 'pending'|'accepted'|'declined' };
+  // milestone
+  milestones?: { milestones: { key: string; label: string; targetDate?: string }[]; totalDuration?: number };
 
   // Additional properties for compatibility
   basic?: any;
@@ -40,7 +40,7 @@ export const INITIAL_CREATE_GOAL_STATE: CreateGoalState = {
   perWeek: 3,
   methods: { manual: false, location: false, photo: false },
   photo: { exifEnabled: true },
-  partner: undefined,
+  milestones: undefined,
   typeLockedByUser: false,
   basic: undefined,
   schedule: undefined,

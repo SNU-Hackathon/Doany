@@ -3,7 +3,7 @@ import { z } from 'zod';
 // Canonical JSON schema matching the AI prompt output
 export const GoalSpecSchema = z.object({
   // New AI schema fields
-  type: z.enum(['schedule', 'frequency', 'partner']).optional(),
+  type: z.enum(['schedule', 'frequency', 'milestone']).optional(),
   originalText: z.string().min(1).optional(),
   
   schedule: z.object({
@@ -45,15 +45,19 @@ export const GoalSpecSchema = z.object({
     windowDays: z.number().int().positive().default(7),
   }).optional(),
   
-  partner: z.object({
-    required: z.boolean(),
-    name: z.string().optional(),
+  milestone: z.object({
+    milestones: z.array(z.object({
+      key: z.string(),
+      label: z.string(),
+      targetDate: z.string().optional(),
+    })).optional(),
+    totalDuration: z.number().optional(), // weeks
   }).optional(),
   
   verification: z.object({
     // New AI schema field
     signals: z.array(
-      z.enum(['time', 'location', 'photo', 'manual', 'partner'])
+      z.enum(['time', 'location', 'photo', 'manual'])
     ).min(1, 'At least one verification signal is required').optional(),
     // Legacy fields for backward compatibility
     methods: z.array(z.enum(['location', 'time', 'screentime', 'photo', 'manual'])).optional(),
@@ -253,9 +257,9 @@ export function validateTypeSpecificFields(spec: GoalSpec): {
         }
         break;
         
-      case 'partner':
-        if (!spec.partner?.required) {
-          errors.push('Partner type requires partner.required to be true');
+      case 'milestone':
+        if (!spec.milestone?.milestones || spec.milestone.milestones.length === 0) {
+          errors.push('Milestone type requires at least one milestone');
         }
         break;
     }

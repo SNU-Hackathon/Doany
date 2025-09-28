@@ -1,7 +1,7 @@
 // Quest Management Service
 // Handles CRUD operations for quests
 
-import { collection, deleteDoc, doc, getDoc, getDocs, orderBy, query, setDoc, updateDoc, where } from 'firebase/firestore';
+import { collection, deleteDoc, doc, getDoc, getDocs, query, setDoc, updateDoc, where } from 'firebase/firestore';
 import { createCatalogError } from '../constants/errorCatalog';
 import { Quest, QuestStatus } from '../types/quest';
 import { db } from './firebase';
@@ -108,10 +108,19 @@ export class QuestService {
       for (const quest of quests) {
         // Add quest to Firestore
         const questRef = doc(collection(db, 'users', userId, 'quests'));
-        const questWithId = { ...quest, id: questRef.id };
         
-        batch.push(setDoc(questRef, questWithId));
-        savedQuests.push(questWithId);
+        // Clean quest data by removing undefined fields
+        const cleanQuestData = this.cleanQuestDataForFirestore({ ...quest, id: questRef.id });
+        
+        console.log('[QuestService] Saving quest:', {
+          id: cleanQuestData.id,
+          title: cleanQuestData.title,
+          scheduledDate: cleanQuestData.scheduledDate,
+          weekNumber: cleanQuestData.weekNumber
+        });
+        
+        batch.push(setDoc(questRef, cleanQuestData));
+        savedQuests.push(cleanQuestData);
       }
       
       await Promise.all(batch);
@@ -124,24 +133,71 @@ export class QuestService {
       throw createCatalogError('QUEST_SAVE_ERROR', error);
     }
   }
+
+  /**
+   * Clean quest data for Firestore by removing undefined fields
+   */
+  private static cleanQuestDataForFirestore(quest: Quest): Quest {
+    const cleaned = { ...quest };
+    
+    // Remove undefined fields that Firestore doesn't allow
+    Object.keys(cleaned).forEach(key => {
+      if (cleaned[key as keyof Quest] === undefined) {
+        delete cleaned[key as keyof Quest];
+      }
+    });
+    
+    // Ensure required fields have default values
+    if (!cleaned.createdAt) {
+      cleaned.createdAt = new Date().toISOString();
+    }
+    
+    if (!cleaned.status) {
+      cleaned.status = 'pending';
+    }
+    
+    return cleaned;
+  }
   
   /**
    * Get all quests for a goal
    */
   static async getQuestsForGoal(goalId: string, userId: string): Promise<Quest[]> {
     try {
+      console.log('[QuestService] Getting quests for goal:', goalId, 'user:', userId);
+      
+      // Validate inputs
+      if (!goalId || !userId) {
+        console.log('[QuestService] Invalid inputs, returning empty array');
+        return [];
+      }
+      
       const questsRef = collection(db, 'users', userId, 'quests');
+      
+      // Use simple query without orderBy to avoid index issues
       const q = query(
         questsRef, 
-        where('goalId', '==', goalId),
-        orderBy('createdAt', 'asc')
+        where('goalId', '==', goalId)
       );
       
+      console.log('[QuestService] Executing simple query without orderBy');
       const snapshot = await getDocs(q);
       const quests: Quest[] = [];
       
       snapshot.forEach(doc => {
-        quests.push(doc.data() as Quest);
+        try {
+          const questData = doc.data() as Quest;
+          quests.push(questData);
+        } catch (parseError) {
+          console.error('[QuestService] Error parsing quest document:', doc.id, parseError);
+        }
+      });
+      
+      // Sort in memory by createdAt
+      quests.sort((a, b) => {
+        const dateA = new Date(a.createdAt || 0);
+        const dateB = new Date(b.createdAt || 0);
+        return dateA.getTime() - dateB.getTime();
       });
       
       console.log('[QuestService] Retrieved', quests.length, 'quests for goal:', goalId);
@@ -149,7 +205,16 @@ export class QuestService {
       
     } catch (error) {
       console.error('[QuestService] Error getting quests:', error);
-      throw createCatalogError('QUEST_FETCH_ERROR', error);
+      console.error('[QuestService] Error details:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        goalId,
+        userId
+      });
+      
+      // Return empty array instead of throwing error to prevent UI blocking
+      console.log('[QuestService] Returning empty array due to error');
+      return [];
     }
   }
   
@@ -276,9 +341,16 @@ export class QuestService {
   private static createQuestGenerationRequest(goalId: string, goalData: any): any {
     console.log('[QuestService] Creating quest generation request with goalData:', {
       title: goalData.title,
+      category: goalData.category,
       type: goalData.type,
       duration: goalData.duration,
       frequency: goalData.frequency,
+      frequencyDetails: goalData.frequency ? {
+        count: goalData.frequency.count,
+        unit: goalData.frequency.unit,
+        type: typeof goalData.frequency,
+        keys: Object.keys(goalData.frequency)
+      } : null,
       weeklyWeekdays: goalData.weeklyWeekdays,
       weeklySchedule: goalData.weeklySchedule,
       verificationMethods: goalData.verificationMethods,
@@ -297,28 +369,71 @@ export class QuestService {
       endDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
     }
 
-    return {
+    // Determine goal type based on available data
+    let goalType = 'frequency'; // default
+    
+    // Check if it has schedule-specific data
+    if (goalData.weeklyWeekdays && goalData.weeklyWeekdays.length > 0) {
+      goalType = 'schedule';
+    } else if (goalData.schedule?.weekdayConstraints && goalData.schedule.weekdayConstraints.length > 0) {
+      goalType = 'schedule';
+    } else if (goalData.frequency?.count && goalData.frequency?.unit && goalData.frequency.unit === 'per_week') {
+      goalType = 'frequency';
+    } else if (goalData.frequency?.count && goalData.frequency.count > 1) {
+      // If frequency count is greater than 1, it's likely a frequency goal
+      goalType = 'frequency';
+    }
+    
+    console.log('[QuestService] Determined goal type:', goalType, 'based on data:', {
+      hasWeeklyWeekdays: !!(goalData.weeklyWeekdays && goalData.weeklyWeekdays.length > 0),
+      hasScheduleConstraints: !!(goalData.schedule?.weekdayConstraints && goalData.schedule.weekdayConstraints.length > 0),
+      hasFrequency: !!(goalData.frequency?.count && goalData.frequency?.unit)
+    });
+
+    // Enhanced quest generation request with more context
+    const request = {
       goalId,
       goalTitle: goalData.title,
       goalDescription: goalData.description,
-      goalType: goalData.type,
+      goalType,
       duration: {
         startDate,
         endDate
       },
-      schedule: goalData.type === 'schedule' ? {
-        weekdays: goalData.weeklyWeekdays || [],
+      schedule: goalType === 'schedule' ? {
+        weekdays: goalData.weeklyWeekdays || goalData.schedule?.weekdayConstraints || [],
         time: goalData.weeklySchedule ? Object.values(goalData.weeklySchedule).flat() : [],
         location: goalData.targetLocation?.name,
         frequency: goalData.frequency?.count || 1
-      } : goalData.type === 'frequency' ? {
+      } : goalType === 'frequency' ? {
         weekdays: [],
         time: [],
         location: goalData.targetLocation?.name,
         frequency: goalData.frequency?.count || 3
       } : undefined,
       verificationMethods: goalData.verificationMethods || ['manual'],
-      targetLocation: goalData.targetLocation
+      targetLocation: goalData.targetLocation,
+      // Additional context for AI
+      originalGoalData: {
+        category: goalData.category,
+        notes: goalData.notes,
+        weeklyWeekdays: goalData.weeklyWeekdays,
+        weeklySchedule: goalData.weeklySchedule,
+        schedule: goalData.schedule,
+        includeDates: goalData.includeDates,
+        excludeDates: goalData.excludeDates
+      }
     };
+    
+    console.log('[QuestService] Final quest generation request:', {
+      goalId: request.goalId,
+      goalTitle: request.goalTitle,
+      goalType: request.goalType,
+      duration: request.duration,
+      schedule: request.schedule,
+      originalGoalData: request.originalGoalData
+    });
+    
+    return request;
   }
 }

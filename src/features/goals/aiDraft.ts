@@ -7,7 +7,7 @@ export type VerificationMethod = "location" | "time" | "screentime" | "photo" | 
 export interface AIGoalDraft {
   title?: string;
   category?: string;
-  type?: "schedule" | "frequency" | "partner";  // NEW: Goal type classification
+  type?: "schedule" | "frequency" | "milestone";  // NEW: Goal type classification
   verificationMethods?: VerificationMethod[];
   // Methods that AI determined are mandatory and should be locked in UI
   mandatoryVerificationMethods?: VerificationMethod[];
@@ -27,9 +27,9 @@ export interface AIGoalDraft {
     startDate?: string;  // Add startDate to schedule
     endDate?: string;    // Add endDate to schedule
   };
-  partner?: {
-    required?: boolean;
-    name?: string;
+  milestones?: {
+    milestones?: { key: string; label: string; targetDate?: string }[];
+    totalDuration?: number;
   };
   verification?: {
     signals?: string[];
@@ -91,6 +91,15 @@ function coerceGoalType(spec: any): AIGoalDraft {
     !!spec.schedule?.events?.length &&
     spec.schedule.events.every((e: any) => !!e?.dayOfWeek && !!e?.time);
   const hasFrequency = Number(spec.frequency?.targetPerWeek) > 0;
+  
+  console.log('[aiDraft] Frequency analysis for type coercion:', {
+    frequencyObject: spec.frequency,
+    targetPerWeek: spec.frequency?.targetPerWeek,
+    count: spec.frequency?.count,
+    unit: spec.frequency?.unit,
+    hasFrequency,
+    originalText: originalText.substring(0, 100)
+  });
   const partnerRequired = !!spec.partner?.required;
 
   // Heuristic from text (backup)

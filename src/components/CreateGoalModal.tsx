@@ -16,7 +16,7 @@ import {
   View,
 } from 'react-native';
 // import { LocationSearch } from '../components'; // Commented out to avoid web build issues
-import { FrequencyTarget, PartnerPicker, ScheduleWhen } from '../components/createGoal';
+import { FrequencyTarget, ScheduleWhen } from '../components/createGoal';
 import { Categories } from '../constants';
 import { classifyGoalTypeFromTitle, computeVerificationPlan, CreateGoalState as CreateGoalFeatureState, CreateGoalProvider, GoalType, INITIAL_CREATE_GOAL_STATE, RULE_TIPS, useCreateGoal, validateFrequencyDraft } from '../features/createGoal';
 import ScheduleFlow from '../features/createGoal/ScheduleFlow';
@@ -104,7 +104,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
     },
     targetLocation: undefined,
-    partner: undefined,
+    milestones: undefined,
     lockedVerificationMethods: [],
     weeklyWeekdays: [],
     weeklySchedule: {},
@@ -129,13 +129,69 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     (value: string) => {
       if (value.trim()) {
         // Trigger AI generation with debounced input
-        handleAiGenerationDebounced(value.trim());
+        handleAiGoalClassification(value.trim());
       }
     },
     500
   );
 
   const telemetry = useDuplicateRequestTelemetry();
+
+  // AI goal classification and spec generation
+  const handleAiGoalClassification = useCallback(async (prompt: string) => {
+    console.log('[CreateGoalModal] Starting AI goal classification for:', prompt);
+    
+    try {
+      // Use AI service to classify and extract goal spec
+      const goalSpec = await AIService.compileGoalSpec({
+        prompt: prompt,
+        title: formData.title,
+        targetLocationName: formData.targetLocation?.name,
+        locale: 'ko-KR',
+        timezone: 'Asia/Seoul'
+      });
+      
+      console.log('[CreateGoalModal] AI classification result:', goalSpec);
+      
+      // Update formData with AI classification results
+      const updatedFormData: CreateGoalForm = {
+        ...formData,
+        title: goalSpec.title || prompt,
+        type: goalSpec.type || 'frequency',
+        frequency: goalSpec.frequency ? {
+          count: goalSpec.frequency.targetPerWeek || 3,
+          unit: 'per_week'
+        } : { count: 3, unit: 'per_week' },
+        verificationMethods: goalSpec.verification?.signals || ['manual'],
+        targetLocation: goalSpec.schedule?.events?.[0]?.locationName ? {
+          name: goalSpec.schedule.events[0].locationName,
+          lat: goalSpec.schedule.events[0].lat || 0,
+          lng: goalSpec.schedule.events[0].lng || 0
+        } : formData.targetLocation
+      };
+      
+      console.log('[CreateGoalModal] Updated formData with AI results:', {
+        title: updatedFormData.title,
+        type: updatedFormData.type,
+        frequency: updatedFormData.frequency,
+        verificationMethods: updatedFormData.verificationMethods
+      });
+      
+      setFormData(updatedFormData);
+      
+    } catch (error) {
+      console.error('[CreateGoalModal] AI goal classification failed:', error);
+      // Set basic defaults if AI fails
+      setFormData(prev => ({
+        ...prev,
+        title: prompt,
+        type: 'frequency',
+        frequency: { count: 3, unit: 'per_week' }
+      }));
+    }
+  }, [formData, AIService]);
+
+  // This function will be defined later after other variables
 
   // Schema validation state
   const [isSchemaValid, setIsSchemaValid] = useState(false);
@@ -249,8 +305,8 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       };
     }
     
-    if (type === 'partner') {
-      // Always allow partner goals to proceed - validation is done at save time
+    if (type === 'milestone') {
+      // Always allow milestone goals to proceed - validation is done at save time
       return {
         ok: true, // Always allow to proceed
         issues: [], // No blocking issues
@@ -372,6 +428,88 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     const objective: VerificationType[] = ['location', 'time', 'photo', 'screentime'] as any;
     return (methods || []).some((m) => (objective as any).includes(m));
   };
+
+  // AI generation handler for "Generate with AI" button
+  const handleAiGoalGeneration = useCallback(async () => {
+    if (!aiPrompt.trim()) {
+      toast.error('목표를 입력해주세요');
+      return;
+    }
+
+    console.log('[AI.INPUT]', {
+      prompt: aiPrompt,
+      locale: 'ko-KR',
+      timezone: 'Asia/Seoul'
+    });
+
+    try {
+      setLoading(true);
+      
+      // Use AI service to classify and extract goal spec
+      const goalSpec = await AIService.compileGoalSpec({
+        prompt: aiPrompt.trim(),
+        title: formData.title,
+        targetLocationName: formData.targetLocation?.name,
+        locale: 'ko-KR',
+        timezone: 'Asia/Seoul'
+      });
+      
+      console.log('[AI.OUTPUT]', {
+        type: goalSpec.type,
+        title: goalSpec.title,
+        frequency: goalSpec.frequency,
+        schedule: goalSpec.schedule,
+        milestone: goalSpec.milestone,
+        verification: goalSpec.verification
+      });
+      
+      // Update formData with AI classification results
+      const updatedFormData: CreateGoalForm = {
+        ...formData,
+        title: goalSpec.title || aiPrompt.trim(),
+        type: goalSpec.type || 'frequency',
+        frequency: goalSpec.frequency ? {
+          count: goalSpec.frequency.targetPerWeek || 3,
+          unit: 'per_week'
+        } : { count: 3, unit: 'per_week' },
+        verificationMethods: goalSpec.verification?.signals || ['manual'],
+        targetLocation: goalSpec.schedule?.events?.[0]?.locationName ? {
+          name: goalSpec.schedule.events[0].locationName,
+          lat: goalSpec.schedule.events[0].lat || 0,
+          lng: goalSpec.schedule.events[0].lng || 0
+        } : formData.targetLocation
+      };
+      
+      console.log('[SPEC.FINAL]', {
+        title: updatedFormData.title,
+        type: updatedFormData.type,
+        frequency: updatedFormData.frequency,
+        verificationMethods: updatedFormData.verificationMethods
+      });
+      
+      setFormData(updatedFormData);
+      
+      // Move to next step
+      setAppState('READY_TO_REVIEW');
+      goToStep(1);
+      
+    } catch (error) {
+      console.error('[CreateGoalModal] AI goal classification failed:', error);
+      toast.error('AI 분석에 실패했습니다. 기본값으로 설정합니다.');
+      
+      // Fallback to basic defaults
+      setFormData(prev => ({
+        ...prev,
+        title: aiPrompt.trim(),
+        type: 'frequency',
+        frequency: { count: 3, unit: 'per_week' }
+      }));
+      
+      goToStep(1);
+    } finally {
+      setLoading(false);
+    }
+  }, [aiPrompt, formData, toast, goToStep]);
 
   // Post-process GoalSpec/analyze results to enforce verification requirements
   const postProcessVerificationMethods = (
@@ -905,6 +1043,10 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       if (aiDraft.title && (!formData.title || formData.title === '')) {
         console.log('[CreateGoalModal] Updating formData with AI draft before Schedule step');
         updateFormFromAI(aiDraft);
+      } else if (aiDraft.frequency && aiDraft.frequency.count && (!formData.frequency || !formData.frequency.count)) {
+        // Also update frequency if AI has extracted it but formData doesn't have it
+        console.log('[CreateGoalModal] Updating formData frequency with AI draft before Schedule step');
+        updateFormFromAI(aiDraft);
       }
       goToStep(1);
     }
@@ -1352,7 +1494,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       perWeek: 3,
       period: undefined,
       methods: { manual: false, location: false, photo: false },
-      partner: undefined,
+      milestones: undefined,
       step: 0 // step 속성 추가
     });
     
@@ -1727,7 +1869,10 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       description: draft.notes || formData.description,
       category: draft.category || formData.category,
       verificationMethods: draft.verificationMethods || formData.verificationMethods,
-      frequency: (draft.frequency && draft.frequency.count) ? draft.frequency as GoalFrequency : formData.frequency,
+      frequency: (draft.frequency && draft.frequency.count) ? {
+        count: draft.frequency.count,
+        unit: draft.frequency.unit || 'per_week'
+      } as GoalFrequency : formData.frequency,
       duration: (draft.duration && draft.duration.type) ? draft.duration as GoalDuration : formData.duration,
       notes: draft.notes || formData.notes,
       targetLocation: draft.targetLocation ? {
@@ -2307,7 +2452,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         <TouchableOpacity
           onPress={() => {
             if (loading) return;
-              handleAiGeneration();
+              handleAiGoalGeneration();
           }}
           disabled={loading || burstyCallPrevention.isInFlight || (appState === 'IDLE' && !aiPrompt.trim())}
           style={{
@@ -2557,8 +2702,8 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     switch (aiDraft.type) {
       case 'frequency':
         return renderFrequencySection();
-      case 'partner':
-        return renderPartnerSection();
+      case 'milestone':
+        return renderMilestoneSection();
       default:
         return null;
     }
@@ -2798,25 +2943,14 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     </View>
   );
 
-  const renderPartnerSection = () => (
+  const renderMilestoneSection = () => (
       <View style={{ marginBottom: 24 }}>
-        <Text style={{ fontSize: 18, fontWeight: '600', color: '#1f2937', marginBottom: 16 }}>Partner Goal</Text>
+        <Text style={{ fontSize: 18, fontWeight: '600', color: '#1f2937', marginBottom: 16 }}>Milestone Goal</Text>
         
-        {/* Partner Picker */}
-        <PartnerPicker
-          partner={aiBadgeState.partner}
-          onChange={(partner) => {
-            setAiBadgeState(prev => ({ ...prev, partner }));
-            // Convert Partner to aiDraft.partner format
-            setAiDraft(prev => ({ 
-              ...prev, 
-              partner: {
-                required: true,
-                name: partner?.inviteEmail || partner?.id || ''
-              }
-            }));
-          }}
-        />
+        {/* Milestone configuration will be added later */}
+        <Text style={{ color: '#6b7280', fontSize: 14 }}>
+          Milestone goals are automatically configured with default milestones (Kickoff/Mid/Finish)
+        </Text>
         
         {/* Period Section */}
         <View style={{ marginBottom: 20 }}>
@@ -2990,10 +3124,49 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       <QuestPreview 
         goalData={{
           ...formData,
-          type: formData.type || aiBadgeState.type || 'frequency'
+          type: formData.type || aiBadgeState.type || 'frequency',
+          // Ensure frequency information from AI draft is used if available
+          frequency: (aiDraft.frequency && aiDraft.frequency.count) ? {
+            count: aiDraft.frequency.count,
+            unit: aiDraft.frequency.unit || 'per_week'
+          } : formData.frequency
         }} 
         userId={user?.uid || 'test_user'} 
       />
+      
+      {/* Debug logging for QuestPreview goalData */}
+      {(() => {
+        console.log('[CreateGoalModal] QuestPreview goalData debug:', {
+          formDataTitle: formData.title,
+          formDataFrequency: formData.frequency,
+          aiDraftFrequency: aiDraft?.frequency,
+          aiDraftTitle: aiDraft?.title,
+          finalFrequency: (aiDraft.frequency && aiDraft.frequency.count) ? {
+            count: aiDraft.frequency.count,
+            unit: aiDraft.frequency.unit || 'per_week'
+          } : formData.frequency,
+          aiBadgeState: aiBadgeState,
+          allFormDataKeys: Object.keys(formData)
+        });
+        return null;
+      })()}
+      
+      {/* Debug logging for QuestPreview data */}
+      {(() => {
+        console.log('[CreateGoalModal] QuestPreview goalData:', {
+          title: formData.title,
+          type: formData.type || aiBadgeState.type || 'frequency',
+          formDataFrequency: formData.frequency,
+          aiDraftFrequency: aiDraft?.frequency,
+          finalFrequency: (aiDraft.frequency && aiDraft.frequency.count) ? {
+            count: aiDraft.frequency.count,
+            unit: aiDraft.frequency.unit || 'per_week'
+          } : formData.frequency,
+          aiBadgeState: aiBadgeState,
+          allKeys: Object.keys(formData)
+        });
+        return null;
+      })()}
 
 
 

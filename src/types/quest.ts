@@ -9,6 +9,7 @@ export interface Quest {
   status: QuestStatus;
   scheduledDate?: string; // ISO date string
   weekNumber?: number; // For frequency goals
+  sequence?: number; // For milestone goals
   verificationRules: VerificationRule[];
   createdAt: string;
   completedAt?: string;
@@ -69,6 +70,15 @@ export interface QuestGenerationRequest {
   targetLocation?: {
     name: string;
     coordinates?: { lat: number; lng: number };
+  };
+  originalGoalData?: {
+    category?: string;
+    notes?: string;
+    weeklyWeekdays?: number[];
+    weeklySchedule?: any;
+    schedule?: any;
+    includeDates?: string[];
+    excludeDates?: string[];
   };
 }
 

@@ -141,7 +141,7 @@ You are a strict JSON classifier. Output ONLY JSON. No prose, no trailing commas
 CLASSIFICATION RULES:
 1) If explicit days of week AND specific time (e.g., "Mon/Wed/Fri at 6am", "월수금 6시"), type = "schedule"
 2) If only counts per period (e.g., "3 times a week", "일주일에 3번"), type = "frequency"  
-3) Only if verification fundamentally requires human approval (cannot use time/location/photo/manual), type = "partner"
+3) If goal has discrete milestones/phases (e.g., "project phases", "skill levels"), type = "milestone"
 If (1) and (2) both appear, prefer "schedule". If unclear, prefer "frequency" (NOT partner).
 
 LOCALE NORMALIZATION:
@@ -161,7 +161,7 @@ STRICT REFUSAL: If cannot classify confidently, return minimal JSON:
 
 SCHEMA:
 {
-  "type": "schedule" | "frequency" | "partner",
+  "type": "schedule" | "frequency" | "milestone",
   "originalText": string,
   "schedule": {
     "events": [
@@ -169,7 +169,10 @@ SCHEMA:
     ]
   },
   "frequency": { "targetPerWeek": number, "windowDays": 7 },
-  "partner": { "required": boolean, "name"?: string },
+  "milestone": { 
+    "milestones": [{ "key": string, "label": string, "targetDate"?: "YYYY-MM-DD" }],
+    "totalDuration"?: number
+  },
   "verification": { "signals": string[] },
   "meta"?: { "reason": string }
 }
@@ -178,6 +181,10 @@ ${getExamplesForPrompt()}
 
 BAD: {"type":"schedule","originalText":"운동","schedule":{"events":[{"dayOfWeek":"mon","time":"6am"}]}}  // Invalid time format
 BAD: {"type":"frequency","originalText":"독서","frequency":{"targetPerWeek":"3","windowDays":7}}  // String instead of number
+
+MILESTONE EXAMPLES:
+GOOD: {"type":"milestone","originalText":"complete project","milestone":{"milestones":[{"key":"kickoff","label":"Project Kickoff"},{"key":"mid","label":"Mid Review"},{"key":"finish","label":"Project Completion"}],"totalDuration":8},"verification":{"signals":["manual"]}}
+GOOD: {"type":"milestone","originalText":"learn piano","milestone":{"milestones":[{"key":"basics","label":"Learn Basics"},{"key":"intermediate","label":"Intermediate Level"},{"key":"advanced","label":"Advanced Pieces"}],"totalDuration":12},"verification":{"signals":["manual","photo"]}}
 `, localeConfig);
 
     // Create secure system prompt with injection protection
@@ -205,7 +212,12 @@ Output ONLY valid JSON matching the schema above. No explanations, no markdown, 
       }
       
       try {
-        // Clean up JSON response
+        // Clean up JSON response - ensure txt is defined
+        if (typeof txt !== 'string') {
+          console.error('[AI] Invalid response type:', typeof txt, txt);
+          throw new Error('Invalid response format');
+        }
+        
         txt = txt.replace(/^```json\s*/i, '').replace(/^```/i, '').replace(/```\s*$/i, '').trim();
         const first = txt.indexOf('{');
         const last = txt.lastIndexOf('}');
@@ -433,6 +445,9 @@ Output ONLY valid JSON matching the schema above. No explanations, no markdown, 
     const safeParse = (raw: string): GoalSpec => {
       let txt = (raw || '').trim();
       try {
+        if (typeof txt !== 'string') {
+          throw new Error('Invalid input type');
+        }
         txt = txt.replace(/^```json\s*/i, '').replace(/^```/i, '').replace(/```\s*$/i, '').trim();
         const first = txt.indexOf('{');
         const last = txt.lastIndexOf('}');
@@ -1270,13 +1285,13 @@ Output ONLY valid JSON matching the schema above. No explanations, no markdown, 
     targetLocationName?: string;
     goalSpec?: GoalSpec | null;
     calendarEvents?: any[];
-    goalType?: 'schedule' | 'frequency' | 'partner';
+    goalType?: 'schedule' | 'frequency' | 'milestone';
   }): { ready: boolean; reasons: string[]; suggestions: string[] } {
     const reasons: string[] = [];
     const suggestions: string[] = [];
     
-    // Frequency Goal과 Partner Goal은 스케줄 검증을 스킵
-    if (ctx.goalType === 'frequency' || ctx.goalType === 'partner') {
+    // Frequency Goal과 Milestone Goal은 스케줄 검증을 스킵
+    if (ctx.goalType === 'frequency' || ctx.goalType === 'milestone') {
       return { ready: true, reasons: [], suggestions: [] };
     }
     
@@ -1722,11 +1737,24 @@ Output ONLY valid JSON matching the schema above. No explanations, no markdown, 
         mandatoryVerificationMethods.push('photo');
       }
 
-      // Extract frequency
-      const frequencyMatch = lowerPrompt.match(/(\d+)\s*(times?|x)\s*(per\s+)?(day|daily|week|weekly|month|monthly)/);
+      // Extract frequency - fixed to handle "3 times a week" and "3 times per week" patterns
+      const frequencyMatch = lowerPrompt.match(/(\d+)\s*(times?|x)\s*(?:a\s+|per\s+)?(day|daily|week|weekly|month|monthly)/);
+      console.log('[AI] Frequency extraction analysis:', {
+        lowerPrompt: lowerPrompt.substring(0, 100),
+        frequencyMatch: frequencyMatch,
+        regexPattern: '/(\\d+)\\s*(times?|x)\\s*(?:a\\s+|per\\s+)?(day|daily|week|weekly|month|monthly)/'
+      });
+      
       if (frequencyMatch) {
         const count = parseInt(frequencyMatch[1]);
-        const period = frequencyMatch[4];
+        const period = frequencyMatch[3]; // Changed from [4] to [3] because "a" is now non-capturing
+        
+        console.log('[AI] Frequency match details:', {
+          count,
+          period,
+          fullMatch: frequencyMatch[0],
+          groups: frequencyMatch.slice(1)
+        });
         
         if (period.includes('day')) {
           frequency = { count, unit: 'per_day' };
@@ -1735,7 +1763,10 @@ Output ONLY valid JSON matching the schema above. No explanations, no markdown, 
         } else if (period.includes('month')) {
           frequency = { count, unit: 'per_month' };
         }
+        
+        console.log('[AI] Final frequency object:', frequency);
       } else {
+        console.log('[AI] No frequency match found, adding to missing fields');
         missingFields.push('frequency');
       }
 

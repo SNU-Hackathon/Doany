@@ -71,6 +71,21 @@ export class QuestGeneratorService {
         message: `Generated ${quests.length} quests successfully`
       });
       
+      console.log('[GEN.END]', {
+        totalGenerated: quests.length,
+        goalType: request.goalType,
+        goalTitle: request.goalTitle,
+        frequencyDetails: request.goalType === 'frequency' ? {
+          weeksCount: Math.ceil((new Date(request.duration.endDate).getTime() - new Date(request.duration.startDate).getTime()) / (7 * 24 * 60 * 60 * 1000)),
+          perWeek: request.schedule?.frequency || 3,
+          weekBreakdown: quests.reduce((acc, quest) => {
+            const week = quest.weekNumber || 0;
+            acc[week] = (acc[week] || 0) + 1;
+            return acc;
+          }, {} as Record<number, number>)
+        } : undefined
+      });
+      
       console.log('[QuestGenerator] Generated', quests.length, 'quests for goal:', request.goalTitle);
       return result;
       
@@ -94,6 +109,8 @@ export class QuestGeneratorService {
         message: `Failed to generate quests: ${error instanceof Error ? error.message : 'Unknown error'}`
       });
       
+      // No fallback - AI-only quest generation
+      console.log('[QuestGenerator] AI quest generation failed - no fallbacks available');
       throw createCatalogError('AI_QUEST_GENERATION_ERROR', error);
     }
   }
@@ -119,6 +136,7 @@ GOAL ANALYSIS:
 - Description: "${request.goalDescription || 'No description'}"
 - Type: ${request.goalType}
 - Duration: ${request.duration.startDate} to ${request.duration.endDate}
+- Original Goal Data: ${JSON.stringify(request.originalGoalData || {})}
 - Verification Methods: ${request.verificationMethods.join(', ')}
 
         SCHEDULE INFORMATION:
@@ -219,12 +237,17 @@ ${localeConfig.language === 'ko' ?
         - For schedule type: Generate quests for each weekday occurrence within the duration
         - For frequency type: Generate exactly (weeks × frequency per week) quests
         - Use Korean language for quest titles and descriptions
+        - Pay attention to the goal title to extract frequency information (e.g., "3 times a week" = 3 quests per week)
+        - Consider the original goal data context when generating quests
+        - If the goal title contains frequency information, use it instead of the provided frequency
         - Quest titles should include the goal name/title
         - For frequency goals: Each week must have ALL required sessions (1회차, 2회차, 3회차, etc.)
+        - MAXIMUM 100 QUESTS: Never generate more than 100 quests total
         - CRITICAL: Follow the exact JSON format specified above. Do NOT deviate from the required fields.
         - CRITICAL: Each quest MUST have title, description, type, and verificationRules fields.
         - CRITICAL: For frequency type, each quest MUST have weekNumber field.
         - CRITICAL: For schedule type, each quest MUST have scheduledDate field.
+        - CRITICAL: For milestone type, each quest MUST have sequence field.
 
         EXAMPLE OUTPUT FOR FREQUENCY TYPE:
         If goal is "헬스장에서 운동하기" with frequency 3 per week for 2 weeks:
@@ -269,6 +292,38 @@ ${localeConfig.language === 'ko' ?
             "description": "2주차 세 번째 운동 세션을 헬스장에서 수행합니다",
             "type": "frequency",
             "weekNumber": 2,
+            "verificationRules": [...]
+          }
+        ]
+
+        EXAMPLE OUTPUT FOR MILESTONE TYPE:
+        If goal is "Learn Piano" with 3 milestones over 12 weeks:
+        [
+          {
+            "title": "Learn Piano - Kickoff",
+            "description": "피아노 학습의 첫 번째 마일스톤을 완성합니다",
+            "type": "milestone",
+            "sequence": 1,
+            "verificationRules": [
+              {
+                "type": "manual",
+                "required": true,
+                "config": {}
+              }
+            ]
+          },
+          {
+            "title": "Learn Piano - Mid Review", 
+            "description": "피아노 학습의 중간 마일스톤을 완성합니다",
+            "type": "milestone",
+            "sequence": 2,
+            "verificationRules": [...]
+          },
+          {
+            "title": "Learn Piano - Final Completion",
+            "description": "피아노 학습의 최종 마일스톤을 완성합니다", 
+            "type": "milestone",
+            "sequence": 3,
             "verificationRules": [...]
           }
         ]
@@ -358,9 +413,17 @@ ${localeConfig.language === 'ko' ?
         hasChoices: !!data.choices,
         choicesLength: data.choices?.length || 0,
         hasMessage: !!data.choices?.[0]?.message,
-        contentLength: data.choices?.[0]?.message?.content?.length || 0
+        contentLength: data.choices?.[0]?.message?.content?.length || 0,
+        fullResponse: data
       });
-      return data.choices?.[0]?.message?.content || '[]';
+      
+      const content = data.choices?.[0]?.message?.content;
+      if (!content) {
+        console.error('[QuestGenerator] No content in AI response:', data);
+        throw new Error('No content received from AI service');
+      }
+      
+      return content;
     }
     
     throw new Error('No AI service configured');
@@ -373,17 +436,20 @@ ${localeConfig.language === 'ko' ?
     console.log('[QuestGenerator] Parsing AI response:', {
       responseType: typeof aiResponse,
       responseLength: typeof aiResponse === 'string' ? aiResponse.length : 'N/A',
-      responsePreview: typeof aiResponse === 'string' ? aiResponse.substring(0, 200) : aiResponse
+      responsePreview: typeof aiResponse === 'string' ? aiResponse.substring(0, 200) : aiResponse,
+      isNull: aiResponse === null,
+      isUndefined: aiResponse === undefined
     });
 
     try {
       let questData;
       
-      if (typeof aiResponse === 'string') {
+      if (typeof aiResponse === 'string' && aiResponse.trim().length > 0) {
         // Clean up JSON response
         let cleaned = aiResponse.trim();
         cleaned = cleaned.replace(/^```json\s*/i, '').replace(/^```/i, '').replace(/```\s*$/i, '');
         
+        // Safe indexOf calls with null checks
         const first = cleaned.indexOf('[');
         const last = cleaned.lastIndexOf(']');
         if (first !== -1 && last !== -1 && last > first) {
@@ -392,8 +458,16 @@ ${localeConfig.language === 'ko' ?
         
         console.log('[QuestGenerator] Cleaned JSON:', cleaned.substring(0, 500));
         questData = JSON.parse(cleaned);
-      } else {
+      } else if (aiResponse && typeof aiResponse === 'object' && Array.isArray(aiResponse)) {
         questData = aiResponse;
+      } else {
+        console.error('[QuestGenerator] Invalid aiResponse:', {
+          value: aiResponse,
+          type: typeof aiResponse,
+          isNull: aiResponse === null,
+          isUndefined: aiResponse === undefined
+        });
+        throw new Error(`Invalid AI response format: ${typeof aiResponse} - ${aiResponse}`);
       }
       
       if (!Array.isArray(questData)) {
@@ -419,7 +493,9 @@ ${localeConfig.language === 'ko' ?
         expectedQuests,
         actualQuests: questData.length,
         matches: questData.length === expectedQuests,
-        requestType: request.goalType
+        requestType: request.goalType,
+        requestSchedule: request.schedule,
+        requestDuration: request.duration
       });
       
       if (questData.length !== expectedQuests) {
@@ -499,7 +575,13 @@ ${localeConfig.language === 'ko' ?
     console.log('[QuestGenerator] Calculating expected quest count:', {
       goalType: request.goalType,
       totalWeeks,
-      schedule: request.schedule
+      schedule: request.schedule,
+      scheduleDetails: request.schedule ? {
+        weekdays: request.schedule.weekdays,
+        frequency: request.schedule.frequency,
+        location: request.schedule.location,
+        time: request.schedule.time
+      } : null
     });
     
     if (request.goalType === 'schedule' && request.schedule?.weekdays) {
@@ -607,60 +689,6 @@ ${localeConfig.language === 'ko' ?
     return verificationRules;
   }
   
-  /**
-   * Generate fallback quests if AI fails
-   */
-  private static generateFallbackQuests(request: QuestGenerationRequest): Quest[] {
-    console.log('[QuestGenerator] Generating fallback quests');
-    
-    const quests: Quest[] = [];
-    const startDate = new Date(request.duration.startDate);
-    const endDate = new Date(request.duration.endDate);
-    
-    if (request.goalType === 'schedule' && request.schedule?.weekdays) {
-      // Generate schedule quests
-      let questIndex = 1;
-      let currentDate = new Date(startDate);
-      
-      while (currentDate <= endDate) {
-        const dayOfWeek = currentDate.getDay();
-        
-        if (request.schedule.weekdays.includes(dayOfWeek)) {
-          quests.push({
-            id: `${request.goalId}_quest_${questIndex}`,
-            goalId: request.goalId,
-            title: `${request.goalTitle} - ${this.formatDate(currentDate)}`,
-            type: 'schedule',
-            status: 'pending',
-            scheduledDate: this.formatDate(currentDate),
-            verificationRules: this.parseVerificationRules([], request),
-            createdAt: new Date().toISOString()
-          });
-          questIndex++;
-        }
-        
-        currentDate.setDate(currentDate.getDate() + 1);
-      }
-    } else {
-      // Generate basic quests
-      const totalDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-      const questCount = Math.min(totalDays, 10); // Max 10 fallback quests
-      
-      for (let i = 1; i <= questCount; i++) {
-        quests.push({
-          id: `${request.goalId}_quest_${i}`,
-          goalId: request.goalId,
-          title: `${request.goalTitle} - Quest ${i}`,
-          type: request.goalType,
-          status: 'pending',
-          verificationRules: this.parseVerificationRules([], request),
-          createdAt: new Date().toISOString()
-        });
-      }
-    }
-    
-    return quests;
-  }
   
   /**
    * Describe schedule pattern for result metadata
@@ -696,5 +724,174 @@ ${localeConfig.language === 'ko' ?
    */
   private static formatDate(date: Date): string {
     return date.toISOString().split('T')[0];
+  }
+
+  /**
+   * Generate fallback quests when AI generation fails
+   */
+  private static generateFallbackQuests(request: QuestGenerationRequest): Quest[] {
+    console.log('[QuestGenerator] Generating fallback quests for:', {
+      goalTitle: request.goalTitle,
+      goalType: request.goalType,
+      duration: request.duration,
+      schedule: request.schedule,
+      scheduleFrequency: request.schedule?.frequency
+    });
+
+    const quests: Quest[] = [];
+    const startDate = new Date(request.duration.startDate);
+    const endDate = new Date(request.duration.endDate);
+    
+    if (request.goalType === 'frequency' && request.schedule) {
+      // Frequency type: generate quests based on frequency
+      const totalWeeks = Math.ceil((endDate.getTime() - startDate.getTime()) / (7 * 24 * 60 * 60 * 1000));
+      const frequencyPerWeek = request.schedule.frequency || 3;
+      
+      console.log('[QuestGenerator] Frequency fallback generation:', {
+        totalWeeks,
+        frequencyPerWeek,
+        scheduleFrequency: request.schedule.frequency,
+        startDate: startDate.toISOString().split('T')[0],
+        endDate: endDate.toISOString().split('T')[0],
+        requestDetails: {
+          goalType: request.goalType,
+          schedule: request.schedule,
+          goalTitle: request.goalTitle
+        }
+      });
+      
+      let questIndex = 1;
+      for (let week = 1; week <= totalWeeks; week++) {
+        for (let session = 1; session <= frequencyPerWeek; session++) {
+        const quest = {
+          id: `fallback_${request.goalId}_quest_${questIndex}`,
+          goalId: request.goalId,
+          title: `${request.goalTitle} - ${week}주차 ${session}회차`,
+          description: `${week}주차 ${session}번째 ${request.goalTitle} 세션을 수행합니다`,
+          type: 'frequency' as const,
+          status: 'pending' as const,
+          weekNumber: week,
+          verificationRules: this.generateBasicVerificationRules(request),
+          createdAt: new Date().toISOString()
+        };
+        
+        // Remove undefined fields
+        Object.keys(quest).forEach(key => {
+          if (quest[key as keyof typeof quest] === undefined) {
+            delete quest[key as keyof typeof quest];
+          }
+        });
+        
+        quests.push(quest);
+          questIndex++;
+        }
+      }
+    } else if (request.goalType === 'schedule' && request.schedule) {
+      // Schedule type: generate quests for each weekday
+      const weekdays = request.schedule.weekdays || [1, 3, 5]; // Default: Mon, Wed, Fri
+      const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+      
+      let questIndex = 1;
+      let currentDate = new Date(startDate);
+      
+      while (currentDate <= endDate) {
+        const dayOfWeek = currentDate.getDay();
+        
+        if (weekdays.includes(dayOfWeek)) {
+          const dayName = dayNames[dayOfWeek];
+          const quest = {
+            id: `fallback_${request.goalId}_quest_${questIndex}`,
+            goalId: request.goalId,
+            title: `${request.goalTitle} - ${dayName}요일`,
+            description: `${dayName}요일에 ${request.goalTitle}를 수행합니다`,
+            type: 'schedule' as const,
+            status: 'pending' as const,
+            scheduledDate: this.formatDate(currentDate),
+            verificationRules: this.generateBasicVerificationRules(request),
+            createdAt: new Date().toISOString()
+          };
+          
+          // Remove undefined fields
+          Object.keys(quest).forEach(key => {
+            if (quest[key as keyof typeof quest] === undefined) {
+              delete quest[key as keyof typeof quest];
+            }
+          });
+          
+          quests.push(quest);
+          questIndex++;
+        }
+        
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+    } else {
+      // Default: generate basic quests
+      const totalDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+      const questCount = Math.min(totalDays, 10); // Max 10 fallback quests
+      
+      for (let i = 1; i <= questCount; i++) {
+        const quest = {
+          id: `fallback_${request.goalId}_quest_${i}`,
+          goalId: request.goalId,
+          title: `${request.goalTitle} - Quest ${i}`,
+          description: `${request.goalTitle}의 ${i}번째 단계를 수행합니다`,
+          type: request.goalType || 'frequency',
+          status: 'pending' as const,
+          verificationRules: this.generateBasicVerificationRules(request),
+          createdAt: new Date().toISOString()
+        };
+        
+        // Remove undefined fields
+        Object.keys(quest).forEach(key => {
+          if (quest[key as keyof typeof quest] === undefined) {
+            delete quest[key as keyof typeof quest];
+          }
+        });
+        
+        quests.push(quest);
+      }
+    }
+    
+    console.log('[QuestGenerator] Generated', quests.length, 'fallback quests');
+    return quests;
+  }
+
+  /**
+   * Generate basic verification rules for fallback quests
+   */
+  private static generateBasicVerificationRules(request: QuestGenerationRequest): any[] {
+    const rules = [];
+    
+    // Always include manual verification
+    rules.push({
+      type: 'manual',
+      required: true,
+      config: {}
+    });
+    
+    // Add other verification methods if specified
+    if (request.verificationMethods.includes('photo')) {
+      rules.push({
+        type: 'photo',
+        required: false,
+        config: { exifValidation: true }
+      });
+    }
+    
+    if (request.verificationMethods.includes('location') && request.targetLocation) {
+      rules.push({
+        type: 'location',
+        required: false,
+        config: {
+          location: {
+            name: request.targetLocation.name,
+            coordinates: request.targetLocation.coordinates,
+            radius: 100
+          }
+        }
+      });
+    }
+    
+    return rules;
   }
 }

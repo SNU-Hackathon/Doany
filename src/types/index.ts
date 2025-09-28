@@ -279,7 +279,7 @@ export interface CreateGoalForm {
   title: string;
   description: string;
   category: string;
-  type?: "schedule" | "frequency" | "partner";  // Add type field
+  type?: "schedule" | "frequency" | "milestone";  // Add type field
   verificationMethods: VerificationType[];
   // Methods selected by AI as mandatory and locked in the UI
   lockedVerificationMethods?: VerificationType[];
@@ -288,13 +288,10 @@ export interface CreateGoalForm {
   duration: GoalDuration;
   notes?: string;
   
-  // Partner support
-  partner?: {
-    required?: boolean;
-    name?: string;
-    id?: string;
-    inviteEmail?: string;
-    status?: "pending" | "accepted" | "declined";
+  // Milestone support
+  milestones?: {
+    milestones: { key: string; label: string; targetDate?: string }[];
+    totalDuration?: number; // weeks
   };
   
   // Legacy fields for backward compatibility

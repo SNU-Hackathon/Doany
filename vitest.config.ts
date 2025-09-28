@@ -11,6 +11,10 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': resolve(__dirname, './src'),
+      'react-native': resolve(__dirname, './src/utils/test/mockReactNative.ts'),
     },
+  },
+  define: {
+    global: 'globalThis',
   },
 });

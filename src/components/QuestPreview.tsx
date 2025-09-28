@@ -15,28 +15,34 @@ export default function QuestPreview({ goalData, userId }: QuestPreviewProps) {
   const [error, setError] = useState<string | null>(null);
 
   console.log('[QuestPreview] ===== COMPONENT RENDER =====');
-  console.log('[QuestPreview] Component rendered with:', {
-    hasGoalData: !!goalData,
-    hasUserId: !!userId,
-    goalDataKeys: goalData ? Object.keys(goalData) : [],
-    goalType: goalData?.type,
-    duration: goalData?.duration,
-    frequency: goalData?.frequency,
-    weeklyWeekdays: goalData?.weeklyWeekdays,
-    weeklySchedule: goalData?.weeklySchedule,
-    verificationMethods: goalData?.verificationMethods,
-    targetLocation: goalData?.targetLocation,
-    loading,
-    error,
-    questsCount: quests.length,
-    questsPreview: quests.slice(0, 2).map(q => ({
-      id: q.id,
-      title: q.title,
-      type: q.type,
-      scheduledDate: q.scheduledDate,
-      weekNumber: q.weekNumber
-    }))
-  });
+    console.log('[QuestPreview] Component rendered with:', {
+      hasGoalData: !!goalData,
+      hasUserId: !!userId,
+      goalDataKeys: goalData ? Object.keys(goalData) : [],
+      goalType: goalData?.type,
+      duration: goalData?.duration,
+      frequency: goalData?.frequency,
+      frequencyDetails: goalData?.frequency ? {
+        count: goalData.frequency.count,
+        unit: goalData.frequency.unit,
+        type: typeof goalData.frequency,
+        keys: Object.keys(goalData.frequency)
+      } : null,
+      weeklyWeekdays: goalData?.weeklyWeekdays,
+      weeklySchedule: goalData?.weeklySchedule,
+      verificationMethods: goalData?.verificationMethods,
+      targetLocation: goalData?.targetLocation,
+      loading,
+      error,
+      questsCount: quests.length,
+      questsPreview: quests.slice(0, 5).map(q => ({ // Show more quests for debugging
+        id: q.id,
+        title: q.title,
+        type: q.type,
+        scheduledDate: q.scheduledDate,
+        weekNumber: q.weekNumber
+      }))
+    });
   
   // goalData 상세 분석
   if (goalData) {
@@ -90,14 +96,9 @@ export default function QuestPreview({ goalData, userId }: QuestPreviewProps) {
 
     console.log('[QuestPreview] Starting quest generation process...');
     
-    // Always generate fallback quests first for immediate display
-    console.log('[QuestPreview] Generating fallback quests...');
-    const fallbackQuests = generateFallbackQuests();
-    console.log('[QuestPreview] Generated', fallbackQuests.length, 'fallback quests');
-    setQuests(fallbackQuests);
-    
-    // Then try to generate AI quests
-    console.log('[QuestPreview] Starting AI quest generation...');
+    // Generate AI quests only - no fallback heuristics
+    console.log('[QuestPreview] Starting AI quest generation (no fallbacks)...');
+    setQuests([]); // Start with empty state
     generateQuests();
   }, [goalData, userId]);
 
@@ -163,12 +164,23 @@ export default function QuestPreview({ goalData, userId }: QuestPreviewProps) {
         });
       }
       
-      // Only update if we got valid quests
+      // Use AI quests only - no fallback comparison
       if (generatedQuests && generatedQuests.length > 0) {
-        setQuests(generatedQuests);
+        // Limit to 100 quests maximum
+        const limitedQuests = generatedQuests.slice(0, 100);
+        
+        console.log('[QuestPreview] AI quest generation successful:', {
+          totalGenerated: generatedQuests.length,
+          afterLimit: limitedQuests.length,
+          questTitles: limitedQuests.map(q => q.title)
+        });
+        
+        setQuests(limitedQuests);
         console.log('[QuestPreview] Updated with AI quests');
       } else {
-        console.log('[QuestPreview] AI returned empty quests, keeping fallback');
+        console.log('[QuestPreview] AI returned empty quests - showing empty state');
+        setQuests([]);
+        setError('AI가 퀘스트를 생성하지 못했습니다. 목표를 다시 작성해보세요.');
       }
 
     } catch (err) {
@@ -197,200 +209,21 @@ export default function QuestPreview({ goalData, userId }: QuestPreviewProps) {
         }
       }
       
-      setError(err instanceof Error ? err.message : 'AI 퀘스트 생성 중 오류가 발생했습니다');
-      
-      // Keep existing fallback quests, don't replace them
-      console.log('[QuestPreview] Keeping existing fallback quests');
+      // AI generation failed - show error to user instead of fallback
+      console.log('[QuestPreview] AI quest generation failed - no fallbacks available');
+      setQuests([]);
+      setError('AI 퀘스트 생성에 실패했습니다. 목표를 다시 작성해보세요.');
     } finally {
       console.log('[QuestPreview] ===== AI QUEST GENERATION END =====');
       setLoading(false);
     }
   };
 
-  const generateFallbackQuests = (): Quest[] => {
-    console.log('[QuestPreview] ===== FALLBACK QUEST GENERATION START =====');
-    console.log('[QuestPreview] Generating fallback quests for goal type:', goalData?.type);
-    console.log('[QuestPreview] Goal data for fallback:', {
-      title: goalData?.title,
-      type: goalData?.type,
-      duration: goalData?.duration,
-      frequency: goalData?.frequency,
-      weeklyWeekdays: goalData?.weeklyWeekdays
-    });
-    
-    const fallbackQuests: Quest[] = [];
-    
-    if (goalData?.type === 'schedule') {
-      console.log('[QuestPreview] Using schedule quest generation');
-      // Schedule 타입: 특정 일정에 맞는 퀘스트 생성
-      fallbackQuests.push(...generateScheduleQuests());
-    } else if (goalData?.type === 'frequency') {
-      console.log('[QuestPreview] Using frequency quest generation');
-      // Frequency 타입: 주기와 빈도에 맞는 퀘스트 생성
-      fallbackQuests.push(...generateFrequencyQuests());
-    } else {
-      console.log('[QuestPreview] Using default quest generation (type:', goalData?.type, ')');
-      // 기본 타입: 일반적인 퀘스트 생성
-      fallbackQuests.push(...generateDefaultQuests());
-    }
-    
-    console.log('[QuestPreview] ===== FALLBACK QUEST GENERATION END =====');
-    console.log('[QuestPreview] Generated', fallbackQuests.length, 'fallback quests');
-    console.log('[QuestPreview] Fallback quest titles:', fallbackQuests.map(q => q.title));
-    return fallbackQuests;
-  };
+  // Fallback quest generation removed - AI-only approach
 
-  const generateScheduleQuests = (): Quest[] => {
-    const quests: Quest[] = [];
-    
-    // 목표 기간 계산
-    const startDate = goalData?.duration?.startDate ? new Date(goalData.duration.startDate) : new Date();
-    const endDate = goalData?.duration?.endDate ? new Date(goalData.duration.endDate) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-    
-    // 요일별 스케줄 확인 (실제 formData 구조 사용)
-    const weekdays = goalData?.weeklyWeekdays || [1, 3, 5]; // 월, 수, 금 기본값
-    const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
-    
-    console.log('[QuestPreview] Schedule quest generation:', {
-      startDate: startDate.toISOString().split('T')[0],
-      endDate: endDate.toISOString().split('T')[0],
-      weekdays,
-      totalDays: Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
-    });
-    
-    let questIndex = 1;
-    let currentDate = new Date(startDate);
-    
-    // 기간 동안 모든 스케줄된 날짜에 대해 퀘스트 생성
-    while (currentDate <= endDate) {
-      const dayOfWeek = currentDate.getDay();
-      
-      if (weekdays.includes(dayOfWeek)) {
-        const dateStr = currentDate.toISOString().split('T')[0];
-        const dayName = dayNames[dayOfWeek];
-        
-        quests.push({
-          id: `schedule_quest_${questIndex}`,
-          goalId: 'preview',
-          title: `${goalData?.title || '목표'} - ${dayName}요일`,
-          description: `${dayName}요일에 ${goalData?.title || '목표'}를 수행합니다`,
-          type: 'schedule',
-          status: 'pending',
-          scheduledDate: dateStr,
-          verificationRules: generateVerificationRules(),
-          createdAt: new Date().toISOString()
-        });
-        questIndex++;
-      }
-      
-      currentDate.setDate(currentDate.getDate() + 1);
-    }
-    
-    console.log('[QuestPreview] Generated', quests.length, 'schedule quests');
-    return quests;
-  };
+  // Schedule quest generation removed - AI-only approach
 
-  const generateFrequencyQuests = (): Quest[] => {
-    console.log('[QuestPreview] ===== FREQUENCY QUEST GENERATION START =====');
-    const quests: Quest[] = [];
-    
-    // 주기 설정 확인 (실제 formData 구조 사용)
-    const frequency = goalData?.frequency || { count: 3, unit: 'per_week' };
-    const targetPerWeek = frequency.count || 3;
-    
-    console.log('[QuestPreview] Frequency settings:', {
-      frequency: frequency,
-      targetPerWeek: targetPerWeek,
-      goalDataFrequency: goalData?.frequency
-    });
-    
-    // 목표 기간 계산
-    const startDate = goalData?.duration?.startDate ? new Date(goalData.duration.startDate) : new Date();
-    const endDate = goalData?.duration?.endDate ? new Date(goalData.duration.endDate) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-    
-    // 총 주차 수 계산 (정확한 계산)
-    const totalWeeks = Math.ceil((endDate.getTime() - startDate.getTime()) / (7 * 24 * 60 * 60 * 1000));
-    
-    console.log('[QuestPreview] Duration calculation:', {
-      startDate: startDate.toISOString().split('T')[0],
-      endDate: endDate.toISOString().split('T')[0],
-      totalDays: Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)),
-      totalWeeks: totalWeeks
-    });
-    
-    console.log('[QuestPreview] Frequency quest generation:', {
-      startDate: startDate.toISOString().split('T')[0],
-      endDate: endDate.toISOString().split('T')[0],
-      targetPerWeek,
-      totalWeeks,
-      totalQuests: totalWeeks * targetPerWeek
-    });
-    
-    let questIndex = 1;
-    
-    console.log('[QuestPreview] Starting quest generation loop...');
-    // 각 주차별로 목표 빈도만큼 퀘스트 생성
-    for (let week = 1; week <= totalWeeks; week++) {
-      console.log(`[QuestPreview] Generating quests for week ${week}...`);
-      for (let i = 1; i <= targetPerWeek; i++) {
-        const questTitle = `${goalData?.title || '목표'} - ${week}주차 ${i}회차`;
-        console.log(`[QuestPreview] Creating quest: ${questTitle}`);
-        
-        quests.push({
-          id: `frequency_quest_${questIndex}`,
-          goalId: 'preview',
-          title: questTitle,
-          description: `${week}주차 ${i}번째 ${goalData?.title || '목표'} 세션을 수행합니다`,
-          type: 'frequency',
-          status: 'pending',
-          weekNumber: week,
-          verificationRules: generateVerificationRules(),
-          createdAt: new Date().toISOString()
-        });
-        questIndex++;
-      }
-    }
-    
-    console.log('[QuestPreview] ===== FREQUENCY QUEST GENERATION END =====');
-    console.log('[QuestPreview] Generated', quests.length, 'frequency quests');
-    console.log('[QuestPreview] Quest titles:', quests.map(q => q.title));
-    return quests;
-  };
-
-  const generateDefaultQuests = (): Quest[] => {
-    const quests: Quest[] = [];
-    const questCount = 4;
-    
-    const questTitles = [
-      `${goalData?.title || '목표'} 시작하기`,
-      `${goalData?.title || '목표'} 진행하기`,
-      `${goalData?.title || '목표'} 완성하기`,
-      `${goalData?.title || '목표'} 마무리하기`
-    ];
-    
-    const questDescriptions = [
-      '목표 달성을 위한 첫 번째 단계를 시작합니다',
-      '목표 달성을 위한 중간 단계를 진행합니다',
-      '목표 달성을 위한 핵심 단계를 완성합니다',
-      '목표 달성을 위한 마지막 단계를 마무리합니다'
-    ];
-    
-    for (let i = 1; i <= questCount; i++) {
-      quests.push({
-        id: `default_quest_${i}`,
-        goalId: 'preview',
-        title: questTitles[i - 1],
-        description: questDescriptions[i - 1],
-        type: goalData?.type || 'frequency',
-        status: 'pending',
-        weekNumber: i,
-        verificationRules: generateVerificationRules(),
-        createdAt: new Date().toISOString()
-      });
-    }
-    
-    return quests;
-  };
+  // All fallback quest generation functions removed - AI-only approach
 
   const generateVerificationRules = () => {
     const rules = [];
@@ -517,6 +350,15 @@ export default function QuestPreview({ goalData, userId }: QuestPreviewProps) {
   };
 
   console.log('[QuestPreview] Rendering state:', { loading, error, questsCount: quests.length });
+  console.log('[REVIEW.PROPS]', {
+    totalCount: quests.length,
+    firstThree: quests.slice(0, 3).map(q => ({
+      title: q.title,
+      weekNumber: q.weekNumber,
+      scheduledDate: q.scheduledDate,
+      type: q.type
+    }))
+  });
 
   if (loading) {
     console.log('[QuestPreview] Rendering loading state');
@@ -528,7 +370,7 @@ export default function QuestPreview({ goalData, userId }: QuestPreviewProps) {
           <Text style={styles.loadingText}>AI가 퀘스트를 생성하는 중...</Text>
         </View>
         <Text style={styles.footer}>
-          * 현재 폴백 퀘스트를 표시 중입니다
+          * AI가 퀘스트를 생성하는 중...
         </Text>
       </View>
     );
@@ -626,9 +468,7 @@ export default function QuestPreview({ goalData, userId }: QuestPreviewProps) {
       ))}
       
       <Text style={styles.footer}>
-        {loading ? '* AI가 퀘스트를 생성하는 중...' : 
-         error ? '* AI 생성 실패, 폴백 퀘스트 표시 중' :
-         '* AI가 목표에 맞게 생성한 퀘스트 미리보기'}
+        * AI가 목표에 맞게 생성한 퀘스트 미리보기 (최대 100개)
       </Text>
     </View>
   );

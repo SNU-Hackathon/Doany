@@ -244,9 +244,19 @@ export function getErrorInfo(error: any): ErrorInfo {
  * Create an error with catalog information
  */
 export function createCatalogError(catalogKey: string, originalError?: any): Error {
+  console.log('[createCatalogError] Creating error for catalog key:', catalogKey);
+  console.log('[createCatalogError] Available keys:', Object.keys(ERROR_CATALOG));
+  
   const errorInfo = ERROR_CATALOG[catalogKey];
   if (!errorInfo) {
-    throw new Error(`Unknown catalog key: ${catalogKey}`);
+    console.error('[createCatalogError] Unknown catalog key:', catalogKey);
+    console.error('[createCatalogError] Available keys:', Object.keys(ERROR_CATALOG));
+    // Return a fallback error instead of throwing
+    const fallbackError = new Error(`Unknown error: ${catalogKey}`);
+    (fallbackError as any).catalogKey = catalogKey;
+    (fallbackError as any).errorInfo = ERROR_CATALOG.UNKNOWN_ERROR;
+    (fallbackError as any).originalError = originalError;
+    return fallbackError;
   }
 
   const error = new Error(errorInfo.message);
