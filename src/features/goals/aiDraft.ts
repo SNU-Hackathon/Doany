@@ -164,8 +164,8 @@ function ensureVerificationSignals(spec: AIGoalDraft): AIGoalDraft {
     }
     // If still no signals, fallback to partner
     if (signals.length === 0) {
-      signals = ["partner"];
-      finalType = "partner";
+      signals = ["manual"];
+      finalType = "milestone";
       partnerRequired = true;
     }
   } else if (type === "frequency") {
@@ -178,14 +178,13 @@ function ensureVerificationSignals(spec: AIGoalDraft): AIGoalDraft {
     }
     // If still no signals, fallback to partner
     if (signals.length === 0) {
-      signals = ["partner"];
-      finalType = "partner";
+      signals = ["manual"];
+      finalType = "milestone";
       partnerRequired = true;
     }
-  } else if (type === "partner") {
-    // Partner: always ["partner"]
-    signals = ["partner"];
-    partnerRequired = true;
+  } else if (type === "milestone") {
+    // Milestone: always ["manual"]
+    signals = ["manual"];
   }
 
   console.log("[aiDraft] Verification signals ensured:", {
@@ -202,9 +201,13 @@ function ensureVerificationSignals(spec: AIGoalDraft): AIGoalDraft {
       ...spec.verification,
       signals
     },
-    partner: {
-      ...spec.partner,
-      required: partnerRequired || spec.partner?.required || false
+    milestones: spec.milestones || {
+      milestones: [
+        { key: 'kickoff', label: 'Kickoff' },
+        { key: 'mid', label: 'Mid Review' },
+        { key: 'finish', label: 'Completion' }
+      ],
+      totalDuration: 8
     }
   };
 }

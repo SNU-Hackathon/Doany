@@ -261,7 +261,7 @@ describe('QuestGeneratorService', () => {
 
       // Mock AI service to throw error to test fallback
       const { AIService } = await import('../ai');
-      vi.mocked(AIService.generateGoalSpec).mockRejectedValue(new Error('AI service unavailable'));
+      // AIService is not used directly by QuestGenerator - it calls OpenAI directly
 
       // Act
       const result = await QuestGeneratorService.generateQuestsFromGoal(request);
@@ -308,7 +308,7 @@ describe('QuestGeneratorService', () => {
 
       // Mock AI service to throw error to test fallback
       const { AIService } = await import('../ai');
-      vi.mocked(AIService.generateGoalSpec).mockRejectedValue(new Error('AI service unavailable'));
+      // AIService is not used directly by QuestGenerator - it calls OpenAI directly
 
       // Act
       const result = await QuestGeneratorService.generateQuestsFromGoal(request);

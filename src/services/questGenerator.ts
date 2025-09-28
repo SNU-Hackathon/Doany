@@ -145,6 +145,8 @@ GOAL ANALYSIS:
         - Time: ${request.schedule.time || 'Not specified'}
         - Location: ${request.schedule.location || 'Not specified'}
         - Frequency: ${request.schedule.frequency || 'Not specified'} times per week
+        
+        IMPORTANT: Use this Schedule configuration to generate quests, not just the original goal text.
         - Duration: ${request.duration.startDate} to ${request.duration.endDate}
         - Total weeks: ${Math.ceil((new Date(request.duration.endDate).getTime() - new Date(request.duration.startDate).getTime()) / (7 * 24 * 60 * 60 * 1000))} weeks
         - Expected quests: ${Math.ceil((new Date(request.duration.endDate).getTime() - new Date(request.duration.startDate).getTime()) / (7 * 24 * 60 * 60 * 1000)) * (request.schedule.weekdays?.length || 1)} quests
@@ -234,8 +236,12 @@ ${localeConfig.language === 'ko' ?
         - Ensure verification rules match the goal's requirements
         - Calculate exact dates for schedule type goals
         - Respect the target frequency for frequency type goals
-        - For schedule type: Generate quests for each weekday occurrence within the duration
+        - For schedule type: Generate quests for each scheduled occurrence (specific dates/times)
         - For frequency type: Generate exactly (weeks × frequency per week) quests
+        - CRITICAL SCHEDULE RULE: Use Schedule step configuration (weekdays, times) to generate quests
+        - CRITICAL SCHEDULE RULE: Each schedule quest MUST have scheduledDate field (YYYY-MM-DD format)
+        - CRITICAL SCHEDULE RULE: Generate one quest per scheduled occurrence (weekday × time combination)
+        - CRITICAL FREQUENCY RULE: Use Frequency step configuration (count per week) to generate quests
         - Use Korean language for quest titles and descriptions
         - Pay attention to the goal title to extract frequency information (e.g., "3 times a week" = 3 quests per week)
         - Consider the original goal data context when generating quests
@@ -292,6 +298,46 @@ ${localeConfig.language === 'ko' ?
             "description": "2주차 세 번째 운동 세션을 헬스장에서 수행합니다",
             "type": "frequency",
             "weekNumber": 2,
+            "verificationRules": [...]
+          }
+        ]
+
+        EXAMPLE OUTPUT FOR SCHEDULE TYPE:
+        If goal is "매일 아침 7시에 헬스장 가기" for 7 days:
+        [
+          {
+            "title": "헬스장 가기 - 10월 1일 (화)",
+            "description": "10월 1일 아침 7시에 헬스장에서 운동을 수행합니다",
+            "type": "schedule",
+            "scheduledDate": "2025-10-01",
+            "verificationRules": [
+              {
+                "type": "time",
+                "required": true,
+                "config": {
+                  "time": {
+                    "window": { "start": "06:30", "end": "07:30" },
+                    "tolerance": 30
+                  }
+                }
+              },
+              {
+                "type": "location", 
+                "required": true,
+                "config": { "location": { "name": "헬스장", "radius": 100 } }
+              },
+              {
+                "type": "manual",
+                "required": true,
+                "config": {}
+              }
+            ]
+          },
+          {
+            "title": "헬스장 가기 - 10월 2일 (수)",
+            "description": "10월 2일 아침 7시에 헬스장에서 운동을 수행합니다",
+            "type": "schedule", 
+            "scheduledDate": "2025-10-02",
             "verificationRules": [...]
           }
         ]
@@ -711,9 +757,25 @@ ${localeConfig.language === 'ko' ?
    * Helper: Add minutes to time string
    */
   private static addMinutes(timeStr: string, minutes: number): string {
-    const [hours, mins] = timeStr.split(':').map(Number);
+    if (!timeStr || typeof timeStr !== 'string') {
+      console.warn('[QuestGenerator] Invalid timeStr:', timeStr);
+      return '09:00'; // Default fallback time
+    }
+    
+    const timeParts = timeStr.split(':');
+    if (timeParts.length !== 2) {
+      console.warn('[QuestGenerator] Invalid time format:', timeStr);
+      return timeStr; // Return original if format is invalid
+    }
+    
+    const [hours, mins] = timeParts.map(Number);
+    if (isNaN(hours) || isNaN(mins)) {
+      console.warn('[QuestGenerator] Invalid time numbers:', timeStr);
+      return timeStr; // Return original if numbers are invalid
+    }
+    
     const totalMinutes = hours * 60 + mins + minutes;
-    const newHours = Math.floor(totalMinutes / 60);
+    const newHours = Math.floor(totalMinutes / 60) % 24; // Handle day overflow
     const newMins = totalMinutes % 60;
     
     return `${newHours.toString().padStart(2, '0')}:${newMins.toString().padStart(2, '0')}`;

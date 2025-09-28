@@ -1,13 +1,13 @@
 import type { CreateGoalState, GoalType } from './state';
 
-export type PlanType = 'schedule'|'frequency'|'partner';
+export type PlanType = 'schedule'|'frequency'|'milestone';
 export interface VerificationPlan {
   type: PlanType;                      // 결정된 목표 타입
   methods: Array<'manual'|'location'|'photo'>;
   mandatory: Array<'time'|'manual'|'location'|'photo'>;
   ok: boolean;                         // 규칙 충족 여부(간단 판단; 상세 평가는 런타임)
   reason?: string;                     // 부족 사유 또는 요약
-  partnerRecommended?: boolean;        // Partner로 전환 권장
+  // Removed partner/milestone recommendation - keep verification simple
 }
 
 // Normalize date input to YYYY-MM-DD string
@@ -58,7 +58,6 @@ export function computeVerificationPlan(type: PlanType, s: CreateGoalState): Ver
       type, methods, ok,
       mandatory: ['time'],
       reason: ok ? 'Time window + (Manual+Location OR Photo)' : 'Need Time and either (Manual+Location) or Photo',
-      partnerRecommended: !ok
     };
   }
 
@@ -72,19 +71,18 @@ export function computeVerificationPlan(type: PlanType, s: CreateGoalState): Ver
       type, methods, ok,
       mandatory: ['manual'],
       reason: ok ? 'Manual + (Location OR Photo). Aggregated by complete weeks.' : 'Manual is required and choose Location or Photo; set period & N/week',
-      partnerRecommended: !ok
     };
   }
 
-  // partner
-  const partnerChosen = !!(s.partner?.id || s.partner?.inviteEmail);
+  // milestone
+  const hasMilestones = !!(s.milestones?.milestones && s.milestones.milestones.length > 0);
   const hasPeriod = !!s.period;
-  const ok = !!(hasPeriod && partnerChosen);
+  const manualOk = !!s.methods?.manual;
+  const ok = !!(hasPeriod && (hasMilestones || manualOk));
   return {
     type, methods, ok,
-    mandatory: [],
-    reason: ok ? 'Partner approval decides the result.' : 'Select/invite a partner and set a period',
-    partnerRecommended: false
+    mandatory: ['manual'],
+    reason: ok ? 'Manual verification for milestone tracking.' : 'Configure milestones and set duration',
   };
 }
 
@@ -107,9 +105,11 @@ export function validateCreateView(type: GoalType, s: CreateGoalState): { ok: bo
     if (!(s.methods.location || s.methods.photo)) issues.push('Choose Location or Photo');
   }
   
-  if (type === 'partner') {
+  if (type === 'milestone') {
     if (!s.period) issues.push('Set a period');
-    if (!s.partner || (!s.partner.id && !s.partner.inviteEmail)) issues.push('Select or invite a partner');
+    if (!s.milestones || !s.milestones.milestones || s.milestones.milestones.length === 0) {
+      issues.push('Configure milestones');
+    }
   }
   
   return { ok: issues.length === 0, issues };

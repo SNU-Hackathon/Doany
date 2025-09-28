@@ -35,17 +35,48 @@ export class GoalService {
         throw new Error('Invalid frequency goal: targetPerWeek must be > 0 and period must be valid');
       }
       console.log('[goalService] frequency validation passed');
-    } else if (goalType === 'partner') {
-      const isRequired = goalData.partner?.required === true;
-      const hasPartner = !!(goalData.partner?.id || goalData.partner?.inviteEmail);
-      if (isRequired && !hasPartner) {
-        throw new Error('Partner is required for this goal');
+    } else if (goalType === 'milestone') {
+      const hasMilestones = !!(goalData.milestones?.milestones && goalData.milestones.milestones.length > 0);
+      if (!hasMilestones) {
+        // Auto-generate default milestones
+        goalData.milestones = {
+          milestones: [
+            { key: 'kickoff', label: 'Kickoff' },
+            { key: 'mid', label: 'Mid Review' },
+            { key: 'finish', label: 'Completion' }
+          ],
+          totalDuration: 8
+        };
       }
-      console.log('[goalService] partner validation passed');
+      console.log('[goalService] milestone validation passed');
     } else if (goalType === 'schedule') {
-      // Schedule validation - keep existing logic
+      // Schedule validation - auto-generate if missing
       if (!goalData.weeklySchedule || Object.keys(goalData.weeklySchedule).length === 0) {
-        throw new Error('Schedule goal requires weekly schedule');
+        console.log('[goalService] No weeklySchedule found, auto-generating for schedule goal');
+        
+        // Auto-generate based on weeklyWeekdays if available
+        if (goalData.weeklyWeekdays && goalData.weeklyWeekdays.length > 0) {
+          goalData.weeklySchedule = {};
+          goalData.weeklyWeekdays.forEach(dayIndex => {
+            const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+            const dayName = dayNames[dayIndex];
+            goalData.weeklySchedule[dayName] = ['09:00']; // Default time
+          });
+          console.log('[goalService] Auto-generated weeklySchedule:', goalData.weeklySchedule);
+        } else {
+          // Default schedule for daily goals
+          goalData.weeklySchedule = {
+            'monday': ['09:00'],
+            'tuesday': ['09:00'], 
+            'wednesday': ['09:00'],
+            'thursday': ['09:00'],
+            'friday': ['09:00'],
+            'saturday': ['09:00'],
+            'sunday': ['09:00']
+          };
+          goalData.weeklyWeekdays = [0, 1, 2, 3, 4, 5, 6]; // All days
+          console.log('[goalService] Created default daily schedule');
+        }
       }
       console.log('[goalService] schedule validation passed');
     }

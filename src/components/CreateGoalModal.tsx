@@ -23,7 +23,7 @@ import ScheduleFlow from '../features/createGoal/ScheduleFlow';
 import { AIGoalDraft, mergeAIGoal, parseGoalSpec, updateDraftWithDates, validateAIGoal } from '../features/goals/aiDraft';
 import { useAIWithRetry } from '../hooks/useAIWithRetry';
 import { useAuth } from '../hooks/useAuth';
-import { useBurstyCallPrevention, useDuplicateRequestTelemetry, useInputDebounce } from '../hooks/useBurstyCallPrevention';
+import { useBurstyCallPrevention, useDuplicateRequestTelemetry } from '../hooks/useBurstyCallPrevention';
 import { AIService } from '../services/ai';
 import { CalendarEventService } from '../services/calendarEventService';
 import { GoalService } from '../services/goalService';
@@ -118,6 +118,9 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     retryDelayMs: 1000,
   });
 
+  // Quest preview loading state
+  const [questPreviewLoading, setQuestPreviewLoading] = useState(false);
+
   // Bursty call prevention hooks
   const burstyCallPrevention = useBurstyCallPrevention({
     debounceMs: 600,
@@ -125,71 +128,11 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     retryDelayMs: 1000
   });
 
-  const { debouncedCallback: debouncedAiPrompt } = useInputDebounce(
-    (value: string) => {
-      if (value.trim()) {
-        // Trigger AI generation with debounced input
-        handleAiGoalClassification(value.trim());
-      }
-    },
-    500
-  );
+  // Removed debounced AI classification - only trigger on button press
 
   const telemetry = useDuplicateRequestTelemetry();
 
-  // AI goal classification and spec generation
-  const handleAiGoalClassification = useCallback(async (prompt: string) => {
-    console.log('[CreateGoalModal] Starting AI goal classification for:', prompt);
-    
-    try {
-      // Use AI service to classify and extract goal spec
-      const goalSpec = await AIService.compileGoalSpec({
-        prompt: prompt,
-        title: formData.title,
-        targetLocationName: formData.targetLocation?.name,
-        locale: 'ko-KR',
-        timezone: 'Asia/Seoul'
-      });
-      
-      console.log('[CreateGoalModal] AI classification result:', goalSpec);
-      
-      // Update formData with AI classification results
-      const updatedFormData: CreateGoalForm = {
-        ...formData,
-        title: goalSpec.title || prompt,
-        type: goalSpec.type || 'frequency',
-        frequency: goalSpec.frequency ? {
-          count: goalSpec.frequency.targetPerWeek || 3,
-          unit: 'per_week'
-        } : { count: 3, unit: 'per_week' },
-        verificationMethods: goalSpec.verification?.signals || ['manual'],
-        targetLocation: goalSpec.schedule?.events?.[0]?.locationName ? {
-          name: goalSpec.schedule.events[0].locationName,
-          lat: goalSpec.schedule.events[0].lat || 0,
-          lng: goalSpec.schedule.events[0].lng || 0
-        } : formData.targetLocation
-      };
-      
-      console.log('[CreateGoalModal] Updated formData with AI results:', {
-        title: updatedFormData.title,
-        type: updatedFormData.type,
-        frequency: updatedFormData.frequency,
-        verificationMethods: updatedFormData.verificationMethods
-      });
-      
-      setFormData(updatedFormData);
-      
-    } catch (error) {
-      console.error('[CreateGoalModal] AI goal classification failed:', error);
-      // Set basic defaults if AI fails
-      setFormData(prev => ({
-        ...prev,
-        title: prompt,
-        type: 'frequency',
-        frequency: { count: 3, unit: 'per_week' }
-      }));
-    }
-  }, [formData, AIService]);
+  // Removed auto-classification function - AI only runs on button press
 
   // This function will be defined later after other variables
 
@@ -227,9 +170,9 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       }
     }
 
-    if (aiBadgeState.type === 'partner') {
-      if (!formData.partner?.required) {
-        errors.push('파트너 정보를 설정해주세요');
+    if (aiBadgeState.type === 'milestone') {
+      if (!formData.milestones?.milestones || formData.milestones.milestones.length === 0) {
+        errors.push('마일스톤 정보를 설정해주세요');
       }
     }
 
@@ -358,10 +301,10 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       if (/(times\s+per\s+(week|day|month))/.test(t)) reasons.push("Detected 'times per week/day/month'");
       if (/(\bper\s+week\b)/.test(t)) reasons.push("Found 'per week'");
       if (/(\bweekly\b)/.test(t)) reasons.push("Found 'weekly'");
-    } else if (type === 'partner') {
-      if (/(with|by)\s+(friend|coach|partner)/.test(t)) reasons.push("Detected 'with/by friend/coach/partner'");
-      if (/\bpartner approval\b/.test(t)) reasons.push("Found 'partner approval'");
-      if (/\baccountability\b/.test(t)) reasons.push("Found 'accountability'");
+    } else if (type === 'milestone') {
+      if (/(milestone|phase|stage)/.test(t)) reasons.push("Detected 'milestone/phase/stage'");
+      if (/\b(project|goal|skill)\s+(completion|achievement)/.test(t)) reasons.push("Found 'project/goal/skill completion'");
+      if (/\b(kickoff|mid|finish|final)\b/.test(t)) reasons.push("Found milestone keywords");
     } else if (type === 'schedule') {
       if (/\b(mon|tue|wed|thu|fri|sat|sun)\b/.test(t)) reasons.push("Detected day names");
       if (/\b\d{1,2}:\d{2}\b/.test(t)) reasons.push("Found time format");
@@ -477,7 +420,24 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
           name: goalSpec.schedule.events[0].locationName,
           lat: goalSpec.schedule.events[0].lat || 0,
           lng: goalSpec.schedule.events[0].lng || 0
-        } : formData.targetLocation
+        } : formData.targetLocation,
+        // Schedule 타입일 때 weeklySchedule과 weeklyWeekdays 설정
+        weeklySchedule: goalSpec.type === 'schedule' && goalSpec.schedule?.events ? 
+          goalSpec.schedule.events.reduce((acc, event) => {
+            const dayNames = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+            const fullDayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+            const dayIndex = dayNames.indexOf(event.dayOfWeek);
+            if (dayIndex !== -1) {
+              const fullDayName = fullDayNames[dayIndex];
+              acc[fullDayName] = [event.time];
+            }
+            return acc;
+          }, {} as Record<string, string[]>) : formData.weeklySchedule,
+        weeklyWeekdays: goalSpec.type === 'schedule' && goalSpec.schedule?.events ?
+          goalSpec.schedule.events.map(event => {
+            const dayNames = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+            return dayNames.indexOf(event.dayOfWeek);
+          }).filter(index => index !== -1) : formData.weeklyWeekdays
       };
       
       console.log('[SPEC.FINAL]', {
@@ -489,9 +449,9 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       
       setFormData(updatedFormData);
       
-      // Move to next step
-      setAppState('READY_TO_REVIEW');
-      goToStep(1);
+      // Show verification plan modal for user confirmation (stay in AI step)
+      setShowSpecPlanModal(true);
+      // Don't change app state yet - wait for user confirmation
       
     } catch (error) {
       console.error('[CreateGoalModal] AI goal classification failed:', error);
@@ -505,11 +465,11 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         frequency: { count: 3, unit: 'per_week' }
       }));
       
-      goToStep(1);
+      actions.setStep(1);
     } finally {
       setLoading(false);
     }
-  }, [aiPrompt, formData, toast, goToStep]);
+  }, [aiPrompt, formData, toast, actions.setStep]);
 
   // Post-process GoalSpec/analyze results to enforce verification requirements
   const postProcessVerificationMethods = (
@@ -1048,7 +1008,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         console.log('[CreateGoalModal] Updating formData frequency with AI draft before Schedule step');
         updateFormFromAI(aiDraft);
       }
-      goToStep(1);
+      actions.setStep(1);
     }
   }, [appState, state.step, aiDraft.title, formData.title]);
 
@@ -1304,7 +1264,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       return;
     }
 
-    if (type === 'partner') {
+    if (type === 'milestone') {
       console.log('[CreateGoalModal] Partner path: skip calendar validation');
       goToStep(2); // Review step
       return;
@@ -2147,7 +2107,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       } else {
         setFollowUpQuestion('');
         setAppState('READY_TO_REVIEW');
-        goToStep(1);
+        actions.setStep(1);
       }
     } else {
       // All fields complete
@@ -2191,12 +2151,21 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         }
       }
       
-      if (goalType === 'partner') {
-        const hasPartner = !!(formData.partner?.name || (formData.partner as any)?.id || (formData.partner as any)?.inviteEmail || (aiDraft as any)?.partner?.id);
-        if (!hasPartner) {
-          Alert.alert('Validation Error', 'Partner goal must have partner information.');
-          setLoading(false);
-          return;
+      if (goalType === 'milestone') {
+        const hasMilestones = !!(formData.milestones?.milestones && formData.milestones.milestones.length > 0);
+        if (!hasMilestones) {
+          // Auto-generate default milestones if none exist
+          setFormData(prev => ({
+            ...prev,
+            milestones: {
+              milestones: [
+                { key: 'kickoff', label: 'Kickoff' },
+                { key: 'mid', label: 'Mid Review' },
+                { key: 'finish', label: 'Completion' }
+              ],
+              totalDuration: 8
+            }
+          }));
         }
       }
 
@@ -2440,8 +2409,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
           onChangeText={(text: string) => {
             setAiPrompt(text);
             setAiBadgeState(prev => ({ ...prev, title: text }));
-            // Apply debounced AI generation for auto-suggestions
-            debouncedAiPrompt(text);
+            // Removed auto AI generation - only trigger on button press
           }}
           multiline
           textAlignVertical="top"
@@ -2470,7 +2438,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         <TouchableOpacity
           onPress={() => {
             setAppState('READY_TO_REVIEW');
-            goToStep(1);
+            actions.setStep(1);
           }}
           style={{
             paddingHorizontal: 24,
@@ -2814,28 +2782,35 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
         </Text>
       </View>
 
-      {/* Optional Partner Toggle */}
+      {/* Optional Milestone Toggle */}
       <View className="mb-5">
         <TouchableOpacity
           onPress={() => {
             setAiBadgeState(prev => ({
               ...prev,
-              partner: prev.partner ? undefined : { status: 'pending' }
+              milestones: prev.milestones ? undefined : { 
+                milestones: [
+                  { key: 'kickoff', label: 'Kickoff' },
+                  { key: 'mid', label: 'Mid Review' },
+                  { key: 'finish', label: 'Completion' }
+                ],
+                totalDuration: 8
+              }
             }));
           }}
           className="flex-row items-center py-3 px-4 bg-white rounded-lg border border-gray-300"
         >
           <View className={`w-5 h-5 rounded border-2 mr-3 items-center justify-center ${
-            aiBadgeState.partner 
+            aiBadgeState.milestones 
               ? 'border-blue-500 bg-blue-500' 
               : 'border-gray-300 bg-white'
           }`}>
-            {aiBadgeState.partner && (
+            {aiBadgeState.milestones && (
               <Text className="text-white text-xs font-bold">✓</Text>
             )}
           </View>
           <Text className="text-gray-700 text-base">
-            Require partner approval
+            Use milestone tracking
           </Text>
         </TouchableOpacity>
       </View>
@@ -2993,15 +2968,14 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
           </View>
         </View>
 
-        {/* Partner Section */}
-        <PartnerPicker
-          partner={aiBadgeState.partner}
-          onChange={(partner) => setAiBadgeState(prev => ({ ...prev, partner }))}
-        />
+        {/* Milestone Section */}
+        <Text style={{ fontSize: 14, color: '#374151', marginBottom: 8 }}>
+          Default milestones will be auto-generated: Kickoff, Mid Review, Completion
+        </Text>
 
         {/* Helper text */}
         <Text style={{ fontSize: 12, color: '#6b7280', fontStyle: 'italic' }}>
-          This goal will be verified by your partner's approval.
+          This goal will be tracked through discrete milestones.
         </Text>
       </View>
     );
@@ -3035,7 +3009,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
           </View>
         )}
         
-        {type === 'partner' && (
+        {type === 'milestone' && (
           <View style={{ 
             backgroundColor: '#f8fafc', 
             borderRadius: 8, 
@@ -3045,10 +3019,10 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
             marginBottom: 12
           }}>
             <Text style={{ fontSize: 14, fontWeight: '600', color: '#475569', marginBottom: 8 }}>
-              Partner Goal
+              Milestone Goal
             </Text>
             <Text style={{ fontSize: 13, color: '#64748b' }}>
-              Partner: {aiBadgeState.partner?.inviteEmail || aiBadgeState.partner?.id || 'Not selected'}
+              Milestones: {aiBadgeState.milestones?.milestones?.length || 3} configured
             </Text>
           </View>
         )}
@@ -3131,7 +3105,8 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
             unit: aiDraft.frequency.unit || 'per_week'
           } : formData.frequency
         }} 
-        userId={user?.uid || 'test_user'} 
+        userId={user?.uid || 'test_user'}
+        onLoadingChange={setQuestPreviewLoading}
       />
       
       {/* Debug logging for QuestPreview goalData */}
@@ -3298,14 +3273,16 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
             />
           </View>
         );
-      case 'partner':
+      case 'milestone':
         return (
           <View style={{ padding: 16 }}>
-            <Text style={{ fontSize: 18, fontWeight: '600', color: '#1f2937', marginBottom: 16 }}>Partner Goal</Text>
-            <PartnerPicker
-              partner={aiBadgeState.partner}
-              onChange={(partner) => setAiBadgeState(prev => ({ ...prev, partner }))}
-            />
+            <Text style={{ fontSize: 18, fontWeight: '600', color: '#1f2937', marginBottom: 16 }}>Milestone Goal</Text>
+            <Text style={{ fontSize: 14, color: '#6b7280', marginBottom: 12 }}>
+              Default milestones: Kickoff, Mid Review, Completion
+            </Text>
+            <Text style={{ fontSize: 12, color: '#9ca3af', fontStyle: 'italic' }}>
+              Milestones will be automatically configured based on goal duration
+            </Text>
           </View>
         );
       case 'location':
@@ -3549,7 +3526,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
                 <View style={{ 
                   backgroundColor: aiBadgeState.type === 'schedule' ? '#3B82F6' : 
                                   aiBadgeState.type === 'frequency' ? '#10B981' : 
-                                  aiBadgeState.type === 'partner' ? '#8B5CF6' : '#6B7280',
+                                  aiBadgeState.type === 'milestone' ? '#8B5CF6' : '#6B7280',
                   paddingHorizontal: 12, 
                   paddingVertical: 6, 
                   borderRadius: 16, 
@@ -3559,13 +3536,13 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
                   <Text style={{ color: 'white', fontSize: 14, fontWeight: '600' }}>
                     {aiBadgeState.type === 'schedule' ? 'Schedule' :
                      aiBadgeState.type === 'frequency' ? 'Frequency' :
-                     aiBadgeState.type === 'partner' ? 'Partner' : 'Unknown'}
+                     aiBadgeState.type === 'milestone' ? 'Milestone' : 'Unknown'}
                   </Text>
                 </View>
                 <Text style={{ color: '#6B7280', fontSize: 14, lineHeight: 20 }}>
                   {aiBadgeState.type === 'schedule' && 'This goal will be tracked on a fixed schedule'}
                   {aiBadgeState.type === 'frequency' && 'This goal will be tracked by weekly frequency'}
-                  {aiBadgeState.type === 'partner' && 'This goal will be verified by your partner\'s approval'}
+                  {aiBadgeState.type === 'milestone' && 'This goal will be tracked through discrete milestones'}
                 </Text>
               </View>
 
@@ -3577,7 +3554,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
                     <Text style={{ fontSize: 16, fontWeight: '600', color: '#1f2937', marginBottom: 12 }}>Methods:</Text>
                     
                     {/* Method Icons Grid */}
-                    {aiBadgeState.type === 'partner' ? (
+                    {aiBadgeState.type === 'milestone' ? (
                       <Text style={{ color: '#EF4444', fontSize: 14, marginBottom: 12 }}>none selected</Text>
                     ) : (
                       <View style={{ flexDirection: 'row', justifyContent: 'space-around', marginBottom: 16 }}>
@@ -3656,7 +3633,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
                       </View>
                     )}
                     
-                    {plan.mandatory.length > 0 && aiBadgeState.type !== 'partner' && (
+                    {plan.mandatory.length > 0 && aiBadgeState.type !== 'milestone' && (
                       <Text style={{ color: '#EF4444', fontSize: 14, marginBottom: 12 }}>
                         Mandatory: {aiBadgeState.type === 'schedule' ? 'time' : 
                                     aiBadgeState.type === 'frequency' ? 'manual' : 
@@ -3681,35 +3658,15 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
                       </View>
                     )}
                     
-                    {aiBadgeState.type === 'partner' && (
+                    {aiBadgeState.type === 'milestone' && (
                       <View style={{ backgroundColor: '#E0E7FF', borderRadius: 12, padding: 16, marginBottom: 16 }}>
                         <Text style={{ color: '#3730A3', fontSize: 14, lineHeight: 20 }}>
-                          Select/invite a partner and set a period
+                          Configure milestones and set duration
                         </Text>
                       </View>
                     )}
 
-                    {/* Partner Recommendation */}
-                    {plan.partnerRecommended && aiBadgeState.type !== 'partner' && (
-                      <View style={{ backgroundColor: '#F3E8FF', borderRadius: 12, padding: 16, marginTop: 8 }}>
-                        <Text style={{ color: '#1F2937', fontSize: 14, marginBottom: 12 }}>
-                          Your current selections may not be sufficient. You can proceed with Partner approval instead
-                        </Text>
-                        <TouchableOpacity
-                          onPress={() => {
-                            setAiBadgeState(prev => ({ ...prev, type: 'partner', typeLockedByUser: true }));
-                            setShowSpecPlanModal(false);
-                            // Partner로 변경 후 바로 Verification Plan 모달 표시
-                            setTimeout(() => {
-                              setShowSpecPlanModal(true);
-                            }, 100);
-                          }}
-                          style={{ paddingVertical: 12, paddingHorizontal: 20, backgroundColor: '#8B5CF6', borderRadius: 8, alignSelf: 'flex-start' }}
-                        >
-                          <Text style={{ color: 'white', fontSize: 14, fontWeight: '600' }}>Use Partner instead</Text>
-                        </TouchableOpacity>
-                      </View>
-                    )}
+                    {/* Removed partner/milestone recommendation - keep verification simple */}
                   </View>
                 );
               })()}
@@ -3809,7 +3766,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
                         
                         // Proceed to next step
                         setShowSpecPlanModal(false);
-                        goToStep(1);
+                        actions.setStep(1);
                         return;
                       }
                     } catch (e) {
@@ -3824,8 +3781,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
                   setShowSpecPlanModal(false);
                   
                   // Determine final type based on verification signals
-                  const isPartner = !!aiDraft?.verification?.signals?.includes("partner");
-                  const finalType = isPartner ? "partner" : aiDraft?.type;
+                  const finalType = aiDraft?.type;
                   
                   console.log("[CreateGoalModal] going to SCHEDULE step with finalType=", finalType);
                   
@@ -3834,7 +3790,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
                   
                   // Close plan and advance to Schedule step
                   setShowSpecPlanModal(false);
-                  goToStep(1); // Schedule step
+                  actions.setStep(1); // Schedule step
 
                 }}
                 style={{ flex: 1, backgroundColor: '#3b82f6', borderRadius: 8, paddingVertical: 12 }}
@@ -4066,7 +4022,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
               <TouchableOpacity 
                 style={{ 
                   flex: 1, 
-                  backgroundColor: canProceedToNext() ? '#2563eb' : '#9ca3af', 
+                  backgroundColor: (canProceedToNext() && !questPreviewLoading) ? '#2563eb' : '#9ca3af', 
                   borderRadius: 8, 
                   padding: 12, 
                   flexDirection: 'row', 
@@ -4074,7 +4030,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
                   justifyContent: 'center' 
                 }}
                 onPress={onNext}
-                disabled={!canProceedToNext()}
+                disabled={!canProceedToNext() || questPreviewLoading}
                 activeOpacity={0.8}
               >
                 <Text style={{ color: 'white', fontWeight: '600', marginRight: 8 }}>
@@ -4154,33 +4110,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       <ToastContainer position="top" />
       
       {/* Debug telemetry panel (development only) */}
-      {__DEV__ && (
-        <View style={{
-          position: 'absolute',
-          top: 50,
-          right: 10,
-          backgroundColor: 'rgba(0,0,0,0.8)',
-          padding: 8,
-          borderRadius: 4,
-          minWidth: 200,
-        }}>
-          <Text style={{ color: 'white', fontSize: 10, marginBottom: 4 }}>
-            AI Request Telemetry
-          </Text>
-          <Text style={{ color: 'white', fontSize: 8 }}>
-            In Flight: {burstyCallPrevention.isInFlight ? 'Yes' : 'No'}
-          </Text>
-          <Text style={{ color: 'white', fontSize: 8 }}>
-            Duplicate Rate: {telemetry.getDuplicateRate()?.toFixed(2) || '0.00'}
-          </Text>
-          <Text style={{ color: 'white', fontSize: 8 }}>
-            Requests: {telemetry.getMetrics().requestsLastMinute || 0}
-          </Text>
-          <Text style={{ color: 'white', fontSize: 8 }}>
-            Success Rate: {(telemetry.getMetrics().successRate * 100)?.toFixed(1) || '0.0'}%
-          </Text>
-        </View>
-      )}
+      {/* AI Request Telemetry removed for cleaner UI */}
     </Modal>
   );
 }

@@ -136,13 +136,46 @@ export class AIService {
     
     // Create secure system prompt with injection protection and language-aware instructions
     const baseSystemPrompt = getLanguageAwareSystemPrompt(`
-You are a strict JSON classifier. Output ONLY JSON. No prose, no trailing commas, no code fences.
+🎯 AI Goal Classifier - Output ONLY JSON. No prose, no trailing commas, no code fences.
 
-CLASSIFICATION RULES:
-1) If explicit days of week AND specific time (e.g., "Mon/Wed/Fri at 6am", "월수금 6시"), type = "schedule"
-2) If only counts per period (e.g., "3 times a week", "일주일에 3번"), type = "frequency"  
-3) If goal has discrete milestones/phases (e.g., "project phases", "skill levels"), type = "milestone"
-If (1) and (2) both appear, prefer "schedule". If unclear, prefer "frequency" (NOT partner).
+당신은 사용자가 입력한 목표를 분석하여 세 가지 타입 중 하나로 분류해야 합니다:
+• schedule
+• frequency  
+• milestone
+
+⸻
+
+1. Schedule (일정형 목표)
+• 정의: 목표 수행이 특정한 시간 단위(날짜, 요일, 구체적인 시각)에 맞춰 반복되거나 고정되어 있는 경우
+• 판별 규칙:
+  - "월요일", "매주 화요일", "오전 7시"처럼 명시적 요일/날짜/시간이 들어가면 무조건 Schedule
+  - 횟수가 언급되어도, 그 횟수가 특정 요일/시간과 연결되어 있으면 Schedule로 분류
+• 필드: events: [{dayOfWeek, time}], duration
+
+2. Frequency (빈도형 목표)  
+• 정의: 목표 수행의 기준이 특정한 기간 안에서 횟수로만 정의되는 경우
+• 판별 규칙:
+  - "주 3회", "한 달에 10번", "일주일에 최소 5번" 같은 기간 + 횟수 패턴일 때 Frequency
+  - 요일이나 특정 시각이 명시되지 않고, 단지 횟수만 중요하다면 Frequency
+• 필드: count, period(주/월/일 등), duration
+
+3. Milestone (마일스톤 목표)
+• 정의: 목표가 단계적 성취 또는 큰 사건을 달성하는 것일 때
+• 판별 규칙:
+  - 여러 단계나 성과 지점으로 나뉘어야 달성되는 경우 (예: Kickoff → Mid → Completion)
+  - 추상적/단발성 큰 성취(예: "미국 유학가기", "창업하기")도 Milestone으로 분류
+  - 시간이나 횟수가 주어지지 않고, 최종 상태 도달이 핵심이면 Milestone
+  - "~하기"로 끝나는 큰 목표는 Milestone
+• 필드: milestones: [{key, label}], duration
+
+⸻
+
+4. 분류 우선순위 규칙
+1. 문장 안에 구체적인 요일/날짜/시각이 있으면 → Schedule
+2. 그렇지 않고 기간 + 횟수 패턴이 있으면 → Frequency  
+3. 위 두 가지가 아니고, 큰 성취/단계적 성취라면 → Milestone
+
+⸻
 
 LOCALE NORMALIZATION:
 Korean weekdays: 월→mon, 화→tue, 수→wed, 목→thu, 금→fri, 토→sat, 일→sun
@@ -151,12 +184,41 @@ Times must be HH:MM format (24h). Parse "6am"→"06:00", "6pm"→"18:00"
 
 ${getPolicyDescriptionForPrompt()}
 
-STRICT REFUSAL: If cannot classify confidently, return minimal JSON:
+CLASSIFICATION EXAMPLES:
+
+SCHEDULE (요일/시간 명시):
+• "월수금 7시에 운동" → Schedule (요일+시간)
+• "매주 화요일 오후 2시" → Schedule (요일+시간)
+• "Run Mon/Wed/Fri at 7pm" → Schedule (요일+시간)
+
+FREQUENCY (기간+횟수만):
+• "주 3회 운동" → Frequency (요일 명시 없음)
+• "Go to the gym 3 times a week" → Frequency (시간 명시 없음)
+• "일주일에 5번 독서" → Frequency (요일 명시 없음)
+
+IMPORTANT: "매일 아침 7시" = 매일(daily) + 아침 7시(time) → Schedule
+"매일" means every day, which is a schedule pattern, not frequency!
+
+MILESTONE (큰 성취/단계적):
+• "미국 유학가기" → Milestone (~하기 패턴)
+• "창업하기" → Milestone (~하기 패턴)
+• "Piano milestones" → Milestone (milestone 명시)
+• "Learn programming" → Milestone (큰 성취)
+
+STRICT REFUSAL: If cannot classify confidently, prefer Milestone:
 {
-  "type": "frequency",
+  "type": "milestone",
   "originalText": "user input",
+  "milestone": {
+    "milestones": [
+      {"key": "kickoff", "label": "시작"},
+      {"key": "mid", "label": "중간 점검"},
+      {"key": "finish", "label": "완료"}
+    ],
+    "totalDuration": 8
+  },
   "verification": { "signals": ["manual"] },
-  "meta": { "reason": "Uncertain classification" }
+  "meta": { "reason": "Uncertain classification - defaulted to milestone" }
 }
 
 SCHEMA:
@@ -1685,6 +1747,34 @@ Output ONLY valid JSON matching the schema above. No explanations, no markdown, 
       const lowerPrompt = prompt.toLowerCase();
       const today = new Date().toISOString().split('T')[0];
       
+      // Apply new classification rules:
+      // 1. 구체적인 요일/날짜/시각이 있으면 → Schedule
+      // 2. 기간 + 횟수 패턴이 있으면 → Frequency  
+      // 3. 큰 성취/단계적 성취라면 → Milestone
+      
+      // 1. Schedule: 요일 AND 시간이 모두 있는 경우
+      const hasWeekday = /(월|화|수|목|금|토|일|월요일|화요일|수요일|목요일|금요일|토요일|일요일|monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun)/.test(lowerPrompt);
+      const hasSpecificTime = /(\d{1,2}:\d{2}|\d{1,2}시|\d+am|\d+pm|오전|오후|아침|저녁|at\s+\d+)/.test(lowerPrompt);
+      const hasSpecificDayTime = hasWeekday && hasSpecificTime;
+      
+      // 2. Frequency: 횟수 패턴 (주/일/월 + 숫자)
+      const hasFrequencyPattern = /(\d+)\s*(times?|x|회)\s*(?:a\s+|per\s+|당\s*)?(?:day|daily|week|weekly|month|monthly|일|주|달|월)/.test(lowerPrompt) ||
+                                 /주\s*\d+\s*회/.test(lowerPrompt) || 
+                                 /일주일에\s*\d+/.test(lowerPrompt) ||
+                                 /한\s*달에\s*\d+/.test(lowerPrompt);
+      
+      // 3. Milestone: 큰 성취/단계적 성취 (~하기, 키워드, 긴 텍스트)
+      const isBigAchievement = /하기$/.test(prompt.trim()) || 
+                              /\b(milestone|phase|stage|project|startup|학습|유학|창업|완성|달성|learn|study|complete|achieve)\b/.test(lowerPrompt) ||
+                              (prompt.trim().length > 8 && !hasFrequencyPattern && !hasSpecificDayTime);
+      
+      console.log('[AI] Classification analysis:', {
+        hasSpecificDayTime,
+        hasFrequencyPattern, 
+        isBigAchievement,
+        prompt: lowerPrompt.substring(0, 50)
+      });
+      
       // Extract basic information
       let title = prompt.charAt(0).toUpperCase() + prompt.slice(1);
       let category = this.autoAssignCategory(title, []);
@@ -2370,7 +2460,7 @@ Output ONLY valid JSON matching the schema above. No explanations, no markdown, 
     goalSpec: GoalSpec,
     startDate: string,
     endDate: string,
-    goalType?: 'schedule' | 'frequency' | 'partner'
+    goalType?: 'schedule' | 'frequency' | 'milestone'
   ): ValidationResult {
     // Frequency Goal은 스케줄 검증을 스킵
     if (goalType === 'frequency') {
@@ -2387,17 +2477,17 @@ Output ONLY valid JSON matching the schema above. No explanations, no markdown, 
       };
     }
 
-    // Partner Goal도 스케줄 검증을 스킵
-    if (goalType === 'partner') {
+    // Milestone Goal도 스케줄 검증을 스킵
+    if (goalType === 'milestone') {
       return {
         isCompatible: true,
         issues: [],
-        summary: 'Partner Goal은 스케줄 검증을 건너뜁니다.',
+        summary: 'Milestone Goal은 스케줄 검증을 건너뜁니다.',
         completeWeekCount: 0,
         validationDetails: {
-          frequencyCheck: { passed: true, details: 'Partner Goal으로 검증 스킵' },
-          weekdayCheck: { passed: true, details: 'Partner Goal으로 검증 스킵' },
-          timeCheck: { passed: true, details: 'Partner Goal으로 검증 스킵' }
+          frequencyCheck: { passed: true, details: 'Milestone Goal으로 검증 스킵' },
+          weekdayCheck: { passed: true, details: 'Milestone Goal으로 검증 스킵' },
+          timeCheck: { passed: true, details: 'Milestone Goal으로 검증 스킵' }
         }
       };
     }

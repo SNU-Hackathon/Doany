@@ -50,11 +50,26 @@ export const INITIAL_CREATE_GOAL_STATE: CreateGoalState = {
 
 export function classifyGoalTypeFromTitle(title: string): GoalType {
   const t = title.toLowerCase();
-  if (/(times\s+per\s+(week|day|month))|(\bper\s+week\b)|(\bweekly\b)/.test(t)) return 'frequency';
-  if (/(with|by)\s+(friend|coach|partner)|\bpartner approval\b|\baccountability\b/.test(t)) return 'partner';
-  if (/\b(mon|tue|wed|thu|fri|sat|sun)\b|\b\d{1,2}:\d{2}\b|\b(am|pm)\b/.test(t)) return 'schedule';
-  // default guess: frequency for "go to the gym" style without explicit time
-  return 'frequency';
+  
+  // 1. Schedule: 요일 AND 시간이 모두 있는 경우  
+  const hasWeekday = /(월|화|수|목|금|토|일|월요일|화요일|수요일|목요일|금요일|토요일|일요일|mon|tue|wed|thu|fri|sat|sun)/.test(t);
+  const hasTime = /(\d{1,2}:\d{2}|\d{1,2}시|\d+am|\d+pm|오전|오후|아침|저녁|at\s+\d+)/.test(t);
+  
+  if (hasWeekday && hasTime) return 'schedule';
+  
+  // 2. Frequency: 횟수 패턴
+  if (/(times\s+per\s+(week|day|month))|(\bper\s+week\b)|(\bweekly\b)/.test(t) ||
+      /(\d+)\s*(times?|x|회)\s*(?:a\s+|per\s+)?(?:week|daily|month|일|주|달|월)/.test(t) ||
+      /주\s*\d+\s*회/.test(t) || 
+      /일주일에\s*\d+/.test(t)) return 'frequency';
+  
+  // 3. Milestone: 큰 성취/단계적 성취 (기본값도 milestone)
+  if (/(milestone|phase|stage)|\b(project|goal|skill)\s+(completion|achievement)|\b(kickoff|mid|finish|final)\b/.test(t) ||
+      /하기$/.test(title.trim()) ||
+      /(학습|유학|창업|완성|달성|learn|study|complete|achieve)/.test(t)) return 'milestone';
+  
+  // 4. Default: milestone (as per new rules)
+  return 'milestone';
 }
 
 // Context and hook for Create Goal state management
@@ -68,7 +83,7 @@ interface CreateGoalActions {
   setPerWeek: (perWeek: number) => void;
   setMethods: (methods: { manual: boolean; location: boolean; photo: boolean }) => void;
   setPhoto: (photo: { exifEnabled?: boolean }) => void;
-  setPartner: (partner: { id?: string; inviteEmail?: string; status?: 'pending'|'accepted'|'declined' }) => void;
+  setMilestones: (milestones: { milestones: { key: string; label: string; targetDate?: string }[]; totalDuration?: number }) => void;
   setAiGuess: (aiGuess?: GoalType) => void;
   setStep: (step: number) => void;
   setBasic: (basic: any) => void;
@@ -94,7 +109,7 @@ type CreateGoalAction =
   | { type: 'SET_PER_WEEK'; payload: number }
   | { type: 'SET_METHODS'; payload: { manual: boolean; location: boolean; photo: boolean } }
   | { type: 'SET_PHOTO'; payload: { exifEnabled?: boolean } }
-  | { type: 'SET_PARTNER'; payload: { id?: string; inviteEmail?: string; status?: 'pending'|'accepted'|'declined' } }
+  | { type: 'SET_MILESTONES'; payload: { milestones: { key: string; label: string; targetDate?: string }[]; totalDuration?: number } }
   | { type: 'SET_AI_GUESS'; payload: GoalType | undefined }
   | { type: 'SET_STEP'; payload: number }
   | { type: 'SET_BASIC'; payload: any }
@@ -121,8 +136,8 @@ function createGoalReducer(state: CreateGoalState, action: CreateGoalAction): Cr
       return { ...state, methods: action.payload };
     case 'SET_PHOTO':
       return { ...state, photo: action.payload };
-    case 'SET_PARTNER':
-      return { ...state, partner: action.payload };
+    case 'SET_MILESTONES':
+      return { ...state, milestones: action.payload };
     case 'SET_AI_GUESS':
       return { ...state, aiGuess: action.payload };
     case 'SET_STEP':
@@ -154,7 +169,7 @@ export function CreateGoalProvider({ children }: { children: ReactNode }) {
     setPerWeek: (perWeek) => dispatch({ type: 'SET_PER_WEEK', payload: perWeek }),
     setMethods: (methods) => dispatch({ type: 'SET_METHODS', payload: methods }),
     setPhoto: (photo) => dispatch({ type: 'SET_PHOTO', payload: photo }),
-    setPartner: (partner) => dispatch({ type: 'SET_PARTNER', payload: partner }),
+    setMilestones: (milestones) => dispatch({ type: 'SET_MILESTONES', payload: milestones }),
     setAiGuess: (aiGuess) => dispatch({ type: 'SET_AI_GUESS', payload: aiGuess }),
     setStep: (step) => dispatch({ type: 'SET_STEP', payload: step }),
     setBasic: (basic) => dispatch({ type: 'SET_BASIC', payload: basic }),

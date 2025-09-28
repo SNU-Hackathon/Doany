@@ -404,12 +404,12 @@ export class QuestService {
         weekdays: goalData.weeklyWeekdays || goalData.schedule?.weekdayConstraints || [],
         time: goalData.weeklySchedule ? Object.values(goalData.weeklySchedule).flat() : [],
         location: goalData.targetLocation?.name,
-        frequency: goalData.frequency?.count || 1
+        frequency: 1 // Schedule은 각 일정당 1회
       } : goalType === 'frequency' ? {
-        weekdays: [],
-        time: [],
+        weekdays: goalData.weeklyWeekdays || [], // Frequency도 설정된 요일 사용
+        time: goalData.weeklySchedule ? Object.values(goalData.weeklySchedule).flat() : [],
         location: goalData.targetLocation?.name,
-        frequency: goalData.frequency?.count || 3
+        frequency: goalData.frequency?.count || 3 // 사용자가 설정한 빈도 사용
       } : undefined,
       verificationMethods: goalData.verificationMethods || ['manual'],
       targetLocation: goalData.targetLocation,

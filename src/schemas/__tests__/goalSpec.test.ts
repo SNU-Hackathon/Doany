@@ -59,8 +59,8 @@ describe('GoalSpecSchema', () => {
 
       expect(() => validateGoalSpec(validPartner)).not.toThrow();
       const result = validateGoalSpec(validPartner);
-      expect(result.type).toBe('partner');
-      expect(result.partner?.required).toBe(true);
+      expect(result.type).toBe('milestone');
+      expect(result.milestone?.milestones).toBeDefined();
     });
 
     it('should validate schedule with location data', () => {
@@ -403,7 +403,7 @@ describe('GoalSpecSchema', () => {
 
       expect(() => validateGoalSpec(partnerWithoutName)).not.toThrow();
       const result = validateGoalSpec(partnerWithoutName);
-      expect(result.partner?.name).toBeUndefined();
+      expect(result.milestone?.milestones).toBeDefined();
     });
 
     it('should handle optional location data', () => {

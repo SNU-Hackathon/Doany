@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { QuestService } from '../services/questService';
 import { Quest } from '../types/quest';
@@ -7,12 +7,14 @@ import { Quest } from '../types/quest';
 interface QuestPreviewProps {
   goalData: any;
   userId: string;
+  onLoadingChange?: (loading: boolean) => void;
 }
 
-export default function QuestPreview({ goalData, userId }: QuestPreviewProps) {
+export default function QuestPreview({ goalData, userId, onLoadingChange }: QuestPreviewProps) {
   const [quests, setQuests] = useState<Quest[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const generationRef = useRef<string>(''); // Track last generation to prevent duplicates
 
   console.log('[QuestPreview] ===== COMPONENT RENDER =====');
     console.log('[QuestPreview] Component rendered with:', {
@@ -89,18 +91,24 @@ export default function QuestPreview({ goalData, userId }: QuestPreviewProps) {
     
     if (!goalData || !userId) {
       console.log('[QuestPreview] Missing goalData or userId, skipping quest generation');
-      console.log('[QuestPreview] goalData:', goalData);
-      console.log('[QuestPreview] userId:', userId);
       return;
     }
 
+    // Prevent duplicate generation
+    const generationKey = `${goalData.title}-${goalData.type}-${goalData.duration?.startDate}-${goalData.duration?.endDate}-${JSON.stringify(goalData.frequency)}`;
+    if (generationRef.current === generationKey) {
+      console.log('[QuestPreview] Same generation key, skipping duplicate generation');
+      return;
+    }
+    
+    generationRef.current = generationKey;
     console.log('[QuestPreview] Starting quest generation process...');
     
     // Generate AI quests only - no fallback heuristics
     console.log('[QuestPreview] Starting AI quest generation (no fallbacks)...');
     setQuests([]); // Start with empty state
     generateQuests();
-  }, [goalData, userId]);
+  }, [goalData?.title, goalData?.type, goalData?.duration?.startDate, goalData?.duration?.endDate, userId]);
 
   const generateQuests = async () => {
     console.log('[QuestPreview] ===== AI QUEST GENERATION START =====');
@@ -115,6 +123,7 @@ export default function QuestPreview({ goalData, userId }: QuestPreviewProps) {
     });
     setLoading(true);
     setError(null);
+    onLoadingChange?.(true);
 
     try {
       console.log('[QuestPreview] Calling QuestService.generateQuestsForPreview...');
@@ -216,6 +225,7 @@ export default function QuestPreview({ goalData, userId }: QuestPreviewProps) {
     } finally {
       console.log('[QuestPreview] ===== AI QUEST GENERATION END =====');
       setLoading(false);
+      onLoadingChange?.(false);
     }
   };
 
@@ -282,14 +292,27 @@ export default function QuestPreview({ goalData, userId }: QuestPreviewProps) {
 
   const getScheduleDisplay = (quest: Quest): string => {
     if (quest.type === 'schedule' && quest.scheduledDate) {
-      // Schedule 타입: 특정 날짜 표시
+      // Schedule 타입: 특정 날짜와 시간 표시
       const date = new Date(quest.scheduledDate);
       const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
       const dayName = dayNames[date.getDay()];
       const month = date.getMonth() + 1;
       const day = date.getDate();
       
-      return `${month}/${day} (${dayName})`;
+      // 시간 정보 추출 (verificationRules에서 time 정보 확인)
+      const timeRule = quest.verificationRules?.find(rule => rule.type === 'time');
+      let timeDisplay = '';
+      
+      if (timeRule && timeRule.config?.time) {
+        const timeConfig = timeRule.config.time as any;
+        if (timeConfig.window && timeConfig.window.start) {
+          timeDisplay = ` ${timeConfig.window.start}`;
+        } else if (timeConfig.start) {
+          timeDisplay = ` ${timeConfig.start}`;
+        }
+      }
+      
+      return `${month}/${day} (${dayName})${timeDisplay}`;
     } else if (quest.type === 'frequency' && quest.weekNumber) {
       // Frequency 타입: 주차와 회차 표시
       const title = quest.title || '';
@@ -309,16 +332,33 @@ export default function QuestPreview({ goalData, userId }: QuestPreviewProps) {
   };
 
   const getTimeDisplay = (quest: Quest): string => {
-    if (quest.type === 'schedule' && quest.scheduledDate) {
-      const date = new Date(quest.scheduledDate);
-      const dayOfWeek = date.getDay();
+    if (quest.type === 'schedule') {
+      // 1. verificationRules에서 time 정보 확인
+      const timeRule = quest.verificationRules?.find(rule => rule.type === 'time');
+      if (timeRule && timeRule.config?.time) {
+        const timeConfig = timeRule.config.time as any;
+        if (timeConfig.window && timeConfig.window.start && timeConfig.window.end) {
+          return `${timeConfig.window.start} - ${timeConfig.window.end}`;
+        } else if (timeConfig.start && timeConfig.end) {
+          return `${timeConfig.start} - ${timeConfig.end}`;
+        } else if (timeConfig.start) {
+          return timeConfig.start;
+        }
+      }
       
-      // 해당 요일의 시간 설정 확인 (실제 formData 구조 사용)
-      const weeklySchedule = goalData?.weeklySchedule as any;
-      if (weeklySchedule && weeklySchedule[dayOfWeek]) {
-        const times = weeklySchedule[dayOfWeek];
-        if (Array.isArray(times) && times.length > 0) {
-          return times.join(', ');
+      // 2. weeklySchedule에서 시간 정보 확인 (fallback)
+      if (quest.scheduledDate) {
+        const date = new Date(quest.scheduledDate);
+        const dayOfWeek = date.getDay();
+        const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+        const dayName = dayNames[dayOfWeek];
+        
+        const weeklySchedule = goalData?.weeklySchedule;
+        if (weeklySchedule && weeklySchedule[dayName]) {
+          const times = weeklySchedule[dayName];
+          if (Array.isArray(times) && times.length > 0) {
+            return times.join(', ');
+          }
         }
       }
     }
@@ -433,7 +473,7 @@ export default function QuestPreview({ goalData, userId }: QuestPreviewProps) {
               </Text>
             </View>
             
-            {quest.type === 'schedule' && goalData?.weeklySchedule && (
+            {quest.type === 'schedule' && (
               <View style={styles.metaItem}>
                 <Ionicons name="time-outline" size={14} color="#6B7280" />
                 <Text style={styles.metaText}>
