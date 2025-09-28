@@ -9,6 +9,63 @@ import { db } from './firebase';
 export class QuestService {
   
   /**
+   * Generate quests for preview (without saving to Firestore)
+   */
+  static async generateQuestsForPreview(
+    goalData: any, 
+    userId: string
+  ): Promise<Quest[]> {
+    console.log('[QuestService] Generating quests for preview');
+    console.log('[QuestService] Input goalData:', {
+      title: goalData?.title,
+      type: goalData?.type,
+      duration: goalData?.duration,
+      frequency: goalData?.frequency,
+      userId
+    });
+    
+    try {
+      console.log('[QuestService] Importing QuestGeneratorService...');
+      // Import QuestGeneratorService dynamically to avoid circular imports
+      const { QuestGeneratorService } = await import('./questGenerator');
+      console.log('[QuestService] QuestGeneratorService imported successfully');
+      
+      console.log('[QuestService] Creating quest generation request...');
+      // Create quest generation request
+      const request = this.createQuestGenerationRequest('preview', goalData);
+      console.log('[QuestService] Request created:', {
+        goalId: request.goalId,
+        goalTitle: request.goalTitle,
+        goalType: request.goalType,
+        duration: request.duration,
+        schedule: request.schedule
+      });
+      
+      console.log('[QuestService] Calling QuestGeneratorService.generateQuestsFromGoal...');
+      // Generate quests using AI
+      const result = await QuestGeneratorService.generateQuestsFromGoal(request);
+      console.log('[QuestService] QuestGeneratorService returned:', result.quests.length, 'quests');
+      
+      console.log('[QuestService] Successfully generated', result.quests.length, 'quests for preview');
+      return result.quests;
+      
+    } catch (error) {
+      console.error('[QuestService] Error generating preview quests:', error);
+      console.error('[QuestService] Error details:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        goalData: {
+          title: goalData?.title,
+          type: goalData?.type,
+          duration: goalData?.duration,
+          frequency: goalData?.frequency
+        }
+      });
+      throw createCatalogError('QUEST_GENERATION_ERROR', error);
+    }
+  }
+
+  /**
    * Generate and save quests for a goal
    */
   static async generateAndSaveQuestsForGoal(
@@ -217,28 +274,50 @@ export class QuestService {
    * Create quest generation request from goal data
    */
   private static createQuestGenerationRequest(goalId: string, goalData: any): any {
+    console.log('[QuestService] Creating quest generation request with goalData:', {
+      title: goalData.title,
+      type: goalData.type,
+      duration: goalData.duration,
+      frequency: goalData.frequency,
+      weeklyWeekdays: goalData.weeklyWeekdays,
+      weeklySchedule: goalData.weeklySchedule,
+      verificationMethods: goalData.verificationMethods,
+      targetLocation: goalData.targetLocation,
+      allKeys: Object.keys(goalData)
+    });
+
+    // Calculate duration more accurately
+    let startDate = goalData.duration?.startDate;
+    let endDate = goalData.duration?.endDate;
+    
+    if (!startDate || !endDate) {
+      // Fallback to reasonable defaults
+      const now = new Date();
+      startDate = now.toISOString().split('T')[0];
+      endDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    }
+
     return {
       goalId,
       goalTitle: goalData.title,
       goalDescription: goalData.description,
       goalType: goalData.type,
       duration: {
-        startDate: goalData.duration?.startDate || new Date().toISOString().split('T')[0],
-        endDate: goalData.duration?.endDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+        startDate,
+        endDate
       },
-      schedule: goalData.schedule ? {
-        weekdays: goalData.schedule.weekdayConstraints?.map((w: any) => {
-          const dayMap: { [key: string]: number } = {
-            'monday': 1, 'tuesday': 2, 'wednesday': 3, 'thursday': 4,
-            'friday': 5, 'saturday': 6, 'sunday': 0
-          };
-          return dayMap[w.toLowerCase()] ?? 1;
-        }),
-        time: goalData.schedule.timeWindows?.[0]?.[0],
+      schedule: goalData.type === 'schedule' ? {
+        weekdays: goalData.weeklyWeekdays || [],
+        time: goalData.weeklySchedule ? Object.values(goalData.weeklySchedule).flat() : [],
         location: goalData.targetLocation?.name,
-        frequency: goalData.frequency?.targetPerWeek
+        frequency: goalData.frequency?.count || 1
+      } : goalData.type === 'frequency' ? {
+        weekdays: [],
+        time: [],
+        location: goalData.targetLocation?.name,
+        frequency: goalData.frequency?.count || 3
       } : undefined,
-      verificationMethods: goalData.verification?.signals || ['manual'],
+      verificationMethods: goalData.verificationMethods || ['manual'],
       targetLocation: goalData.targetLocation
     };
   }

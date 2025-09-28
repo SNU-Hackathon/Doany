@@ -41,7 +41,6 @@ import {
   setLoggingUserId
 } from '../utils/structuredLogging';
 import { toast } from '../utils/toast';
-import MapPreview from './MapPreview';
 import QuestPreview from './QuestPreview';
 import SimpleDatePicker, { DateSelection } from './SimpleDatePicker';
 import ToastContainer from './ToastContainer';
@@ -96,6 +95,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     title: '',
     description: '',
     category: Categories[0],
+    type: 'frequency', // 기본값 설정
     verificationMethods: [],
     frequency: { count: 1, unit: 'per_day' },
     duration: {
@@ -108,8 +108,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     lockedVerificationMethods: [],
     weeklyWeekdays: [],
     weeklySchedule: {},
-    calendarEvents: [],
-    type: 'frequency'
+    calendarEvents: []
   });
 
   // AI retry hook for robust error handling
@@ -854,6 +853,14 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     isFrequency
   });
 
+  // Sync aiBadgeState.type with formData.type
+  useEffect(() => {
+    if (aiBadgeState.type && formData.type !== aiBadgeState.type) {
+      console.log('[CreateGoalModal] Syncing type:', aiBadgeState.type);
+      setFormData(prev => ({ ...prev, type: aiBadgeState.type }));
+    }
+  }, [aiBadgeState.type]);
+
   // Defer AI evaluation until after initial mount so formData is defined
   useEffect(() => {
     let cancelled = false;
@@ -1317,6 +1324,7 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
       title: '',
       description: '',
       category: Categories[0],
+      type: 'frequency', // 기본값 설정
       verificationMethods: [],
       frequency: { count: 1, unit: 'per_day' },
       duration: {
@@ -2973,354 +2981,24 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
     <View>
       {/* Review Header */}
       <View style={{ marginBottom: 24 }}>
-        <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#1f2937', marginBottom: 8 }}>Review Your Goal</Text>
-        <Text style={{ color: '#4b5563' }}>Review and confirm your goal details before saving</Text>
+        <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#1f2937', marginBottom: 8 }}>AI 퀘스트 미리보기</Text>
+        <Text style={{ color: '#4b5563' }}>목표에 맞는 퀘스트들이 AI에 의해 생성되었습니다</Text>
       </View>
 
-      {/* Basic Information */}
-      <View style={{ marginBottom: 24 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-          <Text style={{ color: '#374151', fontWeight: '600', fontSize: 18 }}>Basic Information</Text>
-          <TouchableOpacity 
-            onPress={() => actions.setStep(0)}
-            style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 4, backgroundColor: '#eff6ff', borderRadius: 8 }}
-          >
-            <Ionicons name="create-outline" size={16} color="#2563EB" />
-            <Text style={{ color: '#2563eb', fontSize: 14, marginLeft: 4 }}>Edit</Text>
-          </TouchableOpacity>
-        </View>
-        
-        <View style={{ backgroundColor: 'white', borderRadius: 8, padding: 16, borderWidth: 1, borderColor: '#e5e7eb' }}>
-          <Text style={{ color: '#1f2937', fontWeight: '500', fontSize: 18, marginBottom: 8 }}>{formData.title || 'Not set'}</Text>
-          {formData.description && (
-            <Text style={{ color: '#4b5563', marginBottom: 8 }}>{formData.description}</Text>
-          )}
-          <Text style={{ color: '#6b7280', fontSize: 14 }}>Category: {formData.category}</Text>
-        </View>
-      </View>
 
-      {/* Quest Preview - Always render for debugging */}
-      <View style={{ backgroundColor: '#f0f0f0', padding: 16, marginBottom: 16, borderRadius: 8 }}>
-        <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 8 }}>퀘스트 미리보기 (디버그)</Text>
-        <Text>User ID: {user?.uid || 'No user'}</Text>
-        <Text>Form Data: {formData ? 'Available' : 'Not available'}</Text>
-        <Text>Goal Title: {formData?.title || 'No title'}</Text>
-        
-        {/* Always render QuestPreview */}
-        <QuestPreview 
-          goalData={formData || { title: '테스트 목표', type: 'frequency' }} 
-          userId={user?.uid || 'test_user'} 
-        />
-      </View>
+      {/* Quest Preview */}
+      <QuestPreview 
+        goalData={{
+          ...formData,
+          type: formData.type || aiBadgeState.type || 'frequency'
+        }} 
+        userId={user?.uid || 'test_user'} 
+      />
 
-      {/* Schedule Information */}
-      <View style={{ marginBottom: 24 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-          <Text style={{ color: '#374151', fontWeight: '600', fontSize: 18 }}>Schedule</Text>
-          <TouchableOpacity 
-            onPress={() => goToStep(1)}
-            style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 4, backgroundColor: '#eff6ff', borderRadius: 8 }}
-          >
-            <Ionicons name="create-outline" size={16} color="#2563EB" />
-            <Text style={{ color: '#2563eb', fontSize: 14, marginLeft: 4 }}>Edit</Text>
-          </TouchableOpacity>
-        </View>
-        
-        <View style={{ backgroundColor: 'white', borderRadius: 8, padding: 16, borderWidth: 1, borderColor: '#e5e7eb' }}>
-          {/* Duration/Frequency removed per request */}
-          {formData.startDate && (
-            <Text style={{ color: '#1f2937' }}>
-              <Text style={{ fontWeight: '500' }}>Start Date:</Text> {new Date(formData.startDate).toLocaleDateString()}
-            </Text>
-          )}
-        </View>
-      </View>
 
-      {/* Verification Methods */}
-      <View style={{ marginBottom: 24 }}>
-        <Text style={{ color: '#374151', fontWeight: '600', fontSize: 18, marginBottom: 12 }}>Verification Methods</Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          {formData.verificationMethods.length > 0 ? (
-            formData.verificationMethods.map((method) => (
-              <View key={method} style={{ paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#dbeafe', borderRadius: 8 }}>
-                <Text style={{ color: '#1e40af', fontSize: 14, fontWeight: '500' }}>
-                  {method.charAt(0).toUpperCase() + method.slice(1)}
-                </Text>
-              </View>
-            ))
-          ) : (
-            <Text style={{ color: '#6b7280', fontStyle: 'italic' }}>No verification methods selected</Text>
-          )}
-        </View>
-      </View>
 
-      {/* Verification Plan Summary */}
-      <View style={{ marginBottom: 24 }}>
-        <Text style={{ color: '#374151', fontWeight: '600', fontSize: 18, marginBottom: 12 }}>Verification Plan Summary</Text>
-        <View style={{ backgroundColor: 'white', borderRadius: 8, padding: 16, borderWidth: 1, borderColor: '#e5e7eb' }}>
-          {/* One-line AI summary if available */}
-          {aiSuccessCriteria ? (
-            <Text style={{ color: '#1f2937', marginBottom: 12 }}>{aiSuccessCriteria}</Text>
-          ) : (
-            <Text style={{ color: '#6b7280', marginBottom: 12 }}>Summary will appear based on your configured methods and schedule.</Text>
-          )}
 
-          {/* Methods with lock indicators */}
-          <View style={{ marginBottom: 12 }}>
-            <Text style={{ color: '#374151', fontWeight: '600', marginBottom: 8 }}>Methods</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-              {(formData.verificationMethods || []).map((m) => {
-                const locked = (formData.lockedVerificationMethods || []).includes(m as any);
-                return (
-                  <View key={m} style={[
-                    { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, flexDirection: 'row', alignItems: 'center' },
-                    locked ? { backgroundColor: '#1e40af' } : { backgroundColor: '#dbeafe' }
-                  ]}>
-                    {locked && <Ionicons name="lock-closed" size={12} color="#FFFFFF" style={{ marginRight: 4 }} />}
-                    <Text style={[
-                      { fontSize: 12, fontWeight: '600' },
-                      locked ? { color: 'white' } : { color: '#1e40af' }
-                    ]}>{m.charAt(0).toUpperCase() + m.slice(1)}</Text>
-                  </View>
-                );
-              })}
-            </View>
-          </View>
 
-          {/* Schedule overview */}
-          <View>
-            <Text style={{ color: '#374151', fontWeight: '600', marginBottom: 8 }}>Schedule</Text>
-            {formData.duration?.startDate || formData.duration?.endDate ? (
-              <Text style={{ color: '#1f2937', fontSize: 14 }}>
-                {formData.duration?.startDate ? `Start: ${new Date(formData.duration.startDate).toLocaleDateString()}` : ''}
-                {formData.duration?.endDate ? `  End: ${new Date(formData.duration.endDate).toLocaleDateString()}` : ''}
-              </Text>
-            ) : (
-              <Text style={{ color: '#6b7280', fontStyle: 'italic' }}>Duration not set</Text>
-            )}
-            {(formData.weeklyWeekdays && formData.weeklyWeekdays.length > 0) ? (
-              <View>
-                {(formData.weeklyWeekdays || []).sort().map((d) => {
-                  const dayShort = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-                  const times = (formData.weeklySchedule as any)?.[d] || [];
-                  const timeText = Array.isArray(times) && times.length > 0 ? (times as string[]).join(', ') : 'No time set';
-                  return (
-                    <Text key={d} style={{ color: '#1f2937', fontSize: 12 }}>{dayShort[d]}: {timeText}</Text>
-                  );
-                })}
-              </View>
-            ) : (
-              <Text style={{ color: '#6b7280', fontStyle: 'italic' }}>Weekly schedule not set</Text>
-            )}
-          </View>
-        </View>
-      </View>
-
-      {/* Full Plan Overview - consolidate every relevant detail */}
-      <View style={{ marginBottom: 24 }}>
-        <Text style={{ color: '#374151', fontWeight: '600', fontSize: 18, marginBottom: 12 }}>Full Plan Overview</Text>
-        <View style={{ backgroundColor: 'white', borderRadius: 8, padding: 16, borderWidth: 1, borderColor: '#e5e7eb' }}>
-          {/* Goal info */}
-          <Text style={{ color: '#1f2937', fontWeight: '500', fontSize: 18, marginBottom: 8 }}><Text style={{ fontWeight: '600' }}>Goal:</Text> {formData.title || 'Not set'}</Text>
-          {!!formData.description && (
-            <Text style={{ color: '#4b5563', fontSize: 14, marginBottom: 8 }}>{formData.description}</Text>
-          )}
-
-          {/* Verification methods and mandatory */}
-          <View style={{ marginBottom: 12 }}>
-            <Text style={{ color: '#1f2937', fontWeight: '600', marginBottom: 8 }}>Verification Methods</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-              {(formData.verificationMethods || []).map((m) => {
-                const locked = (formData.lockedVerificationMethods || []).includes(m as any);
-                return (
-                  <View key={m} style={[
-                    { 
-                      paddingHorizontal: 12, 
-                      paddingVertical: 4, 
-                      borderRadius: 20, 
-                      flexDirection: 'row', 
-                      alignItems: 'center' 
-                    },
-                    locked ? { backgroundColor: '#1e40af' } : { backgroundColor: '#dbeafe' }
-                  ]}>
-                    {locked && (
-                      <Ionicons 
-                        name="lock-closed" 
-                        size={12} 
-                        color="#FFFFFF" 
-                        style={{ marginRight: 4 }} 
-                      />
-                    )}
-                    <Text style={[
-                      { fontSize: 14, fontWeight: '500' },
-                      locked ? { color: 'white' } : { color: '#1e40af' }
-                    ]}>
-                      {m.charAt(0).toUpperCase() + m.slice(1)}
-                    </Text>
-                  </View>
-                );
-              })}
-              {(formData.verificationMethods || []).length === 0 && (
-                <Text style={{ color: '#6b7280', fontStyle: 'italic' }}>None</Text>
-              )}
-            </View>
-            {(formData.lockedVerificationMethods || []).length > 0 && (
-              <Text style={{ color: '#dc2626', fontSize: 12, marginTop: 8, fontWeight: '500' }}>
-                🔒 Locked: {(formData.lockedVerificationMethods as any).map((m: string) => m.charAt(0).toUpperCase() + m.slice(1)).join(', ')}
-              </Text>
-            )}
-          </View>
-
-          {/* AI-generated verification description */}
-          {(formData.verificationMethods || []).length > 0 && (
-            <View style={{ marginBottom: 12 }}>
-              <Text style={{ color: '#1f2937', fontWeight: '600', marginBottom: 8 }}>How Verification Works</Text>
-              <View style={{ backgroundColor: '#f8fafc', borderRadius: 8, padding: 12, borderLeftWidth: 4, borderLeftColor: '#3b82f6' }}>
-                <Text style={{ color: '#1f2937', fontSize: 14, lineHeight: 20 }}>
-                  {AIService.generateVerificationDescription({
-                    title: formData.title || '',
-                    verificationMethods: formData.verificationMethods || [],
-                    lockedVerificationMethods: formData.lockedVerificationMethods || [],
-                    weeklySchedule: formData.weeklySchedule,
-                    calendarEvents: formData.calendarEvents || [],
-                    targetLocation: formData.targetLocation,
-                    frequency: formData.frequency
-                  })}
-                </Text>
-              </View>
-            </View>
-          )}
-
-          {/* Target Location */}
-          <View style={{ marginBottom: 12 }}>
-            <Text style={{ color: '#1f2937', fontWeight: '600', marginBottom: 8 }}>Target Location</Text>
-            {formData.targetLocation ? (
-              <View>
-                <Text style={{ color: '#1f2937', fontSize: 14 }}>{formData.targetLocation.name}</Text>
-                {!!formData.targetLocation.address && (
-                  <Text style={{ color: '#4b5563', fontSize: 12, marginTop: 4 }}>{formData.targetLocation.address}</Text>
-                )}
-                <Text style={{ color: '#6b7280', fontSize: 10 }}>
-                  {formData.targetLocation.lat?.toFixed(6) || 'N/A'}, {formData.targetLocation.lng?.toFixed(6) || 'N/A'}
-                </Text>
-              </View>
-            ) : (
-              <Text style={{ color: '#6b7280', fontStyle: 'italic' }}>Not set</Text>
-            )}
-          </View>
-
-          {/* Frequency */}
-          <View style={{ marginBottom: 12 }}>
-            <Text style={{ color: '#1f2937', fontWeight: '600', marginBottom: 8 }}>Frequency</Text>
-            <Text style={{ color: '#1f2937', fontSize: 14 }}>{formData.frequency?.count || 0} per {formData.frequency?.unit?.replace('per_', '') || 'day'}</Text>
-          </View>
-
-          {/* Duration */}
-          <View style={{ marginBottom: 12 }}>
-            <Text style={{ color: '#1f2937', fontWeight: '600', marginBottom: 8 }}>Duration</Text>
-            {formData.duration?.startDate || formData.duration?.endDate ? (
-              <Text style={{ color: '#1f2937', fontSize: 14 }}>
-                {formData.duration?.startDate ? `Start: ${new Date(formData.duration.startDate).toLocaleDateString()}` : ''}
-                {formData.duration?.endDate ? `  End: ${new Date(formData.duration.endDate).toLocaleDateString()}` : ''}
-              </Text>
-            ) : (
-              <Text style={{ color: '#6b7280', fontStyle: 'italic' }}>Not set</Text>
-            )}
-          </View>
-
-          {/* Weekly Schedule */}
-          <View style={{ marginBottom: 12 }}>
-            <Text style={{ color: '#1f2937', fontWeight: '600', marginBottom: 8 }}>Weekly Schedule</Text>
-            {(formData.weeklyWeekdays && formData.weeklyWeekdays.length > 0) ? (
-              <View>
-                {(formData.weeklyWeekdays || []).sort().map((d) => {
-                  const dayShort = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-                  const times = (formData.weeklySchedule as any)?.[d] || [];
-                  const timeText = Array.isArray(times) && times.length > 0 ? (times as string[]).join(', ') : 'No time set';
-                  return (
-                    <Text key={d} style={{ color: '#1f2937', fontSize: 12 }}>{dayShort[d]}: {timeText}</Text>
-                  );
-                })}
-              </View>
-            ) : (
-              <Text style={{ color: '#6b7280', fontStyle: 'italic' }}>Not set</Text>
-            )}
-          </View>
-
-          {/* Per-day overrides */}
-          <View style={{ marginBottom: 12 }}>
-            <Text style={{ color: '#1f2937', fontWeight: '600', marginBottom: 8 }}>Per-day Overrides</Text>
-            <Text style={{ color: '#1f2937', fontSize: 14 }}>Included dates: {(formData.includeDates || []).length}</Text>
-            {(formData.includeDates || []).slice(0, 8).map((ds, i) => (
-              <Text key={`inc-${i}`} style={{ color: '#4b5563', fontSize: 12 }}>• {ds}</Text>
-            ))}
-            {(formData.includeDates || []).length > 8 && (
-              <Text style={{ color: '#6b7280', fontStyle: 'italic' }}>…and {(formData.includeDates || []).length - 8} more</Text>
-            )}
-            <Text style={{ color: '#1f2937', fontSize: 12, marginTop: 4 }}>Excluded dates: {(formData.excludeDates || []).length}</Text>
-            {(formData.excludeDates || []).slice(0, 8).map((ds, i) => (
-              <Text key={`exc-${i}`} style={{ color: '#6b7280', fontStyle: 'italic' }}>• {ds}</Text>
-            ))}
-            {(formData.excludeDates || []).length > 8 && (
-              <Text style={{ color: '#6b7280', fontStyle: 'italic' }}>…and {(formData.excludeDates || []).length - 8} more</Text>
-            )}
-          </View>
-        </View>
-      </View>
-
-      {/* Target Location */}
-      {formData.verificationMethods.includes('location') && (
-        <View style={{ marginBottom: 24 }}>
-          <Text style={{ color: '#374151', fontWeight: '600', fontSize: 18, marginBottom: 12 }}>Target Location</Text>
-          
-          {/* Target Location Display with Map Preview */}
-          {formData.targetLocation ? (
-            <View style={{ backgroundColor: 'white', borderRadius: 8, padding: 16, borderWidth: 1, borderColor: '#e5e7eb' }}>
-              <Text style={{ color: '#1f2937', fontWeight: '500', fontSize: 18, marginBottom: 8 }}>{formData.targetLocation.name}</Text>
-              {formData.targetLocation.address && (
-                <Text style={{ color: '#4b5563', fontSize: 14, marginTop: 4 }}>{formData.targetLocation.address}</Text>
-              )}
-              
-              {/* Map Preview */}
-              <View style={{ marginBottom: 12 }}>
-                <MapPreview 
-                  location={formData.targetLocation}
-                  onPress={() => {
-                    openLocationPicker();
-                  }}
-                />
-              </View>
-              
-              <Text style={{ color: '#6b7280', fontSize: 12 }}>
-                Coordinates: {formData.targetLocation.lat?.toFixed(6) || 'N/A'}, {formData.targetLocation.lng?.toFixed(6) || 'N/A'}
-              </Text>
-            </View>
-          ) : (
-            <View style={{ backgroundColor: '#f3f4f6', borderRadius: 8, padding: 16, borderWidth: 1, borderColor: '#e5e7eb' }}>
-              <Text style={{ color: '#6b7280', fontStyle: 'italic', fontSize: 14 }}>No location selected</Text>
-            </View>
-          )}
-
-          {/* Location Action Buttons */}
-          <View style={{ marginTop: 12 }}>
-            <TouchableOpacity
-              style={{ flex: 1, backgroundColor: '#3b82f6', borderRadius: 8, padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}
-              onPress={openLocationPicker}
-            >
-              <Ionicons name="search" size={20} color="white" />
-              <Text style={{ color: 'white', fontWeight: '600', marginLeft: 8 }}>Search</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={{ flex: 1, backgroundColor: '#10b981', borderRadius: 8, padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}
-              onPress={handleUseCurrentLocation}
-            >
-              <Ionicons name="location" size={20} color="white" />
-              <Text style={{ color: 'white', fontWeight: '600', marginLeft: 8 }}>Current Location</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
 
       {/* Back button to go to previous step */}
       <View style={{ marginBottom: 24 }}>
