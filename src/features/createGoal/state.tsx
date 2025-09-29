@@ -48,6 +48,59 @@ export const INITIAL_CREATE_GOAL_STATE: CreateGoalState = {
   targetLocation: undefined,
 };
 
+export async function classifyGoalTypeFromTitleWithAI(title: string): Promise<GoalType> {
+  const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
+  
+  if (!apiKey) {
+    console.warn('[AI] Missing OpenAI API key, falling back to heuristic classification');
+    return classifyGoalTypeFromTitle(title);
+  }
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json', 
+        'Authorization': `Bearer ${apiKey}` 
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        temperature: 0,
+        messages: [
+          { 
+            role: 'system', 
+            content: `You are a goal classification assistant. Classify the given goal title into one of three types:
+
+1. "schedule" - Goals that have specific days of the week AND specific times (e.g., "월수금 아침 7시에 헬스장 가기", "매주 화요일 오후 3시에 영어 수업")
+2. "frequency" - Goals that specify how many times per week/day/month (e.g., "주 3회 운동하기", "일주일에 2번 독서하기")  
+3. "milestone" - Goals that are project-based or achievement-oriented (e.g., "유학 준비하기", "프로젝트 완성하기", "스킬 배우기")
+
+Respond with ONLY one word: "schedule", "frequency", or "milestone"`
+          },
+          { 
+            role: 'user', 
+            content: `Classify this goal: "${title}"`
+          }
+        ]
+      })
+    });
+
+    const data = await response.json();
+    const classification = data.choices?.[0]?.message?.content?.trim().toLowerCase();
+    
+    if (['schedule', 'frequency', 'milestone'].includes(classification)) {
+      console.log('[AI] Goal classification result:', { title, classification });
+      return classification as GoalType;
+    } else {
+      console.warn('[AI] Invalid classification result:', classification);
+      return classifyGoalTypeFromTitle(title);
+    }
+  } catch (error) {
+    console.error('[AI] Classification failed:', error);
+    return classifyGoalTypeFromTitle(title);
+  }
+}
+
 export function classifyGoalTypeFromTitle(title: string): GoalType {
   const t = title.toLowerCase();
   

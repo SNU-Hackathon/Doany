@@ -95,8 +95,10 @@ export default function GoalDetailScreen({ route, navigation }: GoalDetailScreen
       setSuccessRate(rate);
       setCalendarEvents(calendarEventsData);
       
-      // Load quests for this goal
-      await loadQuestsForGoal(goalId);
+      // Load quests for this goal after setting goal data
+      setTimeout(async () => {
+        await loadQuestsForGoal(goalId);
+      }, 100);
       
       console.log('[GOAL:fetch:success]', { 
         goalId, 
@@ -116,6 +118,13 @@ export default function GoalDetailScreen({ route, navigation }: GoalDetailScreen
       setRefreshing(false);
     }
   }, [goalId]);
+
+  // Load goal data on mount
+  useEffect(() => {
+    if (goalId) {
+      loadGoalData();
+    }
+  }, [goalId, loadGoalData]);
 
   const loadQuestsForGoal = useCallback(async (goalId: string) => {
     if (!user) return;
@@ -137,10 +146,39 @@ export default function GoalDetailScreen({ route, navigation }: GoalDetailScreen
       });
       setQuests(questsData);
       
-      // If no quests exist, generate them
-      if (questsData.length === 0 && goal) {
-        console.log('[GoalDetail] No quests found, generating quests for goal:', goalId);
-        await generateQuestsForGoal();
+      // If no quests exist, generate them using the goalId and current goal data
+      if (questsData.length === 0) {
+        console.log('[GoalDetail] No quests found, auto-generating quests for goal:', goalId);
+        
+        // Use current goal data or fetch it again if needed
+        setTimeout(async () => {
+          try {
+            let goalDataForGeneration = goal;
+            if (!goalDataForGeneration) {
+              console.log('[GoalDetail] Fetching goal data for quest generation');
+              goalDataForGeneration = await GoalService.getGoal(goalId);
+            }
+            
+            if (goalDataForGeneration) {
+              console.log('[GoalDetail] Generating quests with goal data:', {
+                id: goalDataForGeneration.id,
+                title: goalDataForGeneration.title,
+                category: goalDataForGeneration.category
+              });
+              
+              const generatedQuests = await QuestService.generateAndSaveQuestsForGoal(
+                goalId,
+                goalDataForGeneration,
+                user.uid
+              );
+              
+              setQuests(generatedQuests);
+              console.log('[GoalDetail] Successfully generated', generatedQuests.length, 'quests');
+            }
+          } catch (error) {
+            console.error('[GoalDetail] Quest generation failed:', error);
+          }
+        }, 500);
       }
       
     } catch (error) {
@@ -644,7 +682,12 @@ export default function GoalDetailScreen({ route, navigation }: GoalDetailScreen
               </View>
             ) : (
               <FlatList
-                data={quests}
+                data={quests.sort((a, b) => {
+                  // Sort by scheduled date (earliest first - 시간 순서가 빠를수록 아래에 있도록)
+                  const dateA = a.scheduledDate ? new Date(a.scheduledDate).getTime() : 0;
+                  const dateB = b.scheduledDate ? new Date(b.scheduledDate).getTime() : 0;
+                  return dateB - dateA; // Reverse order (latest first to show earliest at bottom when scrolled)
+                })}
                 keyExtractor={(item) => item.id}
                 renderItem={({ item: quest }) => (
                   <TouchableOpacity
@@ -743,8 +786,26 @@ export default function GoalDetailScreen({ route, navigation }: GoalDetailScreen
                     <Ionicons name="list" size={48} color="#D1D5DB" />
                     <Text style={{ fontSize: 16, fontWeight: '500', color: '#6B7280', marginTop: 12 }}>퀀스트가 없습니다</Text>
                     <Text style={{ fontSize: 14, color: '#9CA3AF', marginTop: 4, textAlign: 'center' }}>
-                      목표가 생성되면 자동으로 퀀스트가 생성됩니다
+                      퀀스트를 생성하려면 아래 버튼을 눌러주세요
                     </Text>
+                    <TouchableOpacity
+                      style={{
+                        backgroundColor: '#3B82F6',
+                        paddingHorizontal: 24,
+                        paddingVertical: 12,
+                        borderRadius: 8,
+                        marginTop: 16,
+                        flexDirection: 'row',
+                        alignItems: 'center'
+                      }}
+                      onPress={generateQuestsForGoal}
+                      disabled={questsLoading}
+                    >
+                      <Ionicons name="add" size={20} color="white" />
+                      <Text style={{ color: 'white', fontWeight: '600', marginLeft: 8 }}>
+                        {questsLoading ? '생성 중...' : '퀀스트 생성하기'}
+                      </Text>
+                    </TouchableOpacity>
                   </View>
                 }
               />

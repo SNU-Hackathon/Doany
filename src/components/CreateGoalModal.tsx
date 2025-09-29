@@ -18,7 +18,7 @@ import {
 // import { LocationSearch } from '../components'; // Commented out to avoid web build issues
 import { FrequencyTarget, ScheduleWhen } from '../components/createGoal';
 import { Categories } from '../constants';
-import { classifyGoalTypeFromTitle, computeVerificationPlan, CreateGoalState as CreateGoalFeatureState, CreateGoalProvider, GoalType, INITIAL_CREATE_GOAL_STATE, RULE_TIPS, useCreateGoal, validateFrequencyDraft } from '../features/createGoal';
+import { classifyGoalTypeFromTitle, computeVerificationPlan, CreateGoalState as CreateGoalFeatureState, GoalType, INITIAL_CREATE_GOAL_STATE, RULE_TIPS, useCreateGoal, validateFrequencyDraft } from '../features/createGoal';
 import ScheduleFlow from '../features/createGoal/ScheduleFlow';
 import { AIGoalDraft, mergeAIGoal, parseGoalSpec, updateDraftWithDates, validateAIGoal } from '../features/goals/aiDraft';
 import { useAIWithRetry } from '../hooks/useAIWithRetry';
@@ -51,14 +51,35 @@ interface CreateGoalModalProps {
   onGoalCreated: () => void;
 }
 
-// Step definitions
+// Use new chatbot interface
+import ChatbotCreateGoal from './chatbot/ChatbotCreateGoal';
+
+// Legacy step definitions (kept for compatibility)
 const STEPS = [
-  { id: 'ai', title: 'AI Assistant', description: 'Generate goal with AI' },
-  { id: 'schedule', title: 'Schedule', description: 'Date & duration' },
-  { id: 'review', title: 'Review', description: 'Final review & save' }
+  { id: 'chatbot', title: 'Goal Creation', description: 'Create goal with AI assistant' }
 ];
 
 function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalModalProps) {
+  
+  // Use new chatbot interface - simplified implementation
+  if (visible) {
+    return (
+      <Modal visible={visible} animationType="slide" presentationStyle="fullScreen">
+        <ChatbotCreateGoal 
+          onGoalCreated={(goalData) => {
+            console.log('[CreateGoalModal] Goal created:', goalData);
+            onGoalCreated();
+          }}
+          onClose={onClose}
+        />
+      </Modal>
+    );
+  }
+  
+  return null;
+}
+
+function CreateGoalModalContentLegacy({ visible, onClose, onGoalCreated }: CreateGoalModalProps) {
   // Performance tracking
   console.time('[CreateGoalModal] Component Mount');
   
@@ -4116,13 +4137,5 @@ function CreateGoalModalContent({ visible, onClose, onGoalCreated }: CreateGoalM
 }
 
 export default function CreateGoalModal({ visible, onClose, onGoalCreated }: CreateGoalModalProps) {
-  return (
-    <CreateGoalProvider>
-      <CreateGoalModalContent 
-        visible={visible} 
-        onClose={onClose} 
-        onGoalCreated={onGoalCreated} 
-      />
-    </CreateGoalProvider>
-  );
+  return <CreateGoalModalContent visible={visible} onClose={onClose} onGoalCreated={onGoalCreated} />;
 }

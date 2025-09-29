@@ -1,7 +1,7 @@
 // Quest Management Service
 // Handles CRUD operations for quests
 
-import { collection, deleteDoc, doc, getDoc, getDocs, query, setDoc, updateDoc, where } from 'firebase/firestore';
+import { collection, deleteDoc, doc, getDoc, getDocs, query, updateDoc, where, writeBatch } from 'firebase/firestore';
 import { createCatalogError } from '../constants/errorCatalog';
 import { Quest, QuestStatus } from '../types/quest';
 import { db } from './firebase';
@@ -101,30 +101,50 @@ export class QuestService {
    * Save quests to Firestore
    */
   static async saveQuests(quests: Quest[], userId: string): Promise<Quest[]> {
-    const batch = [];
     const savedQuests: Quest[] = [];
     
+    // Validate inputs
+    if (!userId || !quests || quests.length === 0) {
+      console.warn('[QuestService] Invalid inputs for saveQuests:', { userId, questCount: quests?.length });
+      return [];
+    }
+    
     try {
+      // Use batch write for better performance and atomicity
+      const batch = writeBatch(db);
+      
       for (const quest of quests) {
+        // Validate quest data
+        if (!quest || typeof quest !== 'object') {
+          console.warn('[QuestService] Skipping invalid quest:', quest);
+          continue;
+        }
+        
         // Add quest to Firestore
         const questRef = doc(collection(db, 'users', userId, 'quests'));
         
         // Clean quest data by removing undefined fields
-        const cleanQuestData = this.cleanQuestDataForFirestore({ ...quest, id: questRef.id });
+        const questWithMetadata = { 
+          ...quest, 
+          id: questRef.id,
+          goalId: quest.goalId || ''
+        };
+        const cleanQuestData = this.cleanQuestDataForFirestore(questWithMetadata);
         
         console.log('[QuestService] Saving quest:', {
           id: cleanQuestData.id,
           title: cleanQuestData.title,
           scheduledDate: cleanQuestData.scheduledDate,
-          weekNumber: cleanQuestData.weekNumber
+          weekNumber: cleanQuestData.weekNumber,
+          goalId: cleanQuestData.goalId
         });
         
-        batch.push(setDoc(questRef, cleanQuestData));
+        batch.set(questRef, cleanQuestData);
         savedQuests.push(cleanQuestData);
       }
       
-      await Promise.all(batch);
-      console.log('[QuestService] Saved', savedQuests.length, 'quests to Firestore');
+      await batch.commit();
+      console.log('[QuestService] Batch saved', savedQuests.length, 'quests to Firestore');
       
       return savedQuests;
       
@@ -140,23 +160,52 @@ export class QuestService {
   private static cleanQuestDataForFirestore(quest: Quest): Quest {
     const cleaned = { ...quest };
     
-    // Remove undefined fields that Firestore doesn't allow
-    Object.keys(cleaned).forEach(key => {
-      if (cleaned[key as keyof Quest] === undefined) {
-        delete cleaned[key as keyof Quest];
+    // Recursively remove undefined fields from object and nested objects
+    const removeUndefined = (obj: any): any => {
+      if (obj === null || obj === undefined) {
+        return null;
       }
-    });
+      
+      if (Array.isArray(obj)) {
+        return obj.map(removeUndefined).filter(item => item !== undefined);
+      }
+      
+      if (typeof obj === 'object') {
+        const cleanedObj: any = {};
+        Object.keys(obj).forEach(key => {
+          const value = removeUndefined(obj[key]);
+          if (value !== undefined) {
+            cleanedObj[key] = value;
+          }
+        });
+        return cleanedObj;
+      }
+      
+      return obj;
+    };
+    
+    const fullyCleanedQuest = removeUndefined(cleaned);
     
     // Ensure required fields have default values
-    if (!cleaned.createdAt) {
-      cleaned.createdAt = new Date().toISOString();
+    if (!fullyCleanedQuest.createdAt) {
+      fullyCleanedQuest.createdAt = new Date().toISOString();
     }
     
-    if (!cleaned.status) {
-      cleaned.status = 'pending';
+    if (!fullyCleanedQuest.status) {
+      fullyCleanedQuest.status = 'pending';
     }
     
-    return cleaned;
+    // Ensure metadata exists and has required fields
+    if (!fullyCleanedQuest.metadata) {
+      fullyCleanedQuest.metadata = {};
+    }
+    
+    // Remove undefined fields from metadata specifically
+    if (fullyCleanedQuest.metadata.sequence === undefined) {
+      delete fullyCleanedQuest.metadata.sequence;
+    }
+    
+    return fullyCleanedQuest;
   }
   
   /**

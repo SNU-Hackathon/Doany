@@ -1195,6 +1195,309 @@ Output ONLY valid JSON matching the schema above. No explanations, no markdown, 
   }
 
   /**
+   * Generate conversational questions for goal creation with enhanced AI capabilities
+   */
+  static async generateConversationalQuestion(input: {
+    goalType: 'schedule' | 'frequency' | 'milestone';
+    collectedSlots: Record<string, any>;
+    pendingSlots: string[];
+    conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>;
+    userState?: any;
+  }): Promise<{ 
+    question: string; 
+    widgets?: Array<{ type: string; slotId: string; props: any }>; 
+    userState?: any;
+    extractedSchedule?: {
+      weekdays?: number[];
+      time?: string;
+      weeklySchedule?: Record<string, string[]>;
+    };
+    conversationComplete?: boolean;
+    quests?: Array<{
+      id: string;
+      title: string;
+      description: string;
+      targetDate: string;
+      verification: string[];
+      difficulty?: string;
+      estimatedTime?: string;
+      tips?: string[];
+    }>;
+  }> {
+    const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
+    
+    if (!apiKey) {
+      console.warn('[AI] Missing OpenAI API key');
+      return { question: '죄송합니다. AI 서비스에 접근할 수 없습니다.' };
+    }
+
+    try {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          temperature: 0.7,
+          messages: [
+            { 
+              role: 'system', 
+              content: `You are an intelligent Korean goal creation assistant. Your role is to have natural conversations to collect all necessary information for creating personalized goals.
+
+Goal Types and Required Information:
+1. "schedule": Goals with specific days and times
+   - period (date range), weekdays, time, verification methods, success rate
+   - Example: "월수금 아침 7시에 헬스장 가기"
+
+2. "frequency": Goals with frequency targets  
+   - period (date range), perWeek (frequency), verification methods, success rate
+   - Example: "주 3회 운동하기"
+
+3. "milestone": Project-based goals requiring state assessment
+   - period (date range), milestones (stages), current state, verification methods, success rate
+   - Example: "유학 준비하기", "프로젝트 완성하기"
+
+Special Instructions for Milestone Goals:
+- Always assess the user's current state/level
+- Ask about their experience, background, and starting point
+- Create personalized milestones based on their current state
+- Consider their timeline and available resources
+
+Calendar Auto-Population Feature:
+- When user mentions schedule information in their goal (e.g., "월수금 아침 7시에 헬스장 가기"), automatically extract:
+  - Weekdays: [1, 3, 5] for 월수금
+  - Time: "07:00" for 아침 7시
+  - Store this information to pre-populate calendar widgets
+- For schedule goals, always ask about specific timing details if not provided
+
+Conversation Guidelines:
+- Be conversational, friendly, and empathetic
+- Ask one focused question at a time
+- Show genuine interest in their goals
+- Provide encouragement and motivation
+- Use natural Korean language
+- Avoid repetitive or robotic questions
+- Extract schedule information from natural language and suggest appropriate widgets
+- NEVER ask the same question twice - always check conversation history
+- Build upon previous answers naturally
+- Only ask for information that hasn't been provided yet
+- If user has already answered something, acknowledge it and move to next topic
+
+Critical Rules:
+- ALWAYS ensure ALL required slots are filled before ending conversation
+- If user provides incomplete answer, ask follow-up questions until complete
+- NEVER proceed to quest generation with missing essential information
+- Wait for user to confirm widget selections before asking next question
+- Always ask about verification methods (time/location/photo) as final step
+
+Conversation Flow Control:
+1. Check if ALL required slots are filled:
+   - Schedule: period, weekdays, time, verification, successRate
+   - Frequency: period, perWeek, verification, successRate  
+   - Milestone: period, milestones, currentState, verification, successRate
+
+2. If ALL slots filled → Return [QUESTS.FINAL] with generated quests
+3. If missing slots → Ask next question with appropriate widget
+4. If incomplete answer → Ask follow-up question
+
+Required Slots by Goal Type:
+- Schedule: period (date range), weekdays (1-7), time (HH:mm), verification (array), successRate (number)
+- Frequency: period (date range), perWeek (number), verification (array), successRate (number)
+- Milestone: period (date range), milestones (array), currentState (object), verification (array), successRate (number)
+
+Respond with JSON:
+{
+  "question": "자연스러운 한국어 질문",
+  "widgets": [
+    {
+      "type": "calendar|chips|counter|timePicker|weekdays|toggle",
+      "slotId": "period|weekdays|time|perWeek|verification|successRate|milestones|currentState",
+      "props": { 
+        "mode": "range" for calendar,
+        "options": ["option1", "option2"] for chips,
+        "min": 1, "max": 10 for counter,
+        "defaultValue": "pre-filled value if extracted from user input"
+      }
+    }
+  ],
+  "userState": {
+    "currentLevel": "beginner|intermediate|advanced",
+    "experience": "description of user's background",
+    "timeline": "urgent|moderate|flexible",
+    "resources": "available time and resources"
+  },
+  "extractedSchedule": {
+    "weekdays": [1, 3, 5],
+    "time": "07:00",
+    "weeklySchedule": {"1": ["07:00"], "3": ["07:00"], "5": ["07:00"]}
+  },
+  "conversationComplete": false
+}
+
+When ALL required slots are filled, respond with [QUESTS.FINAL]:
+{
+  "conversationComplete": true,
+  "quests": [
+    {
+      "id": "quest-1",
+      "title": "1주차 월요일 07:00 헬스장 가기",
+      "description": "헬스장에서 운동하기",
+      "targetDate": "2025-10-06",
+      "verification": ["time", "location"],
+      "difficulty": "medium",
+      "estimatedTime": "60분",
+      "tips": ["미리 운동복 준비하기", "물병 챙기기"]
+    }
+  ]
+}
+
+Focus on understanding the user's unique situation and creating truly personalized goals.`
+            },
+            { 
+              role: 'user', 
+              content: JSON.stringify({
+                goalType: input.goalType,
+                collectedSlots: input.collectedSlots,
+                pendingSlots: input.pendingSlots,
+                conversationHistory: input.conversationHistory.slice(-8), // Last 8 messages for better context
+                userState: input.userState
+              })
+            }
+          ]
+        })
+      });
+
+      const data = await response.json();
+      const content = data.choices?.[0]?.message?.content || '{}';
+      
+      try {
+        let txt = content.trim().replace(/^```json\s*/i, '').replace(/^```/i, '').replace(/```\s*$/i, '').trim();
+        const first = txt.indexOf('{'); const last = txt.lastIndexOf('}');
+        if (first >= 0 && last > first) txt = txt.substring(first, last + 1);
+        
+        const parsed = JSON.parse(txt);
+        console.log('[AI] Generated enhanced conversational question:', parsed);
+        return parsed;
+      } catch (parseError) {
+        console.warn('[AI] Failed to parse enhanced conversational question response:', parseError);
+        return { question: '목표에 대해 더 자세히 알려주세요.' };
+      }
+    } catch (error) {
+      console.error('[AI] Enhanced conversational question generation failed:', error);
+      return { question: '죄송합니다. 잠시 후 다시 시도해주세요.' };
+    }
+  }
+
+  /**
+   * Generate personalized quests based on user state and goal information
+   */
+  static async generatePersonalizedQuests(input: {
+    goalType: 'schedule' | 'frequency' | 'milestone';
+    goalTitle: string;
+    collectedSlots: Record<string, any>;
+    userState?: {
+      currentLevel?: string;
+      experience?: string;
+      timeline?: string;
+      resources?: string;
+    };
+  }): Promise<Array<{
+    id: string;
+    title: string;
+    description: string;
+    targetDate: string;
+    verification: string[];
+    difficulty?: string;
+    estimatedTime?: string;
+    tips?: string[];
+  }>> {
+    const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
+    
+    if (!apiKey) {
+      console.warn('[AI] Missing OpenAI API key for quest generation');
+      return [];
+    }
+
+    try {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          temperature: 0.8,
+          messages: [
+            { 
+              role: 'system', 
+              content: `You are an expert goal and quest designer. Create personalized, actionable quests based on the user's goal and current state.
+
+Goal Types:
+- schedule: Specific time-based goals (e.g., "월수금 아침 7시에 헬스장 가기")
+- frequency: Frequency-based goals (e.g., "주 3회 운동하기")  
+- milestone: Project-based goals (e.g., "유학 준비하기")
+
+For milestone goals, consider:
+- User's current level (beginner/intermediate/advanced)
+- Their experience and background
+- Timeline urgency
+- Available resources
+
+Create quests that are:
+- Specific and actionable
+- Appropriately challenging for their level
+- Realistic given their timeline
+- Progressive (building on each other)
+- Motivating and encouraging
+
+Respond with JSON array of quests:
+[
+  {
+    "id": "unique-quest-id",
+    "title": "Clear, specific quest title",
+    "description": "Detailed description of what to do",
+    "targetDate": "YYYY-MM-DD",
+    "verification": ["manual", "time", "location", "photo"],
+    "difficulty": "easy|medium|hard",
+    "estimatedTime": "15분|30분|1시간|2시간",
+    "tips": ["helpful tip 1", "helpful tip 2"]
+  }
+]
+
+Generate 5-15 quests depending on the goal complexity and timeline.`
+            },
+            { 
+              role: 'user', 
+              content: JSON.stringify({
+                goalType: input.goalType,
+                goalTitle: input.goalTitle,
+                collectedSlots: input.collectedSlots,
+                userState: input.userState
+              })
+            }
+          ]
+        })
+      });
+
+      const data = await response.json();
+      const content = data.choices?.[0]?.message?.content || '[]';
+      
+      try {
+        let txt = content.trim().replace(/^```json\s*/i, '').replace(/^```/i, '').replace(/```\s*$/i, '').trim();
+        const first = txt.indexOf('['); const last = txt.lastIndexOf(']');
+        if (first >= 0 && last > first) txt = txt.substring(first, last + 1);
+        
+        const parsed = JSON.parse(txt);
+        console.log('[AI] Generated personalized quests:', parsed);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (parseError) {
+        console.warn('[AI] Failed to parse quest generation response:', parseError);
+        return [];
+      }
+    } catch (error) {
+      console.error('[AI] Personalized quest generation failed:', error);
+      return [];
+    }
+  }
+
+  /**
    * Propose a default schedule from partial inputs
    */
   static async proposeSchedule(input: {
