@@ -5,15 +5,22 @@ export interface Quest {
   goalId: string;
   title: string;
   description?: string;
-  type: QuestType;
+  type?: QuestType;
   status: QuestStatus;
-  scheduledDate?: string; // ISO date string
+  targetDate?: string; // ISO date string (YYYY-MM-DD) - preferred for new quests
+  scheduledDate?: string; // ISO date string - legacy field
   weekNumber?: number; // For frequency goals
   sequence?: number; // For milestone goals
-  verificationRules: VerificationRule[];
-  createdAt: string;
+  verification?: string[]; // Verification methods (사진, 위치 등록, etc.)
+  verificationRules?: VerificationRule[]; // Legacy detailed rules
+  difficulty?: string; // easy, medium, hard
+  estimatedTime?: string; // e.g., "60분"
+  tips?: string[]; // Quest tips
+  createdAt?: string | Date;
+  updatedAt?: string | Date;
   completedAt?: string;
   metadata?: QuestMetadata;
+  userId?: string; // User who owns this quest
 }
 
 export type QuestType = 'schedule' | 'frequency' | 'milestone';

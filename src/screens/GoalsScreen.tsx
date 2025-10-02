@@ -20,7 +20,7 @@ import { db } from '../services/firebase';
 import { GoalService } from '../services/goalService';
 import { VerificationService } from '../services/verificationService';
 import { Goal, RootStackParamList } from '../types';
-import GoalDetailScreen from './GoalDetailScreen';
+import GoalDetailScreenV2 from './GoalDetailScreenV2'; // ✅ Duolingo 스타일 V2
 
 type GoalsScreenNavigationProp = StackNavigationProp<RootStackParamList>;
 
@@ -290,10 +290,10 @@ const GoalCard = React.memo(({
 
       {/* Progress Bar */}
       <View className="mb-3">
-        <View className="bg-gray-200 rounded-full h-2">
+          <View className="bg-gray-200 rounded-full h-2">
           <View 
             className="bg-yellow-400 h-2 rounded-full"
-            style={{ width: `${item.successRate || 0}%` }}
+            style={{ width: `${Math.min(item.successRate || 0, 100)}%` }} // ✅ Cap at 100%
           />
         </View>
       </View>
@@ -303,7 +303,7 @@ const GoalCard = React.memo(({
         {type === 'Schedule' && (
           <>
             <Text className="text-xs text-gray-600">
-              {item.completedSessions || 0}/{item.totalSessions || 0} sessions completed
+              ✅ {item.completedSessions || 0}/{item.totalSessions || 0} quests completed
             </Text>
             <View className="flex-row items-center justify-between">
               <Text className="text-xs text-gray-600">
@@ -318,7 +318,7 @@ const GoalCard = React.memo(({
                 📊 {getCurrentWeekInfo(item)}
               </Text>
               <Text className="text-xs text-gray-600">
-                🏆 Target: {Math.round(item.successRate || 80)}%
+                📈 Progress: {Math.round(item.successRate || 0)}% {/* ✅ 실제 달성률 */}
               </Text>
             </View>
           </>
@@ -327,7 +327,7 @@ const GoalCard = React.memo(({
         {type === 'Frequency' && (
           <>
             <Text className="text-xs text-gray-600">
-              🔥 {item.recentVerifications || 0}-week streak
+              ✅ {item.completedSessions || 0}/{item.totalSessions || 0} quests completed
             </Text>
             <View className="flex-row items-center justify-between">
               <Text className="text-xs text-gray-600">
@@ -342,7 +342,7 @@ const GoalCard = React.memo(({
                 📊 {getCurrentWeekInfo(item)}
               </Text>
               <Text className="text-xs text-gray-600">
-                🏆 Target: {Math.round(item.successRate || 80)}%
+                📈 Progress: {Math.round(item.successRate || 0)}% {/* ✅ 실제 달성률 */}
               </Text>
             </View>
           </>
@@ -351,7 +351,7 @@ const GoalCard = React.memo(({
         {type === 'Partner' && (
           <>
             <Text className="text-xs text-gray-600">
-              {item.completedSessions || 0}/{item.totalSessions || 0} milestones completed
+              ✅ {item.completedSessions || 0}/{item.totalSessions || 0} quests completed
             </Text>
             <View className="flex-row items-center justify-between">
               <Text className="text-xs text-gray-600">
@@ -366,7 +366,7 @@ const GoalCard = React.memo(({
                 📊 {getCurrentWeekInfo(item)}
               </Text>
               <Text className="text-xs text-gray-600">
-                🏆 Target: {Math.round(item.successRate || 80)}%
+                📈 Progress: {Math.round(item.successRate || 0)}% {/* ✅ 실제 달성률 */}
               </Text>
             </View>
             {item.requiredDocs && item.requiredDocs.length > 0 && (
@@ -451,43 +451,27 @@ export default function GoalsScreen() {
             });
             console.log('[GoalsScreen] FULL raw data:', goal);
             try {
-              const [successRate, recentVerifications] = await Promise.all([
+              // ✅ Fetch real quest data
+              const { QuestService } = await import('../services/questService');
+              const [successRate, recentVerifications, quests] = await Promise.all([
                 VerificationService.calculateGoalSuccessRate(goal.id),
-                VerificationService.getRecentGoalVerifications(goal.id, 7)
+                VerificationService.getRecentGoalVerifications(goal.id, 7),
+                QuestService.getQuestsForGoal(goal.id, user.id) // ✅ Get actual quests
               ]);
 
-              // Calculate basic progress metrics
-              const startDate = goal.duration?.startDate || goal.startDate;
-              const endDate = goal.duration?.endDate || goal.endDate;
-              let totalSessions = 0;
-              let completedSessions = 0;
-
-              if (startDate && endDate) {
-                const start = new Date(startDate);
-                const end = new Date(endDate);
-                const totalDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-                
-                if (goal.weeklyWeekdays && goal.weeklyWeekdays.length > 0) {
-                  // Schedule type: count sessions based on weekdays
-                  const weeksCount = Math.ceil(totalDays / 7);
-                  totalSessions = weeksCount * goal.weeklyWeekdays.length;
-                } else if (goal.frequency) {
-                  // Frequency type: count based on frequency
-                  const weeksCount = Math.ceil(totalDays / 7);
-                  totalSessions = weeksCount * (goal.frequency.count || 1);
-                }
-                
-                // Mock completed sessions (in real app, this would come from verification data)
-                completedSessions = Math.floor(totalSessions * (successRate || 0) / 100);
-              }
-
-              // Generate a realistic success rate for new goals (between 0-30% initially)
-              const mockSuccessRate = successRate || Math.floor(Math.random() * 31);
+              // ✅ Calculate from real quest data
+              const totalSessions = quests.length;
+              const completedSessions = quests.filter(q => q.status === 'completed').length;
+              
+              // ✅ Calculate actual success rate from quests
+              const actualSuccessRate = totalSessions > 0 
+                ? Math.round((completedSessions / totalSessions) * 100)
+                : 0;
               
               const processedGoal = {
                 ...goal,
-                successRate: goal.successRate || mockSuccessRate, // Use actual successRate first, fallback to mock
-                recentVerifications: recentVerifications?.length || Math.floor(Math.random() * 3),
+                successRate: actualSuccessRate, // ✅ Use actual calculated success rate
+                recentVerifications: recentVerifications?.length || 0,
                 completedSessions,
                 totalSessions,
                 // Keep partner data if it exists
@@ -498,12 +482,9 @@ export default function GoalsScreen() {
                 id: goal.id,
                 title: goal.title,
                 type: (goal as any).type,
-                duration: goal.duration,
-                weeklyWeekdays: goal.weeklyWeekdays,
-                verificationMethods: goal.verificationMethods,
-                successRate: processedGoal.successRate,
-                originalSuccessRate: (goal as any).successRate,
-                mockSuccessRate: mockSuccessRate
+                questsCount: totalSessions,
+                completedQuests: completedSessions,
+                successRate: actualSuccessRate
               });
               
               return processedGoal;
@@ -813,7 +794,7 @@ export default function GoalsScreen() {
         presentationStyle="fullScreen"
       >
         {selectedGoal && (
-          <GoalDetailScreen
+          <GoalDetailScreenV2
             route={{ params: { goalId: selectedGoal.id } } as any}
             navigation={{
               goBack: () => setShowGoalDetail(false),

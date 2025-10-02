@@ -1245,8 +1245,9 @@ Output ONLY valid JSON matching the schema above. No explanations, no markdown, 
 
 Goal Types and Required Information:
 1. "schedule": Goals with specific days and times
-   - period (date range), weekdays, time, verification methods, success rate
+   - period (date range), weekdays (array of 0-6), time (HH:mm), verification methods, success rate
    - Example: "월수금 아침 7시에 헬스장 가기"
+   - IMPORTANT: Ask for period, weekdays, and time as SEPARATE questions
 
 2. "frequency": Goals with frequency targets  
    - period (date range), perWeek (frequency), verification methods, success rate
@@ -1262,60 +1263,70 @@ Special Instructions for Milestone Goals:
 - Create personalized milestones based on their current state
 - Consider their timeline and available resources
 
-Calendar Auto-Population Feature:
-- When user mentions schedule information in their goal (e.g., "월수금 아침 7시에 헬스장 가기"), automatically extract:
-  - Weekdays: [1, 3, 5] for 월수금
-  - Time: "07:00" for 아침 7시
-  - Store this information to pre-populate calendar widgets
-- For schedule goals, always ask about specific timing details if not provided
+Schedule Information Extraction:
+- When user mentions schedule information in natural language (e.g., "월수금 아침 7시에 헬스장 가기"):
+  - Extract weekdays: [1, 3, 5] for 월수금 (0=일, 1=월, 2=화, 3=수, 4=목, 5=금, 6=토)
+  - Extract time: "07:00" for 아침 7시
+  - Store in extractedSchedule field to pre-populate widgets
+- However, ALWAYS ask for period, weekdays, and time as SEPARATE questions even if extracted
+- Each slot needs its own question and widget for user confirmation
 
 Conversation Guidelines:
 - Be conversational, friendly, and empathetic
-- Ask one focused question at a time
+- Ask ONE focused question at a time - ONE slot per question
 - Show genuine interest in their goals
 - Provide encouragement and motivation
 - Use natural Korean language
 - Avoid repetitive or robotic questions
-- Extract schedule information from natural language and suggest appropriate widgets
 - NEVER ask the same question twice - always check conversation history
 - Build upon previous answers naturally
 - Only ask for information that hasn't been provided yet
 - If user has already answered something, acknowledge it and move to next topic
+- For schedule goals: Ask period → weekdays → time as separate questions
 
-Critical Rules:
-- ALWAYS ensure ALL required slots are filled before ending conversation
-- If user provides incomplete answer, ask follow-up questions until complete
-- NEVER proceed to quest generation with missing essential information
-- Wait for user to confirm widget selections before asking next question
-- Always ask about verification methods (time/location/photo) as final step
+Critical Rules - Widget Generation:
+- ALWAYS generate exactly ONE widget per question
+- Each slot (period, weekdays, time) needs a SEPARATE question with its own widget
+- NEVER combine multiple widgets in one question
+- Check conversation history to avoid duplicate questions
+- Only generate widgets for slots that are NOT yet filled
 
 Conversation Flow Control:
 1. Check if ALL required slots are filled:
-   - Schedule: period, weekdays, time, verification, successRate
-   - Frequency: period, perWeek, verification, successRate  
+   - Schedule: period, weekdays, time, verification, successRate (5 separate questions)
+   - Frequency: period, perWeek, verification, successRate (4 separate questions)
    - Milestone: period, milestones, currentState, verification, successRate
 
 2. If ALL slots filled → Return [QUESTS.FINAL] with generated quests
-3. If missing slots → Ask next question with appropriate widget
+3. If missing slots → Ask next question for ONE missing slot with appropriate widget
 4. If incomplete answer → Ask follow-up question
 
 Required Slots by Goal Type:
-- Schedule: period (date range), weekdays (1-7), time (HH:mm), verification (array), successRate (number)
+- Schedule: period (date range), weekdays (array: 0-6), time (HH:mm string), verification (array), successRate (number)
 - Frequency: period (date range), perWeek (number), verification (array), successRate (number)
 - Milestone: period (date range), milestones (array), currentState (object), verification (array), successRate (number)
+
+Verification Options (FIXED - only these 3):
+- "사진": Photo-based verification
+- "위치 등록": Location-based verification
+- "체크리스트": Manual checklist verification
+
+When asking about verification, always use these EXACT Korean options.
 
 Respond with JSON:
 {
   "question": "자연스러운 한국어 질문",
   "widgets": [
     {
-      "type": "calendar|chips|counter|timePicker|weekdays|toggle",
-      "slotId": "period|weekdays|time|perWeek|verification|successRate|milestones|currentState",
+      "type": "calendar|chips|counter|timePicker|weekdays",
+      "slotId": "period|weekdays|time|perWeek|verification|successRate|milestones",
       "props": { 
         "mode": "range" for calendar,
-        "options": ["option1", "option2"] for chips,
-        "min": 1, "max": 10 for counter,
-        "defaultValue": "pre-filled value if extracted from user input"
+        "options": ["사진", "위치 등록", "체크리스트"] for verification chips,
+        "options": ["시작", "중간", "완료"] for milestone chips,
+        "min": 1, "max": 7 for perWeek counter,
+        "min": 50, "max": 100 for successRate counter,
+        "defaultValue": pre-filled value if needed
       }
     }
   ],
@@ -1379,7 +1390,37 @@ Focus on understanding the user's unique situation and creating truly personaliz
         return parsed;
       } catch (parseError) {
         console.warn('[AI] Failed to parse enhanced conversational question response:', parseError);
-        return { question: '목표에 대해 더 자세히 알려주세요.' };
+        console.warn('[AI] Raw response:', content);
+        
+        // Provide more specific fallback based on pending slots
+        if (input.pendingSlots.includes('period')) {
+          return { 
+            question: '목표를 언제부터 언제까지 진행하실 계획인가요? 아래 달력에서 시작일과 종료일을 선택해주세요.',
+            widgets: [{ type: 'calendar', slotId: 'period', props: { mode: 'range' } }]
+          };
+        } else if (input.pendingSlots.includes('weekdays')) {
+          return { 
+            question: '어떤 요일에 목표를 실천하실 계획인가요?',
+            widgets: [{ type: 'weekdays', slotId: 'weekdays', props: {} }]
+          };
+        } else if (input.pendingSlots.includes('time')) {
+          return { 
+            question: '몇 시에 실천하실 계획인가요?',
+            widgets: [{ type: 'timePicker', slotId: 'time', props: {} }]
+          };
+        } else if (input.pendingSlots.includes('verification')) {
+          return { 
+            question: '목표 달성을 어떻게 확인하시겠어요?',
+            widgets: [{ type: 'chips', slotId: 'verification', props: { options: ['사진', '위치 등록', '체크리스트'], multiple: true } }]
+          };
+        } else if (input.pendingSlots.includes('successRate')) {
+          return { 
+            question: '목표 달성률을 몇 %로 설정하시겠어요?',
+            widgets: [{ type: 'counter', slotId: 'successRate', props: { min: 50, max: 100, defaultValue: 80 } }]
+          };
+        }
+        
+        return { question: '목표에 대해 조금 더 구체적으로 알려주세요. 예를 들어, 언제, 어디서, 어떻게 실천할 계획인가요?' };
       }
     } catch (error) {
       console.error('[AI] Enhanced conversational question generation failed:', error);
@@ -1400,6 +1441,8 @@ Focus on understanding the user's unique situation and creating truly personaliz
       timeline?: string;
       resources?: string;
     };
+    targetCount?: number;
+    specV2?: any; // GoalSpecV2 for occurrence-based generation
   }): Promise<Array<{
     id: string;
     title: string;
@@ -1410,89 +1453,321 @@ Focus on understanding the user's unique situation and creating truly personaliz
     estimatedTime?: string;
     tips?: string[];
   }>> {
+    console.log('[AI.QUEST] 🚀 generatePersonalizedQuests called with:', {
+      goalType: input.goalType,
+      goalTitle: input.goalTitle,
+      collectedSlots: input.collectedSlots,
+      userState: input.userState,
+      targetCount: input.targetCount,
+      hasSpecV2: !!input.specV2,
+      hasOccurrences: !!input.specV2?.schedule?.occurrences
+    });
+    
+    // === OCCURRENCE-BASED GENERATION (V2) ===
+    if (input.specV2?.schedule?.occurrences && input.specV2.schedule.occurrences.length > 0) {
+      console.log('[AI.QUEST] 🆕 Using occurrence-based generation');
+      console.log('[AI.QUEST] 📊 Occurrences count:', input.specV2.schedule.occurrences.length);
+      console.log('[AI.QUEST] 📅 First 3 occurrences:', input.specV2.schedule.occurrences.slice(0, 3));
+      
+      // For occurrence-based schedules, generate exactly 1 quest per occurrence
+      const occurrences = input.specV2.schedule.occurrences;
+      const verificationRaw = input.collectedSlots.verification || input.specV2.verification?.signals || ['manual'];
+      
+      // Convert English signals to Korean
+      const verification = verificationRaw.map((v: string) => {
+        const signalMap: Record<string, string> = {
+          'photo': '사진',
+          'location': '위치 등록',
+          'checklist': '체크리스트',
+          'manual': '체크리스트'
+        };
+        return signalMap[v] || v;
+      });
+      
+      console.log('[AI.QUEST] 🔍 Verification methods:', { raw: verificationRaw, korean: verification });
+      console.log('[AI.QUEST] 🎯 Goal title:', input.goalTitle);
+      
+      const quests = occurrences.map((occ: any, index: number) => {
+        const startDate = new Date(occ.start);
+        
+        // ✅ KST로 변환 (UTC+9)
+        const kstDate = new Date(startDate.getTime() + 9 * 60 * 60 * 1000);
+        const targetDate = kstDate.toISOString().split('T')[0]; // ✅ KST 날짜 사용
+        
+        // Convert UTC to local time for display
+        const localHours = startDate.getUTCHours() + 9; // KST = UTC+9
+        const displayHours = localHours >= 24 ? localHours - 24 : localHours;
+        const minutes = startDate.getUTCMinutes();
+        const timeStr = `${String(displayHours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+        
+        return {
+          id: `quest-occ-${index + 1}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          title: `${input.goalTitle}`,
+          description: `${targetDate} ${timeStr}에 "${input.goalTitle}"를 수행하세요`,
+          targetDate,
+          verification,
+          difficulty: index < occurrences.length / 3 ? 'easy' : 
+                    index < occurrences.length * 2 / 3 ? 'medium' : 'hard',
+          estimatedTime: '60분',
+          tips: [`${timeStr}에 알람을 설정하세요`, '준비물을 미리 챙기세요']
+        };
+      });
+      
+      console.log('[AI.QUEST] ✅ Generated', quests.length, 'quests from occurrences');
+      console.log('[AI.QUEST] 📝 First quest:', quests[0]);
+      console.log('[AI.QUEST] 📝 Last quest:', quests[quests.length - 1]);
+      console.log('[AI.QUEST] 📝 All quest IDs:', quests.map(q => q.id));
+      
+      return quests;
+    }
+    
+    // === E. VALIDATION ===
     const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
     
     if (!apiKey) {
-      console.warn('[AI] Missing OpenAI API key for quest generation');
+      console.error('[AI.QUEST] ❌ CRITICAL: Missing OpenAI API key - Quest generation IMPOSSIBLE');
+      console.error('[AI.QUEST] Please set EXPO_PUBLIC_OPENAI_API_KEY in your .env file');
       return [];
     }
 
+    // Validate required slots for goal type
+    const requiredSlots: Record<string, string[]> = {
+      schedule: ['period', 'weekdays', 'time', 'verification', 'successRate'],
+      frequency: ['period', 'perWeek', 'verification', 'successRate'],
+      milestone: ['period', 'milestones', 'currentState', 'verification', 'successRate']
+    };
+
+    const missing = requiredSlots[input.goalType]?.filter(slot => !input.collectedSlots[slot]) || [];
+    if (missing.length > 0) {
+      console.error('[AI.QUEST] ❌ VALIDATION FAILED: Missing required slots:', missing);
+      return [];
+    }
+
+    // Validate verification labels (support both Korean and English)
+    const verification = input.collectedSlots.verification as string[] || [];
+    const allowedVerification = ['사진', '위치 등록', '체크리스트', 'photo', 'location', 'checklist', 'manual'];
+    const invalidLabels = verification.filter(v => !allowedVerification.includes(v));
+    if (invalidLabels.length > 0) {
+      console.error('[AI.QUEST] ❌ VALIDATION FAILED: Invalid verification labels:', invalidLabels);
+      console.error('[AI.QUEST] Allowed labels:', allowedVerification);
+      return [];
+    }
+    
+    // Convert English signals to Korean for consistency
+    const verificationKorean = verification.map(v => {
+      const signalMap: Record<string, string> = {
+        'photo': '사진',
+        'location': '위치 등록',
+        'checklist': '체크리스트',
+        'manual': '체크리스트'
+      };
+      return signalMap[v] || v;
+    });
+    console.log('[AI.QUEST] 🔄 Verification labels normalized:', { original: verification, normalized: verificationKorean });
+
+    // Validate successRate
+    const successRate = Number(input.collectedSlots.successRate);
+    if (isNaN(successRate) || successRate < 50 || successRate > 100) {
+      console.error('[AI.QUEST] ❌ VALIDATION FAILED: successRate must be 50-100, got:', successRate);
+      return [];
+    }
+
+    // Validate targetCount
+    const targetCount = input.targetCount || 0;
+    if (targetCount <= 0) {
+      console.warn('[AI.QUEST] ⚠️ WARNING: targetCount not provided or invalid, will compute from slots');
+    }
+
+    console.log('[AI.QUEST] ✅ All validations passed');
+    console.log('[AI.QUEST] ✅ API key found, proceeding with AI generation...');
+
     try {
+      console.log('[AI.QUEST] 📡 Sending request to OpenAI...');
+      
+      // === D. COMPUTE targetCount if not provided ===
+      let finalTargetCount = targetCount;
+      
+      if (!finalTargetCount || finalTargetCount <= 0) {
+        const period = input.collectedSlots.period as { startDate: string; endDate: string };
+        if (period && period.startDate && period.endDate) {
+          const startDate = new Date(period.startDate);
+          const endDate = new Date(period.endDate);
+          const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000));
+          const weeks = Math.ceil(daysDiff / 7);
+          
+          if (input.goalType === 'frequency') {
+            const perWeek = Number(input.collectedSlots.perWeek) || 3;
+            const totalCount = weeks * perWeek;
+            finalTargetCount = Math.ceil(totalCount * successRate / 100);
+          } else if (input.goalType === 'schedule') {
+            const weekdays = (input.collectedSlots.weekdays as number[]) || [];
+            // Approximate: weeks * weekdays.length
+            finalTargetCount = Math.min(weeks * weekdays.length, 15);
+          } else if (input.goalType === 'milestone') {
+            const milestones = (input.collectedSlots.milestones as string[]) || ['시작', '중간', '완료'];
+            finalTargetCount = milestones.length;
+          }
+        }
+      }
+      
+      finalTargetCount = Math.max(5, Math.min(finalTargetCount || 10, 15)); // Clamp 5-15
+      
+      console.log('[AI.QUEST] 📊 Final targetCount:', finalTargetCount);
+
+      const requestBody = {
+        model: 'gpt-4o-mini',
+        temperature: 0.15, // D12: Lower temperature for deterministic output
+        response_format: { type: "json_object" }, // D12: Enforce JSON output
+        messages: [
+          { 
+            role: 'system', 
+            content: `You are an expert goal and quest designer. Use ONLY the provided collectedSlots and userState.
+NEVER guess missing fields. Follow these rules STRICTLY:
+
+=== RULES ===
+1. period: ALL quests' targetDate MUST fall within this date range (inclusive).
+   - Start: ${input.collectedSlots.period?.startDate || 'not provided'}
+   - End: ${input.collectedSlots.period?.endDate || 'not provided'}
+   
+2. weekdays & time (schedule goals only):
+   - Distribute quests ONLY on these weekdays: ${JSON.stringify(input.collectedSlots.weekdays || [])}
+   - All quests at this time: ${input.collectedSlots.time || 'not provided'}
+   - Timezone: Asia/Seoul
+   
+3. perWeek (frequency goals only):
+   - Frequency: ${input.collectedSlots.perWeek || 'not provided'} times per week
+   - Distribute evenly across the period
+   
+4. successRate: ${successRate}%
+   - This means ${finalTargetCount} quests are required for success
+   
+5. verification: Use ONLY these labels from user's choice: ${JSON.stringify(verificationKorean)}
+   - Allowed: ["사진", "위치 등록", "체크리스트"]
+   - NEVER use other labels like "manual", "time", "location", "photo"
+   
+6. userState: ${input.userState ? JSON.stringify(input.userState) : 'not provided'}
+   - Adjust difficulty, pacing, and tips based on currentLevel, experience, timeline, resources
+   - Beginner: more easy quests, detailed tips
+   - Advanced: more hard quests, concise tips
+   
+7. targetCount: Generate EXACTLY ${finalTargetCount} quests
+   - No more, no less
+   
+=== OUTPUT FORMAT ===
+You MUST return a valid JSON object with a "quests" array:
+{
+  "quests": [
+    {
+      "id": "quest-1",
+      "title": "Specific quest title in Korean",
+      "description": "Clear action instructions in Korean",
+      "targetDate": "YYYY-MM-DD",
+      "verification": ${JSON.stringify(verification)},
+      "difficulty": "easy|medium|hard",
+      "estimatedTime": "15분|30분|1시간|2시간",
+      "tips": ["tip1 in Korean", "tip2 in Korean"]
+    }
+  ]
+}
+
+=== CRITICAL ===
+- Return ONLY valid JSON. No markdown, no code fences, no explanations.
+- targetDate must be in YYYY-MM-DD format
+- verification must match user's selections exactly
+- Generate EXACTLY ${finalTargetCount} quests
+- All text in Korean
+- Progressive difficulty: early quests easier, later quests harder`
+          },
+          { 
+            role: 'user', 
+            content: JSON.stringify({
+              goalType: input.goalType,
+              goalTitle: input.goalTitle,
+              collectedSlots: input.collectedSlots,
+              userState: input.userState
+            })
+          }
+        ]
+      };
+      
+      console.log('[AI.QUEST] Request body:', JSON.stringify(requestBody, null, 2).substring(0, 500) + '...');
+      
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          temperature: 0.8,
-          messages: [
-            { 
-              role: 'system', 
-              content: `You are an expert goal and quest designer. Create personalized, actionable quests based on the user's goal and current state.
-
-Goal Types:
-- schedule: Specific time-based goals (e.g., "월수금 아침 7시에 헬스장 가기")
-- frequency: Frequency-based goals (e.g., "주 3회 운동하기")  
-- milestone: Project-based goals (e.g., "유학 준비하기")
-
-For milestone goals, consider:
-- User's current level (beginner/intermediate/advanced)
-- Their experience and background
-- Timeline urgency
-- Available resources
-
-Create quests that are:
-- Specific and actionable
-- Appropriately challenging for their level
-- Realistic given their timeline
-- Progressive (building on each other)
-- Motivating and encouraging
-
-Respond with JSON array of quests:
-[
-  {
-    "id": "unique-quest-id",
-    "title": "Clear, specific quest title",
-    "description": "Detailed description of what to do",
-    "targetDate": "YYYY-MM-DD",
-    "verification": ["manual", "time", "location", "photo"],
-    "difficulty": "easy|medium|hard",
-    "estimatedTime": "15분|30분|1시간|2시간",
-    "tips": ["helpful tip 1", "helpful tip 2"]
-  }
-]
-
-Generate 5-15 quests depending on the goal complexity and timeline.`
-            },
-            { 
-              role: 'user', 
-              content: JSON.stringify({
-                goalType: input.goalType,
-                goalTitle: input.goalTitle,
-                collectedSlots: input.collectedSlots,
-                userState: input.userState
-              })
-            }
-          ]
-        })
+        body: JSON.stringify(requestBody)
       });
 
+      console.log('[AI.QUEST] 📥 Response status:', response.status, response.statusText);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[AI.QUEST] ❌ API error:', response.status, errorText);
+        return [];
+      }
+
       const data = await response.json();
-      const content = data.choices?.[0]?.message?.content || '[]';
+      console.log('[AI.QUEST] 📦 Response data:', JSON.stringify(data).substring(0, 200) + '...');
+      
+      const content = data.choices?.[0]?.message?.content || '{}';
+      console.log('[AI.QUEST] 📄 Raw content:', content.substring(0, 500) + '...');
       
       try {
-        let txt = content.trim().replace(/^```json\s*/i, '').replace(/^```/i, '').replace(/```\s*$/i, '').trim();
-        const first = txt.indexOf('['); const last = txt.lastIndexOf(']');
-        if (first >= 0 && last > first) txt = txt.substring(first, last + 1);
+        // Parse JSON (response_format: json_object ensures valid JSON)
+        const parsed = JSON.parse(content);
+        console.log('[AI.QUEST] 🔍 Parsed structure:', Object.keys(parsed));
         
-        const parsed = JSON.parse(txt);
-        console.log('[AI] Generated personalized quests:', parsed);
-        return Array.isArray(parsed) ? parsed : [];
+        // Extract quests array
+        let quests = parsed.quests || parsed; // Support both {quests: [...]} and direct array
+        if (!Array.isArray(quests)) {
+          console.error('[AI.QUEST] ❌ Response is not an array:', typeof quests);
+          return [];
+        }
+        
+        console.log('[AI.QUEST] ✅ Successfully parsed', quests.length, 'quests');
+        console.log('[AI.QUEST] 📊 Target was:', finalTargetCount, 'quests');
+        
+        // === E16. VALIDATION: Check output count ===
+        if (quests.length !== finalTargetCount) {
+          console.warn('[AI.QUEST] ⚠️ WARNING: Quest count mismatch!');
+          console.warn('[AI.QUEST] Expected:', finalTargetCount, 'Got:', quests.length);
+        }
+        
+        // Validate each quest has required fields
+        const validQuests = quests.filter((q: any, idx: number) => {
+          const hasId = q.id && typeof q.id === 'string';
+          const hasTitle = q.title && typeof q.title === 'string';
+          const hasTargetDate = q.targetDate && /^\d{4}-\d{2}-\d{2}$/.test(q.targetDate);
+          const hasVerification = Array.isArray(q.verification) && q.verification.length > 0;
+          
+          if (!hasId || !hasTitle || !hasTargetDate || !hasVerification) {
+            console.warn(`[AI.QUEST] ⚠️ Quest ${idx + 1} missing required fields:`, {
+              hasId, hasTitle, hasTargetDate, hasVerification, quest: q
+            });
+            return false;
+          }
+          return true;
+        });
+        
+        console.log('[AI.QUEST] ✅ Valid quests:', validQuests.length, '/', quests.length);
+        console.log('[AI.QUEST] 📝 First quest preview:', validQuests[0]);
+        
+        if (validQuests.length < quests.length) {
+          console.warn('[AI.QUEST] ⚠️ Some quests were filtered out due to missing fields');
+        }
+        
+        return validQuests;
       } catch (parseError) {
-        console.warn('[AI] Failed to parse quest generation response:', parseError);
+        console.error('[AI.QUEST] ❌ Failed to parse quest JSON:', parseError);
+        console.error('[AI.QUEST] Raw content that failed:', content);
         return [];
       }
     } catch (error) {
-      console.error('[AI] Personalized quest generation failed:', error);
+      console.error('[AI.QUEST] ❌ Quest generation failed with error:', error);
+      if (error instanceof Error) {
+        console.error('[AI.QUEST] Error message:', error.message);
+        console.error('[AI.QUEST] Error stack:', error.stack);
+      }
       return [];
     }
   }
