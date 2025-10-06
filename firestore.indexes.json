@@ -1,19 +1,13 @@
 {
   "indexes": [
     {
-      "collectionGroup": "goals",
+      "collectionGroup": "feedPosts",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "userId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "createdAt",
-          "order": "DESCENDING"
-        }
+        { "fieldPath": "isDeleted", "order": "ASCENDING" },
+        { "fieldPath": "visibility", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
     }
-  ],
-  "fieldOverrides": []
+  ]
 }

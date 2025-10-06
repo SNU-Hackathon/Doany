@@ -3,7 +3,7 @@
 
 import { Timestamp } from 'firebase/firestore';
 
-export type GoalType = 'schedule' | 'frequency';
+export type GoalType = 'schedule' | 'frequency' | 'milestone';
 
 export interface PhotoEvidence {
   present: boolean;

@@ -17,6 +17,25 @@ service cloud.firestore {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
     
+    // Specific rules for user quests subcollection
+    // Users can only access their own quests
+    match /users/{userId}/quests/{questId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      
+      // Create: ensure userId field matches path
+      allow create: if request.auth != null && request.auth.uid == userId
+        && request.resource.data.userId == userId;
+      
+      // Update: owner only + userId immutable
+      allow update: if request.auth != null && request.auth.uid == userId
+        && request.resource.data.userId == resource.data.userId
+        && resource.data.userId == userId;
+      
+      // Delete: owner only
+      allow delete: if request.auth != null && request.auth.uid == userId
+        && resource.data.userId == userId;
+    }
+    
     // Specific rules for user activities subcollection
     // Ensures activities can only be accessed by the goal owner
     match /users/{userId}/activities/{activityId} {
@@ -58,6 +77,41 @@ service cloud.firestore {
     match /placesIndex/{placeId} {
       allow read: if true; // Anyone can read places for location search
       allow write: if request.auth != null && request.auth.token.admin == true;
+    }
+    
+    // Feed posts collection - community sharing
+    // Public posts are readable by all, owners can update/delete
+    match /feedPosts/{postId} {
+      allow read: if resource.data.visibility == 'public' && resource.data.isDeleted == false;
+      allow create: if request.auth != null 
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.isDeleted == false;
+      allow update, delete: if request.auth != null 
+        && request.auth.uid == resource.data.userId;
+    }
+    
+    // Feed reactions collection - likes, trust, saves
+    // Users can only manage their own reactions
+    match /feedReactions/{reactionId} {
+      allow read: if true;
+      allow create, update: if request.auth != null 
+        && request.resource.data.userId == request.auth.uid;
+      allow delete: if request.auth != null 
+        && resource.data.userId == request.auth.uid;
+    }
+    
+    // Feed comments subcollection - nested under feedComments/{postId}/comments/{commentId}
+    // Anyone can read non-deleted comments, only comment owner can delete
+    match /feedComments/{postId}/comments/{commentId} {
+      allow read: if resource.data.isDeleted == false;
+      allow create: if request.auth != null 
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.postId == postId
+        && request.resource.data.isDeleted == false;
+      allow update: if request.auth != null 
+        && request.auth.uid == resource.data.userId;
+      allow delete: if request.auth != null 
+        && request.auth.uid == resource.data.userId;
     }
     
     // Deny all other access by default

@@ -2,29 +2,34 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { TouchableOpacity, View } from 'react-native';
+import EvoHomeScreen from '../screens/EvoHomeScreen';
+import FeedScreen from '../screens/FeedScreen';
 import GoalsScreen from '../screens/GoalsScreen';
-import HomeScreen from '../screens/HomeScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import SpacesScreen from '../screens/SpacesScreen';
 
-type TabType = 'Home' | 'Goals' | 'Space' | 'Profile';
+type TabType = 'Home' | 'Goals' | 'Space' | 'Feed' | 'Profile';
 
 export default function MainTabNavigator() {
   const [activeTab, setActiveTab] = useState<TabType>('Home');
+  const { t } = useTranslation();
 
   const renderScreen = () => {
     switch (activeTab) {
       case 'Home':
-        return <HomeScreen />;
+        return <EvoHomeScreen />;
       case 'Goals':
         return <GoalsScreen />;
       case 'Space':
         return <SpacesScreen />;
+      case 'Feed':
+        return <FeedScreen />;
       case 'Profile':
         return <ProfileScreen />;
       default:
-        return <HomeScreen />;
+        return <EvoHomeScreen />;
     }
   };
 
@@ -36,10 +41,29 @@ export default function MainTabNavigator() {
         return focused ? 'checkmark-done' : 'checkmark-done-outline';
       case 'Space':
         return focused ? 'people' : 'people-outline';
+      case 'Feed':
+        return focused ? 'newspaper' : 'newspaper-outline';
       case 'Profile':
         return focused ? 'person' : 'person-outline';
       default:
         return 'help-outline';
+    }
+  };
+
+  const getTabLabel = (tab: TabType): string => {
+    switch (tab) {
+      case 'Home':
+        return t('nav.home');
+      case 'Goals':
+        return t('nav.goals');
+      case 'Space':
+        return t('nav.space');
+      case 'Feed':
+        return t('nav.feed');
+      case 'Profile':
+        return t('nav.profile');
+      default:
+        return tab;
     }
   };
 
@@ -62,7 +86,7 @@ export default function MainTabNavigator() {
         paddingBottom: 8,
         paddingTop: 8,
       }}>
-        {(['Home', 'Goals', 'Space', 'Profile'] as TabType[]).map((tab) => {
+        {(['Home', 'Goals', 'Space', 'Feed', 'Profile'] as TabType[]).map((tab) => {
           const isActive = activeTab === tab;
           return (
             <TouchableOpacity

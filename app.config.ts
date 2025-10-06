@@ -24,6 +24,10 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     // Preserve any runtime-config from Expo as a fallback
     name: base.name || config.name,
     slug: base.slug || config.slug,
+    plugins: [
+      ...(base.plugins || []),
+      'expo-localization'
+    ],
     // OTA Updates configuration - completely disabled
     updates: {
       enabled: false,

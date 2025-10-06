@@ -1,0 +1,59 @@
+{
+  "nav": {
+    "home": "Home",
+    "goals": "Goals",
+    "space": "Space",
+    "feed": "Feed",
+    "profile": "Profile"
+  },
+  "profile": {
+    "language": "Language",
+    "select_language": "Select Language",
+    "korean": "한국어 (Korean)",
+    "english": "English",
+    "points": "Points",
+    "balance": "Balance",
+    "settings": "Settings",
+    "app_preferences": "App preferences and notifications",
+    "statistics": "Statistics",
+    "view_progress": "View your goal progress over time",
+    "help": "Help & Support",
+    "get_support": "Get help and contact support",
+    "about": "About",
+    "app_info": "App version and information",
+    "account": "Account Settings",
+    "manage_account": "Manage your account details",
+    "privacy": "Privacy & Security",
+    "manage_privacy": "Manage privacy and security settings",
+    "sign_out": "Sign Out",
+    "sign_out_confirm": "Are you sure you want to sign out?",
+    "cancel": "Cancel",
+    "version": "Version",
+    "member_since": "Member since"
+  },
+  "create_goal": {
+    "title": "Create New Goal",
+    "description": "Set your goal and start your journey",
+    "button": "Create Goal"
+  },
+  "goal_detail": {
+    "quests_one": "{{count}} Quest",
+    "quests_other": "{{count}} Quests",
+    "progress": "Progress",
+    "success_rate": "Success Rate"
+  },
+  "home": {
+    "welcome": "Welcome!",
+    "start_journey": "Start your journey today",
+    "good_morning": "Good Morning",
+    "with_kangaroo": "Day {{days}} with your Kangaroo!",
+    "achieve_more": "Achieve more goals and make the kangaroo jump higher!",
+    "achieve_desc": "achieve more goals...",
+    "level": "Level",
+    "kangaroo": "Kangaroo",
+    "streak": "{{days}}-Day Streak!",
+    "badge_unlock": "1 more day to unlock your ⭐ Badge!",
+    "your_badge": "Your Badge"
+  }
+}
+

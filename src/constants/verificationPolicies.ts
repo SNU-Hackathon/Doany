@@ -243,4 +243,4 @@ function arraysEqual(a: any[], b: any[]): boolean {
 }
 
 // Export types for use in other files
-export type { VerificationPolicy };
+// Note: VerificationPolicy interface is already exported above

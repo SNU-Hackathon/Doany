@@ -11,9 +11,12 @@ interface BaseWidgetProps {
   label: string;
   value?: SlotValue;
   onSelect: (value: SlotValue) => void;
+  onConfirm?: (value: SlotValue) => void;
 }
 
 // Advanced Calendar Widget using SimpleDatePicker
+// NOTE: For period slot, only shows date range selection
+// Weekdays and time are now separate widgets/slots
 export function AdvancedCalendarWidget({ 
   label, 
   value, 
@@ -27,25 +30,6 @@ export function AdvancedCalendarWidget({
   const [isConfirmed, setIsConfirmed] = useState(false);
   const [selectedRanges, setSelectedRanges] = useState<DateRange[]>([]);
   const [weeklyTarget, setWeeklyTarget] = useState(3);
-  
-  // Initialize with auto-parsed data if available
-  const [weeklySchedule, setWeeklySchedule] = useState<{ [key: string]: string[] }>({});
-  const [selectedWeekdays, setSelectedWeekdays] = useState<number[]>([]);
-
-  // Set initial values from auto-parsed data
-  useEffect(() => {
-    if (goalType === 'schedule' && value && typeof value === 'object') {
-      const contextData = value as any;
-      if (contextData?.autoWeeklySchedule) {
-        setWeeklySchedule(contextData.autoWeeklySchedule);
-        console.log('[AdvancedCalendarWidget] Setting auto-parsed weekly schedule:', contextData.autoWeeklySchedule);
-      }
-      if (contextData?.autoWeekdays) {
-        setSelectedWeekdays(contextData.autoWeekdays);
-        console.log('[AdvancedCalendarWidget] Setting auto-parsed weekdays:', contextData.autoWeekdays);
-      }
-    }
-  }, [goalType, value]);
 
   // Auto-set default range for better UX
   useEffect(() => {
@@ -67,45 +51,20 @@ export function AdvancedCalendarWidget({
     setSelectedRanges(ranges);
   };
 
-  const handleWeeklyScheduleChange = (weekdays: number[], timeSettings: { [key: string]: string[] }) => {
-    setSelectedWeekdays(weekdays);
-    setWeeklySchedule(timeSettings);
-  };
-
   const handleConfirm = () => {
     if (selectedRanges.length > 0) {
       const range = selectedRanges[0];
       setIsConfirmed(true);
       
-      console.log('[AdvancedCalendarWidget] Confirming selection:', {
-        goalType,
-        range: {
-          start: range.start.toISOString().split('T')[0],
-          end: range.end.toISOString().split('T')[0]
-        },
-        weeklySchedule,
-        selectedWeekdays
-      });
+      // Always return just the period data
+      // Weekdays and time are now handled by separate widgets/slots
+      const selectionData = {
+        startDate: range.start.toISOString().split('T')[0],
+        endDate: range.end.toISOString().split('T')[0]
+      };
       
-      // For schedule goals, include weekly schedule data
-      if (goalType === 'schedule') {
-        const selectionData = {
-          startDate: range.start.toISOString().split('T')[0],
-          endDate: range.end.toISOString().split('T')[0],
-          weeklySchedule,
-          weekdays: selectedWeekdays
-        };
-        console.log('[AdvancedCalendarWidget] Schedule selection data:', selectionData);
-        onSelect(selectionData as SlotValue);
-      } else {
-        // For frequency/milestone goals, just the period
-        const selectionData = {
-          startDate: range.start.toISOString().split('T')[0],
-          endDate: range.end.toISOString().split('T')[0]
-        };
-        console.log('[AdvancedCalendarWidget] Period selection data:', selectionData);
-        onSelect(selectionData as SlotValue);
-      }
+      console.log('[AdvancedCalendarWidget] Period selection data:', selectionData);
+      onSelect(selectionData as SlotValue);
     }
   };
 
@@ -121,14 +80,9 @@ export function AdvancedCalendarWidget({
             onWeeklyTargetChange={setWeeklyTarget}
             ranges={selectedRanges}
             onRangesChange={handleRangesChange}
-            onWeeklyScheduleChange={handleWeeklyScheduleChange}
-            initialSelectedWeekdays={selectedWeekdays}
-            initialWeeklyTimeSettings={weeklySchedule}
             onNavigateToStep={() => {}} // Not used in chatbot context
-            mode={goalType === 'schedule' ? 'period+weekly' : 'period'} // Schedule gets full calendar, frequency gets period only
+            mode="period" // Always use period-only mode in chatbot
             variant="compact"
-            // Pass auto-parsed schedule hint
-            goalTitle={goalType === 'schedule' ? '자동으로 파싱된 일정이 반영되었습니다' : undefined}
           />
           
           {/* Confirm Button */}
@@ -156,17 +110,17 @@ export function AdvancedCalendarWidget({
 }
 
 // Calendar Widget for date/dateRange selection
-export function CalendarWidget({ label, value, onSelect, mode = 'range' }: BaseWidgetProps & { mode?: 'single' | 'range' }) {
+export function CalendarWidget({ label, value, onSelect, onConfirm, mode = 'range' }: BaseWidgetProps & { mode?: 'single' | 'range' }) {
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<{startDate: string; endDate: string} | null>(null);
   const [isConfirmed, setIsConfirmed] = useState(false);
+  const [currentMonth, setCurrentMonth] = useState(new Date());
 
-  // Generate current month calendar
+  // Generate calendar for current displayed month
   const generateCalendarDays = () => {
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = today.getMonth();
+    const year = currentMonth.getFullYear();
+    const month = currentMonth.getMonth();
     
     const firstDay = new Date(year, month, 1);
     const lastDay = new Date(year, month + 1, 0);
@@ -196,11 +150,28 @@ export function CalendarWidget({ label, value, onSelect, mode = 'range' }: BaseW
 
   const calendarDays = generateCalendarDays();
   const today = new Date();
+  
+  // Month navigation
+  const goToPreviousMonth = () => {
+    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1));
+  };
+
+  const goToNextMonth = () => {
+    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1));
+  };
+
+  // Format date to YYYY-MM-DD using local timezone
+  const formatLocalDate = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
 
   const handleDatePress = (date: Date) => {
     if (isConfirmed) return; // Don't allow changes after confirmation
     
-    const dateStr = date.toISOString().split('T')[0];
+    const dateStr = formatLocalDate(date);
     
     if (mode === 'single') {
       setStartDate(date);
@@ -216,7 +187,7 @@ export function CalendarWidget({ label, value, onSelect, mode = 'range' }: BaseW
       if (date >= startDate) {
         setEndDate(date);
         setSelectedPeriod({
-          startDate: startDate.toISOString().split('T')[0],
+          startDate: formatLocalDate(startDate),
           endDate: dateStr
         });
       } else {
@@ -236,7 +207,12 @@ export function CalendarWidget({ label, value, onSelect, mode = 'range' }: BaseW
   const handleConfirm = () => {
     if (selectedPeriod) {
       setIsConfirmed(true);
-      onSelect(selectedPeriod as SlotValue);
+      // Call onConfirm if provided, otherwise fall back to onSelect
+      if (onConfirm) {
+        onConfirm(selectedPeriod as SlotValue);
+      } else {
+        onSelect(selectedPeriod as SlotValue);
+      }
     }
   };
 
@@ -254,40 +230,51 @@ export function CalendarWidget({ label, value, onSelect, mode = 'range' }: BaseW
     <View className="bg-white border border-gray-200 rounded-lg p-4 mt-2">
       <Text className="text-sm font-medium text-gray-700 mb-3">{label}</Text>
       
-      {/* Calendar Header */}
-      <View className="flex-row justify-between items-center mb-3">
+      {/* Calendar Header with navigation */}
+      <View className="flex-row justify-between items-center mb-2">
+        <TouchableOpacity onPress={goToPreviousMonth} className="p-2" disabled={isConfirmed}>
+          <Text className="text-blue-600 text-lg font-bold">◀</Text>
+        </TouchableOpacity>
         <Text className="text-lg font-semibold text-gray-800">
-          {today.getFullYear()}년 {today.getMonth() + 1}월
+          {currentMonth.getFullYear()}년 {currentMonth.getMonth() + 1}월
         </Text>
-        <Text className="text-xs text-gray-500">
-          {mode === 'range' ? '시작일과 종료일을 선택' : '날짜를 선택'}
-        </Text>
+        <TouchableOpacity onPress={goToNextMonth} className="p-2" disabled={isConfirmed}>
+          <Text className="text-blue-600 text-lg font-bold">▶</Text>
+        </TouchableOpacity>
       </View>
+      
+      <Text className="text-xs text-gray-500 text-center mb-2">
+        {mode === 'range' ? '시작일과 종료일을 선택' : '날짜를 선택'}
+      </Text>
 
       {/* Weekday headers */}
       <View className="flex-row mb-2">
-        {['일', '월', '화', '수', '목', '금', '토'].map((day, index) => (
-          <View key={index} className="flex-1 items-center">
+        {['일', '월', '화', '수', '목', '금', '토'].map((day) => (
+          <View key={`weekday-header-${day}`} className="flex-1 items-center">
             <Text className="text-xs font-medium text-gray-500">{day}</Text>
           </View>
         ))}
       </View>
 
-      {/* Calendar Grid */}
+      {/* Calendar Grid - 7 columns (Sun-Sat) */}
       <View className="flex-row flex-wrap">
-        {calendarDays.map((dayData, index) => {
+        {calendarDays.map((dayData) => {
           const { date, isCurrentMonth } = dayData;
           const isPast = date < today && date.toDateString() !== today.toDateString();
           const isSelected = isDateInRange(date);
           const isStart = isDateStart(date);
           const isEnd = isDateEnd(date);
           
+          // Globally unique key using full ISO date
+          const dateKey = `cal-${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}-${date.getTime()}`;
+          
           return (
             <TouchableOpacity
-              key={index}
+              key={dateKey}
               onPress={() => handleDatePress(date)}
               disabled={isPast || !isCurrentMonth || isConfirmed}
-              className={`w-[14.28%] aspect-square items-center justify-center m-0.5 rounded ${
+              style={{ width: '14.28%' }}
+              className={`aspect-square items-center justify-center rounded ${
                 isPast || !isCurrentMonth
                   ? 'bg-gray-100'
                   : isSelected
@@ -315,11 +302,11 @@ export function CalendarWidget({ label, value, onSelect, mode = 'range' }: BaseW
         })}
       </View>
 
-      {/* Selection Info */}
+      {/* Selection Info & Confirm Button - Compact spacing */}
       {selectedPeriod && (
-        <View className="mt-3 p-3 bg-blue-50 rounded">
-          <Text className="text-sm text-blue-700">
-            선택된 기간: {selectedPeriod.startDate}
+        <View className="mt-2 p-2 bg-blue-50 rounded">
+          <Text className="text-xs text-blue-700 text-center">
+            {selectedPeriod.startDate}
             {mode === 'range' && selectedPeriod.endDate !== selectedPeriod.startDate && 
               ` ~ ${selectedPeriod.endDate}`
             }
@@ -331,61 +318,10 @@ export function CalendarWidget({ label, value, onSelect, mode = 'range' }: BaseW
       {selectedPeriod && !isConfirmed && (
         <TouchableOpacity
           onPress={handleConfirm}
-          className="mt-3 bg-blue-500 py-3 px-4 rounded-lg"
+          className="mt-2 bg-blue-500 py-2.5 px-4 rounded-lg"
         >
-          <Text className="text-white text-center font-medium">선택 완료</Text>
+          <Text className="text-white text-center font-medium text-sm">선택 완료</Text>
         </TouchableOpacity>
-      )}
-
-      {/* Quick Options */}
-      {!isConfirmed && (
-        <View className="mt-3 flex-row gap-2">
-          <TouchableOpacity
-            onPress={() => {
-              const start = new Date();
-              const end = new Date(start.getTime() + 6 * 24 * 60 * 60 * 1000);
-              setStartDate(start);
-              setEndDate(end);
-              setSelectedPeriod({
-                startDate: start.toISOString().split('T')[0],
-                endDate: end.toISOString().split('T')[0]
-              });
-            }}
-            className="flex-1 bg-gray-100 py-2 px-3 rounded"
-          >
-            <Text className="text-gray-700 text-center text-xs">1주일</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => {
-              const start = new Date();
-              const end = new Date(start.getTime() + 13 * 24 * 60 * 60 * 1000);
-              setStartDate(start);
-              setEndDate(end);
-              setSelectedPeriod({
-                startDate: start.toISOString().split('T')[0],
-                endDate: end.toISOString().split('T')[0]
-              });
-            }}
-            className="flex-1 bg-gray-100 py-2 px-3 rounded"
-          >
-            <Text className="text-gray-700 text-center text-xs">2주일</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => {
-              const start = new Date();
-              const end = new Date(start.getTime() + 29 * 24 * 60 * 60 * 1000);
-              setStartDate(start);
-              setEndDate(end);
-              setSelectedPeriod({
-                startDate: start.toISOString().split('T')[0],
-                endDate: end.toISOString().split('T')[0]
-              });
-            }}
-            className="flex-1 bg-gray-100 py-2 px-3 rounded"
-          >
-            <Text className="text-gray-700 text-center text-xs">1개월</Text>
-          </TouchableOpacity>
-        </View>
       )}
     </View>
   );
@@ -395,7 +331,8 @@ export function CalendarWidget({ label, value, onSelect, mode = 'range' }: BaseW
 export function ChipsWidget({ 
   label, 
   value, 
-  onSelect, 
+  onSelect,
+  onConfirm,
   options = [], 
   defaultValue = [] 
 }: BaseWidgetProps & { 
@@ -422,18 +359,22 @@ export function ChipsWidget({
 
   const handleConfirm = () => {
     setIsConfirmed(true);
-    onSelect(localSelection as SlotValue);
+    if (onConfirm) {
+      onConfirm(localSelection as SlotValue);
+    } else {
+      onSelect(localSelection as SlotValue);
+    }
   };
 
   return (
     <View className="bg-white border border-gray-200 rounded-lg p-4 mt-2">
       <Text className="text-sm font-medium text-gray-700 mb-3">{label}</Text>
       <View className="flex-row flex-wrap">
-        {options.map(option => {
+        {options.map((option, optIndex) => {
           const isSelected = localSelection.includes(option);
           return (
             <TouchableOpacity
-              key={option}
+              key={`chip-${label}-${option}-${optIndex}`}
               onPress={() => toggleOption(option)}
               disabled={isConfirmed}
               className={`mr-2 mb-2 px-3 py-2 rounded-full border ${
@@ -473,7 +414,7 @@ export function ChipsWidget({
 }
 
 // Toggle Widget for boolean values
-export function ToggleWidget({ label, value, onSelect }: BaseWidgetProps) {
+export function ToggleWidget({ label, value, onSelect, onConfirm }: BaseWidgetProps) {
   const [localValue, setLocalValue] = useState(Boolean(value));
   const [isConfirmed, setIsConfirmed] = useState(false);
 
@@ -485,7 +426,11 @@ export function ToggleWidget({ label, value, onSelect }: BaseWidgetProps) {
 
   const handleConfirm = () => {
     setIsConfirmed(true);
-    onSelect(localValue);
+    if (onConfirm) {
+      onConfirm(localValue);
+    } else {
+      onSelect(localValue);
+    }
   };
 
   return (
@@ -527,11 +472,12 @@ export function ToggleWidget({ label, value, onSelect }: BaseWidgetProps) {
   );
 }
 
-// Counter Widget for numeric values
+// Counter Widget for numeric values with direct input
 export function CounterWidget({ 
   label, 
   value, 
-  onSelect, 
+  onSelect,
+  onConfirm,
   min = 1, 
   max = 10, 
   defaultValue = min 
@@ -548,22 +494,39 @@ export function CounterWidget({
     return Number(defaultValue) || min;
   });
   const [isConfirmed, setIsConfirmed] = useState(false);
+  const [inputValue, setInputValue] = useState(String(localValue));
 
   const increment = () => {
     if (!isConfirmed && localValue < max) {
-      setLocalValue(localValue + 1);
+      const newValue = localValue + 1;
+      setLocalValue(newValue);
+      setInputValue(String(newValue));
     }
   };
 
   const decrement = () => {
     if (!isConfirmed && localValue > min) {
-      setLocalValue(localValue - 1);
+      const newValue = localValue - 1;
+      setLocalValue(newValue);
+      setInputValue(String(newValue));
+    }
+  };
+
+  const handleInputChange = (text: string) => {
+    setInputValue(text);
+    const numValue = parseInt(text, 10);
+    if (!isNaN(numValue) && numValue >= min && numValue <= max) {
+      setLocalValue(numValue);
     }
   };
 
   const handleConfirm = () => {
     setIsConfirmed(true);
-    onSelect(localValue);
+    if (onConfirm) {
+      onConfirm(localValue);
+    } else {
+      onSelect(localValue);
+    }
   };
 
   return (
@@ -582,9 +545,17 @@ export function CounterWidget({
           </Text>
         </TouchableOpacity>
         
-        <Text className="mx-6 text-2xl font-bold text-blue-800">
-          {localValue}
-        </Text>
+        {/* Direct input field */}
+        <TextInput
+          value={inputValue}
+          onChangeText={handleInputChange}
+          keyboardType="number-pad"
+          editable={!isConfirmed}
+          className={`mx-4 text-2xl font-bold text-blue-800 text-center border-b-2 ${
+            isConfirmed ? 'border-gray-300' : 'border-blue-300'
+          } w-16`}
+          maxLength={3}
+        />
         
         <TouchableOpacity
           onPress={increment}
@@ -600,9 +571,12 @@ export function CounterWidget({
       </View>
 
       {/* Current Selection */}
-      <View className="mt-3 p-3 bg-blue-50 rounded">
-        <Text className="text-sm text-blue-700 text-center">
-          선택된 값: {localValue}
+      <View className="mt-3 p-2 bg-blue-50 rounded">
+        <Text className="text-xs text-blue-700 text-center">
+          {label.includes('달성률') ? `목표 달성률: ${localValue}%` : `선택된 값: ${localValue}`}
+        </Text>
+        <Text className="text-xs text-gray-500 text-center mt-1">
+          직접 입력 또는 +/- 버튼 사용
         </Text>
       </View>
 
@@ -610,19 +584,34 @@ export function CounterWidget({
       {!isConfirmed && (
         <TouchableOpacity
           onPress={handleConfirm}
-          className="mt-3 bg-blue-500 py-3 px-4 rounded-lg"
+          className="mt-2 bg-blue-500 py-2.5 px-4 rounded-lg"
         >
-          <Text className="text-white text-center font-medium">선택 완료</Text>
+          <Text className="text-white text-center font-medium text-sm">선택 완료</Text>
         </TouchableOpacity>
       )}
     </View>
   );
 }
 
-// Time Picker Widget
-export function TimePickerWidget({ label, value, onSelect }: BaseWidgetProps) {
-  const [hour, setHour] = useState(9);
-  const [minute, setMinute] = useState(0);
+// Time Picker Widget with pre-population support
+export function TimePickerWidget({ label, value, onSelect, onConfirm, defaultValue }: BaseWidgetProps & { defaultValue?: string }) {
+  // Parse default value if provided (HH:MM format)
+  const parseTime = (timeStr?: string) => {
+    if (timeStr && typeof timeStr === 'string') {
+      const parts = timeStr.split(':');
+      if (parts.length === 2) {
+        return {
+          hour: parseInt(parts[0], 10) || 9,
+          minute: parseInt(parts[1], 10) || 0
+        };
+      }
+    }
+    return { hour: 9, minute: 0 };
+  };
+
+  const initialTime = parseTime(defaultValue);
+  const [hour, setHour] = useState(initialTime.hour);
+  const [minute, setMinute] = useState(initialTime.minute);
   const [isConfirmed, setIsConfirmed] = useState(false);
 
   const formatTime = (h: number, m: number) => {
@@ -638,7 +627,12 @@ export function TimePickerWidget({ label, value, onSelect }: BaseWidgetProps) {
 
   const handleConfirm = () => {
     setIsConfirmed(true);
-    onSelect(formatTime(hour, minute));
+    const timeValue = formatTime(hour, minute);
+    if (onConfirm) {
+      onConfirm(timeValue);
+    } else {
+      onSelect(timeValue);
+    }
   };
 
   return (
@@ -718,11 +712,18 @@ export function TimePickerWidget({ label, value, onSelect }: BaseWidgetProps) {
   );
 }
 
-// Weekdays Widget for selecting days of week
-export function WeekdaysWidget({ label, value, onSelect }: BaseWidgetProps) {
-  const [localSelection, setLocalSelection] = useState<number[]>(
-    Array.isArray(value) ? (value as number[]) : []
-  );
+// Weekdays Widget for selecting days of week with pre-population
+export function WeekdaysWidget({ label, value, onSelect, onConfirm, defaultValue }: BaseWidgetProps & { defaultValue?: number[] }) {
+  const [localSelection, setLocalSelection] = useState<number[]>(() => {
+    // Use defaultValue if provided, otherwise use value, otherwise empty
+    if (Array.isArray(defaultValue) && defaultValue.length > 0) {
+      return defaultValue;
+    }
+    if (Array.isArray(value) && (value as number[]).length > 0) {
+      return value as number[];
+    }
+    return [];
+  });
   const [isConfirmed, setIsConfirmed] = useState(false);
   
   const weekdays = [
@@ -746,7 +747,11 @@ export function WeekdaysWidget({ label, value, onSelect }: BaseWidgetProps) {
 
   const handleConfirm = () => {
     setIsConfirmed(true);
-    onSelect(localSelection as SlotValue);
+    if (onConfirm) {
+      onConfirm(localSelection as SlotValue);
+    } else {
+      onSelect(localSelection as SlotValue);
+    }
   };
 
   const getSelectedDayNames = () => {

@@ -3,14 +3,14 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { evalFrequencyRule, evalPartnerRule, evalScheduleRule } from '../../services/verificationRules';
+import { evalFrequencyRule, evalScheduleRule } from '../../services/verificationRules';
 import {
-    ALLOWED_SIGNAL_COMBINATIONS,
-    VERIFICATION_POLICIES,
-    getExamplesForPrompt,
-    getPolicyDescriptionForPrompt,
-    isAllowedSignalCombination,
-    validateVerificationSignals
+  ALLOWED_SIGNAL_COMBINATIONS,
+  VERIFICATION_POLICIES,
+  getExamplesForPrompt,
+  getPolicyDescriptionForPrompt,
+  isAllowedSignalCombination,
+  validateVerificationSignals
 } from '../verificationPolicy';
 
 describe('Verification Policy Alignment', () => {
@@ -27,9 +27,9 @@ describe('Verification Policy Alignment', () => {
       expect(VERIFICATION_POLICIES.frequency.fallback).toEqual(['manual']);
     });
 
-    it('should have consistent signal combinations for partner goals', () => {
-      expect(VERIFICATION_POLICIES.partner.required).toEqual(['partner']);
-      expect(VERIFICATION_POLICIES.partner.withOthers).toEqual(['partner', 'manual']);
+    it('should have consistent signal combinations for milestone goals', () => {
+      expect(VERIFICATION_POLICIES.milestone.primary).toEqual(['time', 'manual']);
+      expect(VERIFICATION_POLICIES.milestone.withPhoto).toEqual(['time', 'photo']);
     });
   });
 
@@ -41,13 +41,13 @@ describe('Verification Policy Alignment', () => {
       expect(description).toContain('Schedule with time+place');
       expect(description).toContain('Schedule with time only');
       expect(description).toContain('Frequency goals');
-      expect(description).toContain('Partner type');
+      expect(description).toContain('Milestone goals');
       
       // Should include actual policy values
       expect(description).toContain(JSON.stringify(VERIFICATION_POLICIES.schedule.withTimeAndPlace));
       expect(description).toContain(JSON.stringify(VERIFICATION_POLICIES.schedule.withTimeOnly));
       expect(description).toContain(JSON.stringify(VERIFICATION_POLICIES.frequency.primary));
-      expect(description).toContain(JSON.stringify(VERIFICATION_POLICIES.partner.required));
+      expect(description).toContain(JSON.stringify(VERIFICATION_POLICIES.milestone.primary));
     });
 
     it('should generate examples for prompts', () => {
@@ -59,7 +59,7 @@ describe('Verification Policy Alignment', () => {
       // Should include actual policy values in examples
       expect(examples).toContain(JSON.stringify(VERIFICATION_POLICIES.schedule.withTimeOnly));
       expect(examples).toContain(JSON.stringify(VERIFICATION_POLICIES.frequency.primary));
-      expect(examples).toContain(JSON.stringify(VERIFICATION_POLICIES.partner.required));
+      expect(examples).toContain(JSON.stringify(VERIFICATION_POLICIES.milestone.primary));
     });
   });
 
@@ -87,15 +87,15 @@ describe('Verification Policy Alignment', () => {
       expect(invalidResult.errors).toContain('Frequency goals must include "manual" signal');
     });
 
-    it('should validate partner verification signals correctly', () => {
+    it('should validate milestone verification signals correctly', () => {
       // Valid combinations
-      expect(validateVerificationSignals('partner', ['partner']).valid).toBe(true);
-      expect(validateVerificationSignals('partner', ['partner', 'manual']).valid).toBe(true);
+      expect(validateVerificationSignals('milestone', ['time', 'manual']).valid).toBe(true);
+      expect(validateVerificationSignals('milestone', ['time', 'photo']).valid).toBe(true);
       
       // Invalid combinations
-      const invalidResult = validateVerificationSignals('partner', ['manual', 'photo']);
+      const invalidResult = validateVerificationSignals('milestone', ['manual', 'photo']);
       expect(invalidResult.valid).toBe(false);
-      expect(invalidResult.errors).toContain('Partner goals must include "partner" signal');
+      expect(invalidResult.errors).toContain('Milestone goals must include "time" signal');
     });
   });
 
@@ -110,16 +110,16 @@ describe('Verification Policy Alignment', () => {
       expect(ALLOWED_SIGNAL_COMBINATIONS).toContainEqual(['manual', 'photo']);
       expect(ALLOWED_SIGNAL_COMBINATIONS).toContainEqual(['manual', 'location']);
       
-      // Partner combinations
-      expect(ALLOWED_SIGNAL_COMBINATIONS).toContainEqual(['partner']);
-      expect(ALLOWED_SIGNAL_COMBINATIONS).toContainEqual(['partner', 'manual']);
+      // Milestone combinations
+      expect(ALLOWED_SIGNAL_COMBINATIONS).toContainEqual(['time', 'manual']);
+      expect(ALLOWED_SIGNAL_COMBINATIONS).toContainEqual(['time', 'photo']);
     });
 
     it('should validate allowed combinations correctly', () => {
       // Valid combinations
       expect(isAllowedSignalCombination(['time', 'location'])).toBe(true);
       expect(isAllowedSignalCombination(['manual', 'photo'])).toBe(true);
-      expect(isAllowedSignalCombination(['partner'])).toBe(true);
+      expect(isAllowedSignalCombination(['time', 'manual'])).toBe(true);
       
       // Invalid combinations
       expect(isAllowedSignalCombination(['location', 'photo'])).toBe(false);
@@ -164,15 +164,15 @@ describe('Verification Policy Alignment', () => {
       expect(manualLocationResult.pass).toBe(true);
     });
 
-    it('should align partner rules with policy', () => {
+    it('should align milestone rules with policy', () => {
       // Test policy-compliant combinations
-      const partnerSignals = createMockSignals(['partner']);
-      const partnerResult = evalPartnerRule(partnerSignals);
-      expect(partnerResult.pass).toBe(true);
+      const timeManualSignals = createMockSignals(['time', 'manual']);
+      const timeManualResult = evalScheduleRule(timeManualSignals);
+      expect(timeManualResult.pass).toBe(true);
       
-      const partnerManualSignals = createMockSignals(['partner', 'manual']);
-      const partnerManualResult = evalPartnerRule(partnerManualSignals);
-      expect(partnerManualResult.pass).toBe(true);
+      const timePhotoSignals = createMockSignals(['time', 'photo']);
+      const timePhotoResult = evalScheduleRule(timePhotoSignals);
+      expect(timePhotoResult.pass).toBe(true);
     });
 
     it('should reject policy-violating combinations', () => {
@@ -186,9 +186,9 @@ describe('Verification Policy Alignment', () => {
       const photoOnlyResult = evalFrequencyRule(photoOnlySignals);
       expect(photoOnlyResult.pass).toBe(false);
       
-      // Partner without partner signal should fail
+      // Milestone without time signal should fail
       const manualOnlySignals = createMockSignals(['manual']);
-      const manualOnlyResult = evalPartnerRule(manualOnlySignals);
+      const manualOnlyResult = evalScheduleRule(manualOnlySignals);
       expect(manualOnlyResult.pass).toBe(false);
     });
   });
@@ -207,9 +207,9 @@ describe('Verification Policy Alignment', () => {
           withLocation: VERIFICATION_POLICIES.frequency.withLocation,
           fallback: VERIFICATION_POLICIES.frequency.fallback,
         },
-        partner: {
-          required: VERIFICATION_POLICIES.partner.required,
-          withOthers: VERIFICATION_POLICIES.partner.withOthers,
+        milestone: {
+          primary: VERIFICATION_POLICIES.milestone.primary,
+          withPhoto: VERIFICATION_POLICIES.milestone.withPhoto,
         },
       };
       
@@ -242,8 +242,8 @@ describe('Verification Policy Alignment', () => {
         ...VERIFICATION_POLICIES.frequency.primary,
         ...VERIFICATION_POLICIES.frequency.withLocation,
         ...VERIFICATION_POLICIES.frequency.fallback,
-        ...VERIFICATION_POLICIES.partner.required,
-        ...VERIFICATION_POLICIES.partner.withOthers,
+        ...VERIFICATION_POLICIES.milestone.primary,
+        ...VERIFICATION_POLICIES.milestone.withPhoto,
       ];
       
       // Each policy combination should be in allowed combinations
@@ -254,8 +254,8 @@ describe('Verification Policy Alignment', () => {
         VERIFICATION_POLICIES.frequency.primary,
         VERIFICATION_POLICIES.frequency.withLocation,
         VERIFICATION_POLICIES.frequency.fallback,
-        VERIFICATION_POLICIES.partner.required,
-        VERIFICATION_POLICIES.partner.withOthers,
+        VERIFICATION_POLICIES.milestone.primary,
+        VERIFICATION_POLICIES.milestone.withPhoto,
       ];
       
       policyCombinationArrays.forEach(combination => {
@@ -274,9 +274,9 @@ describe('Verification Policy Alignment', () => {
       expect(validateVerificationSignals('frequency', VERIFICATION_POLICIES.frequency.withLocation).valid).toBe(true);
       expect(validateVerificationSignals('frequency', VERIFICATION_POLICIES.frequency.fallback).valid).toBe(true);
       
-      // Test partner combinations
-      expect(validateVerificationSignals('partner', VERIFICATION_POLICIES.partner.required).valid).toBe(true);
-      expect(validateVerificationSignals('partner', VERIFICATION_POLICIES.partner.withOthers).valid).toBe(true);
+      // Test milestone combinations
+      expect(validateVerificationSignals('milestone', VERIFICATION_POLICIES.milestone.primary).valid).toBe(true);
+      expect(validateVerificationSignals('milestone', VERIFICATION_POLICIES.milestone.withPhoto).valid).toBe(true);
     });
   });
 });

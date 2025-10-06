@@ -1,0 +1,59 @@
+{
+  "nav": {
+    "home": "홈",
+    "goals": "목표",
+    "space": "스페이스",
+    "feed": "피드",
+    "profile": "프로필"
+  },
+  "profile": {
+    "language": "언어",
+    "select_language": "언어 선택",
+    "korean": "한국어 (Korean)",
+    "english": "English",
+    "points": "포인트",
+    "balance": "잔액",
+    "settings": "설정",
+    "app_preferences": "앱 설정 및 알림",
+    "statistics": "통계",
+    "view_progress": "목표 진행 상황 보기",
+    "help": "도움말",
+    "get_support": "도움말 및 고객 지원",
+    "about": "정보",
+    "app_info": "앱 버전 및 정보",
+    "account": "계정 설정",
+    "manage_account": "계정 정보 관리",
+    "privacy": "개인정보 보호",
+    "manage_privacy": "개인정보 및 보안 설정",
+    "sign_out": "로그아웃",
+    "sign_out_confirm": "로그아웃 하시겠습니까?",
+    "cancel": "취소",
+    "version": "버전",
+    "member_since": "가입일"
+  },
+  "create_goal": {
+    "title": "새 목표 만들기",
+    "description": "목표를 설정하고 여정을 시작하세요",
+    "button": "목표 생성"
+  },
+  "goal_detail": {
+    "quests_one": "퀘스트 {{count}}개",
+    "quests_other": "퀘스트 {{count}}개",
+    "progress": "진행률",
+    "success_rate": "성공률"
+  },
+  "home": {
+    "welcome": "환영합니다!",
+    "start_journey": "오늘부터 시작하세요",
+    "good_morning": "좋은 아침입니다",
+    "with_kangaroo": "캥거루와 함께한 {{days}}일",
+    "achieve_more": "더 많은 목표를 달성하고 캥거루를 더 높이 점프시키세요!",
+    "achieve_desc": "더 많은 목표를 달성하세요...",
+    "level": "레벨",
+    "kangaroo": "캥거루",
+    "streak": "{{days}}일 연속 달성!",
+    "badge_unlock": "⭐ 뱃지까지 1일 남았습니다!",
+    "your_badge": "나의 뱃지"
+  }
+}
+

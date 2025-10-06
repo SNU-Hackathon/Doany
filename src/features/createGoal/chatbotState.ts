@@ -92,7 +92,7 @@ export function useChatbotState() {
 
   const addMessage = useCallback((content: string, role: 'user' | 'assistant', widgets?: EmbeddedWidget[]) => {
     const message: ChatMessage = {
-      id: Date.now().toString(),
+      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, // ✅ 고유한 ID 생성
       role,
       content,
       timestamp: new Date(),
@@ -229,12 +229,20 @@ export async function generateNextQuestionWithAI(
     const widgets: EmbeddedWidget[] = (aiResponse.widgets || []).map((widget, index) => {
       let props = widget.props || {};
       
-      // Add extracted schedule data to calendar widget
-      if (widget.type === 'calendar' && aiResponse.extractedSchedule) {
-        props = {
-          ...props,
-          extractedSchedule: aiResponse.extractedSchedule
-        };
+      // Pre-populate widgets with extracted schedule data
+      if (aiResponse.extractedSchedule) {
+        if (widget.slotId === 'weekdays' && aiResponse.extractedSchedule.weekdays) {
+          props = {
+            ...props,
+            defaultValue: aiResponse.extractedSchedule.weekdays
+          };
+        }
+        if (widget.slotId === 'time' && aiResponse.extractedSchedule.time) {
+          props = {
+            ...props,
+            defaultValue: aiResponse.extractedSchedule.time
+          };
+        }
       }
       
       return {
@@ -246,7 +254,7 @@ export async function generateNextQuestionWithAI(
                widget.slotId === 'time' ? '시간 선택' :
                widget.slotId === 'perWeek' ? '주간 횟수' :
                widget.slotId === 'verification' ? '검증 방법' :
-               widget.slotId === 'successRate' ? '성공률' :
+               widget.slotId === 'successRate' ? '목표 달성률' :
                widget.slotId === 'milestones' ? '단계 설정' :
                widget.slotId === 'currentState' ? '현재 상태' : '선택',
         props,

@@ -5,7 +5,7 @@
 
 export type VerificationSignal = 'time' | 'location' | 'photo' | 'manual' | 'partner';
 
-export type GoalType = 'schedule' | 'frequency' | 'partner';
+export type GoalType = 'schedule' | 'frequency' | 'milestone';
 
 /**
  * Verification signal combinations for each goal type
@@ -21,9 +21,9 @@ export const VERIFICATION_POLICIES = {
     withLocation: ['manual', 'location'] as VerificationSignal[], // when meaningful
     fallback: ['manual'] as VerificationSignal[],
   },
-  partner: {
-    required: ['partner'] as VerificationSignal[],
-    withOthers: ['partner', 'manual'] as VerificationSignal[], // optionally combine
+  milestone: {
+    primary: ['time', 'manual'] as VerificationSignal[],
+    withPhoto: ['time', 'photo'] as VerificationSignal[],
   },
 } as const;
 
@@ -46,9 +46,9 @@ export const VERIFICATION_POLICY_DESCRIPTIONS = {
     withLocation: 'Frequency with meaningful location: ["manual","location"]',
     fallback: 'Frequency fallback: ["manual"]',
   },
-  partner: {
-    required: 'Partner type: MUST include ["partner"]',
-    withOthers: 'Partner type: optionally combine with others if independently verifiable',
+  milestone: {
+    primary: 'Milestone goals: prefer ["time","manual"]',
+    withPhoto: 'Milestone with photo evidence: ["time","photo"]',
   },
 } as const;
 
@@ -80,14 +80,10 @@ export function getVerificationSignals(
         return VERIFICATION_POLICIES.frequency.primary;
       }
     
-    case 'partner':
-      if (context.hasPartner) {
-        return context.hasTime || context.hasLocation 
-          ? VERIFICATION_POLICIES.partner.withOthers
-          : VERIFICATION_POLICIES.partner.required;
-      } else {
-        return VERIFICATION_POLICIES.partner.required;
-      }
+    case 'milestone':
+      return context.hasTime 
+        ? VERIFICATION_POLICIES.milestone.withPhoto
+        : VERIFICATION_POLICIES.milestone.primary;
     
     default:
       return DEFAULT_VERIFICATION_SIGNALS;
@@ -134,10 +130,14 @@ export function validateVerificationSignals(
       }
       break;
     
-    case 'partner':
-      if (!signals.includes('partner')) {
-        errors.push('Partner goals must include "partner" signal');
-        suggestions.push('partner');
+    case 'milestone':
+      if (!signals.includes('time')) {
+        errors.push('Milestone goals must include "time" signal');
+        suggestions.push('time');
+      }
+      if (!signals.includes('manual') && !signals.includes('photo')) {
+        errors.push('Milestone goals must include manual or photo signal');
+        suggestions.push('manual', 'photo');
       }
       break;
   }
@@ -157,7 +157,7 @@ export function getPolicyDescriptionForPrompt(): string {
 - Schedule with time+place: ${JSON.stringify(VERIFICATION_POLICIES.schedule.withTimeAndPlace)}
 - Schedule with time only: ${JSON.stringify(VERIFICATION_POLICIES.schedule.withTimeOnly)} or ${JSON.stringify(VERIFICATION_POLICIES.schedule.fallback)}
 - Frequency goals: ${JSON.stringify(VERIFICATION_POLICIES.frequency.primary)} (add location when meaningful)
-- Partner type: MUST include ${JSON.stringify(VERIFICATION_POLICIES.partner.required)}, optionally combine with others if independently verifiable`;
+- Milestone goals: ${JSON.stringify(VERIFICATION_POLICIES.milestone.primary)} or ${JSON.stringify(VERIFICATION_POLICIES.milestone.withPhoto)}`;
 }
 
 /**
@@ -167,7 +167,7 @@ export function getExamplesForPrompt(): string {
   return `EXAMPLES:
 GOOD: {"type":"schedule","originalText":"월수금 6시 러닝","schedule":{"events":[{"dayOfWeek":"mon","time":"06:00"},{"dayOfWeek":"wed","time":"06:00"},{"dayOfWeek":"fri","time":"06:00"}]},"verification":{"signals":${JSON.stringify(VERIFICATION_POLICIES.schedule.withTimeOnly)}}}
 GOOD: {"type":"frequency","originalText":"일주일에 3번 독서","frequency":{"targetPerWeek":3,"windowDays":7},"verification":{"signals":${JSON.stringify(VERIFICATION_POLICIES.frequency.primary)}}}
-GOOD: {"type":"partner","originalText":"매일 코치와 운동 검토","partner":{"required":true,"name":"코치"},"verification":{"signals":${JSON.stringify(VERIFICATION_POLICIES.partner.required)}}}`;
+GOOD: {"type":"milestone","originalText":"매일 코치와 운동 검토","milestone":{"target":"운동 검토","deadline":"2024-12-31"},"verification":{"signals":${JSON.stringify(VERIFICATION_POLICIES.milestone.primary)}}}`;
 }
 
 /**

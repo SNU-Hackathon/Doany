@@ -15,11 +15,27 @@ export const SCHEDULE_SLOTS: SlotSchema = {
     },
     {
       id: 'period',
-      name: 'Period and Schedule',
-      type: 'calendar', // Use advanced calendar for full schedule editing
+      name: 'Period',
+      type: 'calendar', // Simple date range selection only
       required: true,
-      label: '기간 및 일정',
-      description: '목표 기간을 선택하고 요일별 시간을 설정해주세요. 롱프레스로 시간을 추가할 수 있습니다.'
+      label: '기간',
+      description: '목표를 진행할 기간을 선택해주세요'
+    },
+    {
+      id: 'weekdays',
+      name: 'Weekdays',
+      type: 'weekdays', // Separate weekday selection
+      required: true,
+      label: '요일',
+      description: '어떤 요일에 진행할까요?'
+    },
+    {
+      id: 'time',
+      name: 'Time',
+      type: 'timePicker', // Separate time selection
+      required: true,
+      label: '시간',
+      description: '몇 시에 진행할까요?'
     },
     {
       id: 'verification',
@@ -28,8 +44,8 @@ export const SCHEDULE_SLOTS: SlotSchema = {
       required: true,
       label: '검증 방법',
       description: '목표 달성을 확인할 방법을 선택해주세요',
-      options: ['manual', 'time', 'location', 'photo'],
-      defaultValue: ['manual', 'time'] // Recommended for schedule goals
+      options: ['사진', '위치 등록', '체크리스트'],
+      defaultValue: ['위치 등록', '체크리스트'] // Recommended for schedule goals
     },
     {
       id: 'successRate',
@@ -82,8 +98,8 @@ export const FREQUENCY_SLOTS: SlotSchema = {
       required: true,
       label: '검증 방법',
       description: '목표 달성을 확인할 방법을 선택해주세요',
-      options: ['manual', 'location', 'photo'],
-      defaultValue: ['manual'] // Recommended for frequency goals
+      options: ['사진', '위치 등록', '체크리스트'],
+      defaultValue: ['체크리스트'] // Recommended for frequency goals
     },
     {
       id: 'successRate',
@@ -145,8 +161,8 @@ export const MILESTONE_SLOTS: SlotSchema = {
       required: true,
       label: '검증 방법',
       description: '목표 달성을 확인할 방법을 선택해주세요',
-      options: ['manual'],
-      defaultValue: ['manual']
+      options: ['사진', '위치 등록', '체크리스트'],
+      defaultValue: ['체크리스트']
     }
   ]
 };

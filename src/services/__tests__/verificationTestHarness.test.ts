@@ -7,7 +7,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { GoalSpec } from '../../schemas/goalSpec';
 import { validateGoalSpec } from '../../schemas/goalSpec';
-import type { GoalDoc, VerificationSignals } from '../../types/firestore';
+import type { GoalDoc, GoalType, VerificationSignals } from '../../types/firestore';
 import { evalFrequencyRule, evalScheduleRule, evaluateByGoalType } from '../verificationRules';
 
 // Mock Firestore in-memory adapter
@@ -105,27 +105,33 @@ const SAMPLE_GOAL_SPECS: GoalSpec[] = [
       signals: ['manual', 'location']
     }
   },
-  // Partner goals
+  // Milestone goals
   {
-    type: 'partner',
+    type: 'milestone',
     originalText: '매일 코치와 운동 검토',
-    partner: {
-      required: true,
-      name: '코치'
-    },
+      milestone: {
+        milestones: [{
+          key: 'review',
+          label: '운동 검토',
+          targetDate: '2024-12-31'
+        }]
+      },
     verification: {
-      signals: ['partner', 'manual']
+      signals: ['time', 'manual']
     }
   },
   {
-    type: 'partner',
+    type: 'milestone',
     originalText: '주간 멘토링 세션',
-    partner: {
-      required: true,
-      name: '멘토'
-    },
+      milestone: {
+        milestones: [{
+          key: 'mentoring',
+          label: '멘토링 세션',
+          targetDate: '2024-12-31'
+        }]
+      },
     verification: {
-      signals: ['partner', 'time', 'photo']
+      signals: ['time', 'photo']
     }
   }
 ];
@@ -134,7 +140,7 @@ const SAMPLE_GOAL_SPECS: GoalSpec[] = [
 function goalSpecToGoalDoc(spec: GoalSpec, uid: string): GoalDoc & { verificationMethods?: string[], createdAt?: number, userId?: string } {
   const baseDoc: GoalDoc & { verificationMethods?: string[], createdAt?: number, userId?: string } = {
     id: `goal_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-    type: spec.type === 'partner' ? 'frequency' : spec.type as 'schedule' | 'frequency', // Map partner to frequency for now
+    type: spec.type as GoalType,
     verificationMethods: spec.verification.signals,
     createdAt: Date.now(),
     userId: uid
@@ -407,8 +413,8 @@ describe('Verification Test Harness', () => {
       const goalDoc = goalSpecToGoalDoc(partnerSpec, testUid);
       await mockFirestore.collection(`users/${testUid}/goals`).doc(goalDoc.id).set(goalDoc);
 
-      // Partner goals are mapped to frequency type for storage
-      expect(goalDoc.type).toBe('frequency');
+      // Milestone goals are stored as milestone type
+      expect(goalDoc.type).toBe('milestone');
       
       // Test with partner signals (treated as frequency)
       const signals: VerificationSignals = {

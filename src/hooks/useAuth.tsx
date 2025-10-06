@@ -49,6 +49,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         // Create minimal user immediately for navigation - don't block on Firestore
         const minimalUser: User = {
           id: firebaseUser.uid,
+          uid: firebaseUser.uid,
           email: firebaseUser.email || '',
           displayName: firebaseUser.displayName || 'User',
           createdAt: new Date(),

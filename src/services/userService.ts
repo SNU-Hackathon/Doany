@@ -28,6 +28,7 @@ export class UserService {
       // Return user object for the hook
       const user: User = {
         id: authResult.user.uid,
+        uid: authResult.user.uid,  // Alias for id
         email: authResult.user.email || email,
         displayName: authResult.user.displayName || displayName,
         createdAt: new Date(),
@@ -60,6 +61,7 @@ export class UserService {
         console.warn('[UserService] User document not found, creating minimal user');
         return {
           id: authResult.user.uid,
+          uid: authResult.user.uid,  // Alias for id
           email: authResult.user.email || email,
           displayName: authResult.user.displayName || 'User',
           createdAt: new Date(),
@@ -150,6 +152,7 @@ export class UserService {
       const userData = userDoc.data();
       return {
         id: userId,
+        uid: userId,  // Alias for id
         email: userData.email,
         displayName: userData.displayName,
         createdAt: userData.createdAt instanceof Timestamp 

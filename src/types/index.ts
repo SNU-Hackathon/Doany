@@ -1,8 +1,8 @@
 // TypeScript type definitions for Doany app
 
 export interface User {
-  id: string;
-  uid: string; // Firebase Auth uid
+  id: string;      // Firebase Auth uid
+  uid: string;     // Alias for id, for backward compatibility
   email: string;
   displayName: string;
   createdAt: Date;
@@ -323,3 +323,6 @@ export interface CreateGoalForm {
 
 // Quest types
 export * from './quest';
+
+// Feed types
+export * from './feed';

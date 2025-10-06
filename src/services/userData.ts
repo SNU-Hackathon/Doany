@@ -55,6 +55,7 @@ export const fetchUserDoc = async (uid: string): Promise<User | null> => {
         
         const user: User = {
           id: uid,
+          uid: uid,
           email: data.email,
           displayName: data.displayName,
           createdAt: data.createdAt?.toDate() || new Date(),

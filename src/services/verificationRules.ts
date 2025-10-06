@@ -88,8 +88,8 @@ export function evaluateByGoalType(goalType: GoalType, sig: VerificationSignals)
       return evalScheduleRule(sig);
     case 'frequency':
       return evalFrequencyRule(sig);
-    case 'partner':
-      return evalPartnerRule(sig);
+    case 'milestone':
+      return evalScheduleRule(sig);
     default:
       return evalFrequencyRule(sig); // Default fallback
   }

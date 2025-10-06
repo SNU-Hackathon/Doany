@@ -13,6 +13,7 @@ import './app/globals.css'; // Tailwind CSS
 
 import ErrorBoundary from './src/components/ErrorBoundary';
 import { AuthProvider } from './src/hooks/useAuth';
+import './src/i18n'; // Initialize i18n
 import RootNavigator from './src/navigation/RootNavigator';
 import './src/services/network/NetworkService'; // Initialize network service
 

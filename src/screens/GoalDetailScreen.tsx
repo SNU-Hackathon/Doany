@@ -6,16 +6,33 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import * as ImagePicker from 'expo-image-picker';
 import { getAuth } from 'firebase/auth';
 import { deleteDoc, doc } from 'firebase/firestore';
-import React, { useCallback, useEffect, useLayoutEffect, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   Alert,
   FlatList,
+  FlatList as FlatListType, // ✅ Add FlatList type for useRef
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   RefreshControl,
   Text,
   TouchableOpacity,
   View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ShareToFeedDialog } from '../components/feed';
 import { VERIFICATION_DEFAULTS } from '../config/verification';
 import { useAuth } from '../hooks/useAuth';
 import { CalendarEventService } from '../services/calendarEventService';
@@ -38,6 +55,7 @@ export default function GoalDetailScreen({ route, navigation }: GoalDetailScreen
   const { goalId } = route.params;
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
+  const questListRef = useRef<FlatListType>(null); // ✅ FlatList ref for auto-scroll
   
   // Move all hooks to the top level
   const [goal, setGoal] = useState<Goal | null>(null);
@@ -49,6 +67,8 @@ export default function GoalDetailScreen({ route, navigation }: GoalDetailScreen
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [quests, setQuests] = useState<Quest[]>([]);
   const [questsLoading, setQuestsLoading] = useState(false);
+  const [shareDialogVisible, setShareDialogVisible] = useState(false);
+  const [lastVerificationPhoto, setLastVerificationPhoto] = useState<string | null>(null);
 
   const loadGoalData = useCallback(async () => {
     if (!goalId) return;
@@ -95,10 +115,14 @@ export default function GoalDetailScreen({ route, navigation }: GoalDetailScreen
       setSuccessRate(rate);
       setCalendarEvents(calendarEventsData);
       
-      // Load quests for this goal after setting goal data
-      setTimeout(async () => {
-        await loadQuestsForGoal(goalId);
-      }, 100);
+      // Load quests for this goal - ONLY if user is available
+      if (user && user.id) { // ✅ user.uid → user.id
+        setTimeout(async () => {
+          await loadQuestsForGoal(goalId);
+        }, 100);
+      } else {
+        console.warn('[GoalDetail] Skipping quest load: user not yet available');
+      }
       
       console.log('[GOAL:fetch:success]', { 
         goalId, 
@@ -117,22 +141,37 @@ export default function GoalDetailScreen({ route, navigation }: GoalDetailScreen
       setLoading(false);
       setRefreshing(false);
     }
-  }, [goalId]);
+  }, [goalId, user, user?.id]); // ✅ user 의존성 추가! (loadQuestsForGoal은 아래 정의)
 
-  // Load goal data on mount
+  // Load goal data on mount - ONLY when user is available
   useEffect(() => {
+    // Wait for user to be fully loaded before fetching goal data
+    if (!user) {
+      console.warn('[GoalDetail] Waiting for user to load');
+      return;
+    }
+    
+    if (!user.id) { // ✅ user.uid → user.id
+      console.warn('[GoalDetail] User loaded but id missing');
+      return;
+    }
+    
     if (goalId) {
+      console.log('[GoalDetail] ✅ User available, loading goal data for:', goalId);
       loadGoalData();
     }
-  }, [goalId, loadGoalData]);
+  }, [goalId, user, loadGoalData]);
 
   const loadQuestsForGoal = useCallback(async (goalId: string) => {
-    if (!user) return;
+    if (!user || !user.id) { // ✅ user.uid → user.id
+      console.warn('[GoalDetail] Cannot load quests: user not available');
+      return;
+    }
     
     try {
       setQuestsLoading(true);
-      console.log('[GoalDetail] Loading quests for goal:', goalId);
-      const questsData = await QuestService.getQuestsForGoal(goalId, user.uid);
+      console.log('[GoalDetail] Loading quests for goal:', goalId, 'user:', user.id);
+      const questsData = await QuestService.getQuestsForGoal(goalId, user.id); // ✅ user.uid → user.id
       console.log('[DETAIL.LOAD]', {
         goalId: goalId,
         totalLoaded: questsData.length,
@@ -145,6 +184,48 @@ export default function GoalDetailScreen({ route, navigation }: GoalDetailScreen
         }))
       });
       setQuests(questsData);
+      
+      // ✅ Auto-scroll to next upcoming quest after loading (듀오링고 스타일)
+      if (questsData.length > 0) {
+        setTimeout(() => {
+          // ✅ 오름차순 정렬: 과거가 위, 미래가 아래
+          const sortedQuests = [...questsData].sort((a, b) => {
+            const dateA = a.targetDate ? new Date(a.targetDate).getTime() : 
+                         a.scheduledDate ? new Date(a.scheduledDate).getTime() : 0;
+            const dateB = b.targetDate ? new Date(b.targetDate).getTime() :
+                         b.scheduledDate ? new Date(b.scheduledDate).getTime() : 0;
+            return dateA - dateB; // ✅ 오름차순: 과거 → 미래
+          });
+          
+          const now = new Date().getTime();
+          
+          // ✅ 오늘 이후의 첫 번째 퀘스트 = 가장 가까운 미래
+          const nextQuestIndex = sortedQuests.findIndex(q => {
+            const questDate = q.targetDate ? new Date(q.targetDate).getTime() :
+                            q.scheduledDate ? new Date(q.scheduledDate).getTime() : 0;
+            return questDate >= now;
+          });
+          
+          if (nextQuestIndex !== -1 && questListRef.current) {
+            const nextQuest = sortedQuests[nextQuestIndex];
+            const questDate = nextQuest.targetDate || nextQuest.scheduledDate || '';
+            
+            console.log('[GoalDetail] 📍 듀오링고 스타일 스크롤:', {
+              index: nextQuestIndex,
+              date: questDate,
+              title: nextQuest.title,
+              totalQuests: sortedQuests.length
+            });
+            
+            // ✅ 가장 가까운 미래 퀘스트를 화면 아래쪽에 위치
+            questListRef.current.scrollToIndex({
+              index: nextQuestIndex,
+              animated: true,
+              viewPosition: 0.7 // ✅ 화면의 70% 위치 = 아래쪽에 보이도록
+            });
+          }
+        }, 600); // ✅ 충분한 딜레이로 안정적인 렌더링
+      }
       
       // If no quests exist, generate them using the goalId and current goal data
       if (questsData.length === 0) {
@@ -169,7 +250,7 @@ export default function GoalDetailScreen({ route, navigation }: GoalDetailScreen
               const generatedQuests = await QuestService.generateAndSaveQuestsForGoal(
                 goalId,
                 goalDataForGeneration,
-                user.uid
+                user.id // ✅ user.uid → user.id
               );
               
               setQuests(generatedQuests);
@@ -216,7 +297,7 @@ export default function GoalDetailScreen({ route, navigation }: GoalDetailScreen
       const generatedQuests = await QuestService.generateAndSaveQuestsForGoal(
         goal.id,
         goal,
-        user.uid
+        user.id // ✅ user.uid → user.id
       );
       
       setQuests(generatedQuests);
@@ -252,7 +333,7 @@ export default function GoalDetailScreen({ route, navigation }: GoalDetailScreen
     if (!user) return;
     
     try {
-      await QuestService.updateQuestStatus(questId, status, user.uid);
+      await QuestService.updateQuestStatus(questId, status, user.id); // ✅ user.uid → user.id
       
       // Update local state
       setQuests(prevQuests => 
@@ -378,7 +459,9 @@ export default function GoalDetailScreen({ route, navigation }: GoalDetailScreen
             try {
               await verifyManual(goal as any, true);
               await loadGoalData();
-              Alert.alert('Great!', 'Success recorded! Keep up the good work!');
+              
+              // Show share dialog after manual verification success
+              setShareDialogVisible(true);
             } catch (error) {
               Alert.alert('Error', 'Failed to record verification');
             }
@@ -449,10 +532,15 @@ export default function GoalDetailScreen({ route, navigation }: GoalDetailScreen
       };
 
       // Upload photo and get URL, then update signals
-      await verifyPhoto(goal as any, blob, photoSignals);
+      const photoUrl = await verifyPhoto(goal as any, blob, photoSignals);
 
       await loadGoalData();
-      Alert.alert('Uploaded', 'Photo verification uploaded successfully.');
+      
+      // Store photo URL and show share dialog
+      if (typeof photoUrl === 'string') {
+        setLastVerificationPhoto(photoUrl);
+      }
+      setShareDialogVisible(true);
     } catch (error) {
       console.error('[PhotoVerification] error', error);
       Alert.alert('Error', 'Failed to upload photo verification.');
@@ -520,14 +608,9 @@ export default function GoalDetailScreen({ route, navigation }: GoalDetailScreen
   // Check if we're in a modal context (no navigation.setOptions)
   const isModalContext = !navigation.setOptions;
 
-  // Prepare data for FlatList sections
+  // Prepare data for FlatList sections - ONLY QUESTS
   const listData = [
-    { type: 'header', id: 'header' },
-    { type: 'goalInfo', id: 'goalInfo' },
-    { type: 'progress', id: 'progress' },
-    { type: 'verification', id: 'verification' },
-    { type: 'quests', id: 'quests' },
-    { type: 'delete', id: 'delete' }
+    { type: 'quests', id: 'quests' }
   ];
 
   const renderItem = ({ item }: { item: { type: string; id: string } }) => {
@@ -668,11 +751,7 @@ export default function GoalDetailScreen({ route, navigation }: GoalDetailScreen
       
       case 'quests':
         return (
-          <View className="px-4">
-            <Text className="text-xl font-bold text-gray-800 mb-4">
-              퀀스트 목록
-            </Text>
-            
+          <View className="flex-1 px-4 pt-4">
             {questsLoading ? (
               <View className="items-center py-8">
                 <Ionicons name="hourglass-outline" size={48} color="#6B7280" />
@@ -682,13 +761,31 @@ export default function GoalDetailScreen({ route, navigation }: GoalDetailScreen
               </View>
             ) : (
               <FlatList
+                ref={questListRef} // ✅ Add ref for auto-scroll
                 data={quests.sort((a, b) => {
-                  // Sort by scheduled date (earliest first - 시간 순서가 빠를수록 아래에 있도록)
-                  const dateA = a.scheduledDate ? new Date(a.scheduledDate).getTime() : 0;
-                  const dateB = b.scheduledDate ? new Date(b.scheduledDate).getTime() : 0;
-                  return dateB - dateA; // Reverse order (latest first to show earliest at bottom when scrolled)
+                  // ✅ 듀오링고 스타일: 과거가 위, 미래가 아래 (오름차순)
+                  const dateA = a.targetDate ? new Date(a.targetDate).getTime() : 
+                               a.scheduledDate ? new Date(a.scheduledDate).getTime() : 0;
+                  const dateB = b.targetDate ? new Date(b.targetDate).getTime() :
+                               b.scheduledDate ? new Date(b.scheduledDate).getTime() : 0;
+                  return dateA - dateB; // ✅ 과거가 위, 미래가 아래
                 })}
                 keyExtractor={(item) => item.id}
+                onScrollToIndexFailed={(info) => {
+                  // Fallback: retry scroll with delay
+                  console.log('[GoalDetail] Scroll failed, retrying...', info);
+                  setTimeout(() => {
+                    try {
+                      questListRef.current?.scrollToIndex({
+                        index: info.index,
+                        animated: true,
+                        viewPosition: 0.7
+                      });
+                    } catch (e) {
+                      console.log('[GoalDetail] Retry scroll also failed:', e);
+                    }
+                  }, 200);
+                }}
                 renderItem={({ item: quest }) => (
                   <TouchableOpacity
                     style={{
@@ -841,40 +938,200 @@ export default function GoalDetailScreen({ route, navigation }: GoalDetailScreen
 
   return (
     <View className="flex-1 bg-gray-50">
-      {/* Custom Header for Modal Context */}
-      {isModalContext && (
-        <View 
-          className="bg-white border-b border-gray-200 px-4 flex-row items-center justify-between"
-          style={{ paddingTop: insets.top + 12, paddingBottom: 12 }}
+      {/* Header with Goal Title */}
+      <View 
+        className="bg-white border-b border-gray-200 px-4 flex-row items-center justify-between"
+        style={{ paddingTop: isModalContext ? insets.top + 12 : 12, paddingBottom: 12 }}
+      >
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          className="flex-row items-center"
+          style={{ minHeight: 44, minWidth: 44 }}
         >
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            className="flex-row items-center"
-            style={{ minHeight: 44, minWidth: 44 }} // 터치 영역 확보
-          >
-            <Ionicons name="arrow-back" size={24} color="#374151" />
-            <Text className="text-gray-700 font-medium ml-2">Back</Text>
-          </TouchableOpacity>
-          <Text className="text-lg font-semibold text-gray-900">Goal Details</Text>
-          <TouchableOpacity
-            onPress={handleDeleteGoal}
-            className="p-1"
-            style={{ minHeight: 44, minWidth: 44 }} // 터치 영역 확보
-          >
-            <Ionicons name="trash-outline" size={24} color="#DC2626" />
-          </TouchableOpacity>
+          <Ionicons name="arrow-back" size={24} color="#374151" />
+        </TouchableOpacity>
+        
+        <View className="flex-1 mx-4">
+          <Text className="text-lg font-semibold text-gray-900 text-center" numberOfLines={1}>
+            {goal?.title || '목표'}
+          </Text>
+          <Text className="text-xs text-gray-500 text-center mt-1">
+            총 {quests.length}개 퀘스트
+          </Text>
         </View>
-      )}
+        
+        <TouchableOpacity
+          onPress={handleDeleteGoal}
+          className="p-1"
+          style={{ minHeight: 44, minWidth: 44 }}
+        >
+          <Ionicons name="trash-outline" size={24} color="#DC2626" />
+        </TouchableOpacity>
+      </View>
       
-      <FlatList
-        data={listData}
-        keyExtractor={(item) => item.id}
-        renderItem={renderItem}
-        contentContainerStyle={{ paddingBottom: 90 }} // Add bottom padding for tab bar
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-        showsVerticalScrollIndicator={false}
+      {/* Quest List Only */}
+      <View className="flex-1 px-4 pt-4">
+        {questsLoading ? (
+          <View className="items-center py-8">
+            <Ionicons name="hourglass-outline" size={48} color="#6B7280" />
+            <Text className="text-gray-600 mt-2 text-center">
+              퀀스트를 불러오는 중...
+            </Text>
+          </View>
+        ) : quests.length === 0 ? (
+          <View className="items-center py-12">
+            <Ionicons name="list" size={64} color="#D1D5DB" />
+            <Text className="text-lg font-semibold text-gray-600 mt-4">퀘스트가 없습니다</Text>
+            <Text className="text-sm text-gray-500 mt-2 text-center">
+              목표를 생성할 때 퀘스트가 자동으로 만들어집니다
+            </Text>
+          </View>
+        ) : (
+          <FlatList
+            data={quests.sort((a, b) => {
+              // Sort by target date or scheduled date (latest first at top, earliest at bottom)
+              const dateA = a.targetDate ? new Date(a.targetDate).getTime() : 
+                           a.scheduledDate ? new Date(a.scheduledDate).getTime() : 0;
+              const dateB = b.targetDate ? new Date(b.targetDate).getTime() :
+                           b.scheduledDate ? new Date(b.scheduledDate).getTime() : 0;
+              return dateB - dateA; // ✅ 늦은 시간이 위, 빠른 시간이 아래 (역순)
+            })}
+            keyExtractor={(item) => `quest-detail-${item.id}`}
+            renderItem={({ item: quest }) => (
+              <View
+                style={{
+                  backgroundColor: '#FFFFFF',
+                  borderRadius: 12,
+                  padding: 16,
+                  marginBottom: 12,
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 1 },
+                  shadowOpacity: 0.05,
+                  shadowRadius: 2,
+                  elevation: 1,
+                  borderLeftWidth: 4,
+                  borderLeftColor: quest.status === 'completed' ? '#10B981' : 
+                                  quest.status === 'failed' ? '#EF4444' : 
+                                  quest.status === 'pending' ? '#F59E0B' : '#6B7280'
+                }}
+              >
+                {/* Quest Title & Description */}
+                <View className="mb-3">
+                  <Text className="text-lg font-semibold text-gray-900 mb-1">
+                    {quest.title}
+                  </Text>
+                  {quest.description && (
+                    <Text className="text-sm text-gray-600 leading-5">
+                      {quest.description}
+                    </Text>
+                  )}
+                </View>
+
+                {/* Quest Metadata */}
+                <View className="flex-row flex-wrap mb-3">
+                  {(quest.targetDate || quest.scheduledDate) && (
+                    <View className="flex-row items-center mr-4 mb-2">
+                      <Ionicons name="calendar" size={16} color="#6B7280" />
+                      <Text className="text-sm text-gray-600 ml-1">
+                        {quest.targetDate ? new Date(quest.targetDate).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric', weekday: 'short' }) :
+                         quest.scheduledDate ? new Date(quest.scheduledDate).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric', weekday: 'short' }) : ''}
+                      </Text>
+                    </View>
+                  )}
+                  
+                  {quest.verification && quest.verification.length > 0 && (
+                    <View className="flex-row items-center mr-4 mb-2">
+                      <Ionicons name="shield-checkmark" size={16} color="#6B7280" />
+                      <Text className="text-sm text-gray-600 ml-1">
+                        {quest.verification.join(', ')}
+                      </Text>
+                    </View>
+                  )}
+                  
+                  {quest.difficulty && (
+                    <View className="flex-row items-center mb-2">
+                      <Ionicons name="star" size={16} color="#F59E0B" />
+                      <Text className="text-sm text-gray-600 ml-1">
+                        {quest.difficulty}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+
+                {/* Quest Status Badge */}
+                <View className="flex-row items-center justify-between">
+                  <View className={`px-3 py-1 rounded-full ${
+                    quest.status === 'completed' ? 'bg-green-100' :
+                    quest.status === 'failed' ? 'bg-red-100' :
+                    quest.status === 'pending' ? 'bg-yellow-100' : 'bg-gray-100'
+                  }`}>
+                    <Text className={`text-xs font-semibold ${
+                      quest.status === 'completed' ? 'text-green-700' :
+                      quest.status === 'failed' ? 'text-red-700' :
+                      quest.status === 'pending' ? 'text-yellow-700' : 'text-gray-700'
+                    }`}>
+                      {quest.status === 'completed' ? '✅ 완료' :
+                       quest.status === 'failed' ? '❌ 실패' :
+                       quest.status === 'pending' ? '⏳ 대기 중' : '❓ 알 수 없음'}
+                    </Text>
+                  </View>
+
+                  {/* Quest Actions */}
+                  {quest.status === 'pending' && (
+                    <View className="flex-row">
+                      <TouchableOpacity
+                        className="bg-green-500 px-4 py-2 rounded-lg mr-2"
+                        onPress={() => handleQuestStatusChange(quest.id, 'completed')}
+                      >
+                        <Text className="text-white text-sm font-semibold">완료</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        className="bg-gray-400 px-4 py-2 rounded-lg"
+                        onPress={() => handleQuestStatusChange(quest.id, 'skipped')}
+                      >
+                        <Text className="text-white text-sm font-semibold">건너뛰기</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                  
+                  {quest.status === 'completed' && (
+                    <TouchableOpacity
+                      className="bg-yellow-500 px-4 py-2 rounded-lg"
+                      onPress={() => handleQuestStatusChange(quest.id, 'pending')}
+                    >
+                      <Text className="text-white text-sm font-semibold">되돌리기</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+            )}
+            refreshControl={
+              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+            }
+            contentContainerStyle={{ paddingBottom: 20 }}
+            showsVerticalScrollIndicator={false}
+          />
+        )}
+      </View>
+
+      {/* Share to Feed Dialog */}
+      <ShareToFeedDialog
+        visible={shareDialogVisible}
+        onClose={() => {
+          setShareDialogVisible(false);
+          setLastVerificationPhoto(null);
+        }}
+        onSuccess={() => {
+          // Could navigate to Feed tab here
+          console.log('[GOAL:share:success] Shared to feed');
+        }}
+        questTitle={goal.title}
+        goalId={goal.id}
+        userId={user?.uid || ''}
+        userName={user?.displayName}
+        photoUrls={lastVerificationPhoto ? [lastVerificationPhoto] : []}
+        hasLocation={!!goal.targetLocation}
+        hasTime={true}
       />
     </View>
   );
