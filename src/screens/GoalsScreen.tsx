@@ -17,10 +17,10 @@ import {
 import CreateGoalModal from '../components/CreateGoalModal';
 import { useAuth } from '../hooks/useAuth';
 import { db } from '../services/firebase';
-import { GoalService } from '../services/goalService';
 import { VerificationService } from '../services/verificationService';
 import { Goal, RootStackParamList } from '../types';
-import GoalDetailScreenV2 from './GoalDetailScreenV2'; // ✅ Duolingo 스타일 V2
+import { Quest } from '../types/quest';
+import GoalDetailScreenV2 from './GoalDetailScreenV2';
 
 type GoalsScreenNavigationProp = StackNavigationProp<RootStackParamList>;
 
@@ -30,357 +30,173 @@ interface GoalWithProgress extends Goal {
   nextSession?: string;
   completedSessions?: number;
   totalSessions?: number;
-  weekInfo?: string;
-  timeLocation?: string;
-  successCriteria?: string;
-  monthInfo?: string;
-  requiredDocs?: string[];
-  optionalDocs?: string[];
-  partner?: {
-    name?: string;
-    role?: string;
-    required?: boolean;
-    id?: string;
-    inviteEmail?: string;
-    status?: "pending" | "accepted" | "declined";
-  };
+  categoryLabel?: string;
 }
 
-// Goal Card Component matching the design
+interface TodayQuest extends Quest {
+  goalTitle: string;
+  goalCategory?: string;
+  scheduledTime?: Date;
+}
+
+// 스크린샷 스타일의 간결한 Goal Card
 const GoalCard = React.memo(({ 
   item, 
-  onPress,
-  onDelete 
+  onPress 
 }: { 
   item: GoalWithProgress; 
   onPress: (goal: GoalWithProgress) => void;
-  onDelete: (goal: GoalWithProgress) => void;
 }) => {
-  const getTypeColor = (type: string) => {
-    switch (type?.toLowerCase()) {
-      case 'schedule':
-        return 'bg-blue-500';
-      case 'frequency':
-        return 'bg-green-500';
-      case 'partner':
-        return 'bg-purple-500';
-      default:
-        return 'bg-gray-500';
-    }
+  const getCategoryEmoji = (category?: string) => {
+    if (!category) return '🎯';
+    if (category.includes('운동') || category.includes('건강')) return '💪';
+    if (category.includes('공부') || category.includes('성장')) return '📚';
+    return '🎯';
   };
 
-  const getTypeFromGoal = (goal: GoalWithProgress) => {
-    // First check if type is explicitly set
-    const goalWithType = goal as any;
-    if (goalWithType.type) {
-      console.log('[GoalsScreen] Goal has explicit type:', goalWithType.type);
-      return goalWithType.type.charAt(0).toUpperCase() + goalWithType.type.slice(1); // Capitalize first letter
-    }
-    
-    // Fallback to inference - use any to access extended properties
-    const goalData = goal as any;
-    if (goalData.partner?.required || goalData.partner?.id || goalData.partner?.inviteEmail) return 'Partner';
-    // Check for schedule indicators
-    if (goal.schedule || goal.weeklySchedule || goal.weeklyWeekdays || goalData.calendarEvents) return 'Schedule';
-    // Default to frequency for other cases
-    return 'Frequency';
+  const getCategoryLabel = (item: GoalWithProgress) => {
+    return item.categoryLabel || '운동 & 건강';
   };
 
-  // Helper functions to extract real data from goal
-  const getDateRangeInfo = (goal: GoalWithProgress) => {
-    let startDate, endDate;
-    
-    // Try multiple ways to get dates with better error handling
-    if (goal.duration?.startDate) {
-      startDate = goal.duration.startDate;
-    } else if (goal.startDate) {
-      startDate = goal.startDate instanceof Date ? goal.startDate.toISOString().split('T')[0] : goal.startDate;
-    }
-    
-    if (goal.duration?.endDate) {
-      endDate = goal.duration.endDate;
-    } else if (goal.endDate) {
-      endDate = goal.endDate instanceof Date ? goal.endDate.toISOString().split('T')[0] : goal.endDate;
-    }
-    
-    console.log('[GoalsScreen] Date parsing for goal', goal.id, ':', { startDate, endDate });
-    
-    // Fallback to current date if no dates available
-    if (!startDate && !endDate) {
-      const today = new Date();
-      const twoWeeksLater = new Date(today.getTime() + 14 * 24 * 60 * 60 * 1000);
-      return `${today.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${twoWeeksLater.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
-    }
-    
-    if (startDate && endDate) {
-      try {
-        // Handle different date formats
-        let start, end;
-        
-        if (typeof startDate === 'string') {
-          start = new Date(startDate);
-        } else if (startDate && typeof startDate === 'object' && startDate.seconds) {
-          // Firebase Timestamp format
-          start = new Date(startDate.seconds * 1000);
-        } else {
-          start = new Date(startDate);
-        }
-        
-        if (typeof endDate === 'string') {
-          end = new Date(endDate);
-        } else if (endDate && typeof endDate === 'object' && endDate.seconds) {
-          // Firebase Timestamp format
-          end = new Date(endDate.seconds * 1000);
-        } else {
-          end = new Date(endDate);
-        }
-        
-        // Check if dates are valid
-        if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-          console.warn('[GoalsScreen] Invalid dates after parsing:', { start, end });
-          return 'Date parsing error';
-        }
-        
-        const startStr = start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-        const endStr = end.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-        return `${startStr} - ${endStr}`;
-      } catch (error) {
-        console.warn('[GoalsScreen] Date parsing error:', error);
-        return 'Date error';
-      }
-    }
-    return 'No end date';
+  const getProgressText = (item: GoalWithProgress) => {
+    const completed = item.completedSessions || 0;
+    const total = item.totalSessions || 0;
+    if (total === 0) return '시작 전';
+    return `${completed}/${total} 완료 ✓`;
   };
 
-  const getCurrentWeekInfo = (goal: GoalWithProgress) => {
-    let startDate, endDate;
+  const getNextScheduleText = (item: GoalWithProgress) => {
+    if (item.nextSession) return item.nextSession;
     
-    // Try multiple ways to get dates
-    if (goal.duration?.startDate) {
-      startDate = goal.duration.startDate;
-    } else if (goal.startDate) {
-      startDate = goal.startDate instanceof Date ? goal.startDate.toISOString().split('T')[0] : goal.startDate;
-    }
-    
-    if (goal.duration?.endDate) {
-      endDate = goal.duration.endDate;
-    } else if (goal.endDate) {
-      endDate = goal.endDate instanceof Date ? goal.endDate.toISOString().split('T')[0] : goal.endDate;
-    }
-    
-    if (!startDate) return 'Week 1 of 1';
-    
-    try {
-      const start = new Date(startDate);
+    // Calculate next session from weeklyWeekdays
+    if (item.weeklyWeekdays && item.weeklyWeekdays.length > 0) {
       const now = new Date();
+      const today = now.getDay();
+      const nextDay = item.weeklyWeekdays.find(d => d > today) || item.weeklyWeekdays[0];
+      const daysUntil = nextDay > today ? nextDay - today : 7 - today + nextDay;
+      const nextDate = new Date(now);
+      nextDate.setDate(now.getDate() + daysUntil);
       
-      // Check if start date is valid
-      if (isNaN(start.getTime())) {
-        return 'Week 1 of 1';
-      }
+      // Get time from schedule
+      const timeStr = item.weeklySchedule?.[nextDay.toString()]?.[0] || '9:00';
+      const [hours, minutes] = timeStr.split(':').map(Number);
+      nextDate.setHours(hours || 9, minutes || 0);
       
-      const diffTime = now.getTime() - start.getTime();
-      const diffWeeks = Math.floor(diffTime / (1000 * 60 * 60 * 24 * 7)) + 1;
-      
-      // Calculate total weeks
-      if (endDate) {
-        const end = new Date(endDate);
-        if (!isNaN(end.getTime())) {
-          const totalTime = end.getTime() - start.getTime();
-          const totalWeeks = Math.ceil(totalTime / (1000 * 60 * 60 * 24 * 7));
-          return `Week ${Math.max(1, diffWeeks)} of ${Math.max(1, totalWeeks)}`;
-        }
-      }
-      
-      return `Week ${Math.max(1, diffWeeks)}`;
-    } catch (error) {
-      console.warn('Week calculation error:', error);
-      return 'Week 1 of 1';
+      return `${nextDate.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })} ${timeStr}에 수행하세요`;
     }
+    
+    return '진행 중';
   };
-
-  const getVerificationMethodsText = (goal: GoalWithProgress) => {
-    const methods = goal.verificationMethods || [];
-    if (methods.length === 0) return 'No verification';
-    
-    // Format verification methods
-    const formattedMethods = methods.map(method => {
-      switch (method) {
-        case 'manual': return 'Manual';
-        case 'location': return 'Location';
-        case 'photo': return 'Photo';
-        case 'time': return 'Time';
-        case 'screentime': return 'ScreenTime';
-        default: return method;
-      }
-    });
-    
-    return formattedMethods.join(' + ');
-  };
-
-  const getNextSessionInfo = (goal: GoalWithProgress, type: string) => {
-    if (type === 'Schedule') {
-      // For schedule goals, get next scheduled time
-      const now = new Date();
-      const today = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
-      
-      if (goal.weeklyWeekdays && goal.weeklyWeekdays.length > 0) {
-        const nextWeekday = goal.weeklyWeekdays.find(day => day > today) || goal.weeklyWeekdays[0];
-        const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-        
-        // Get time from weekly schedule if available
-        const dayKey = nextWeekday.toString();
-        const times = goal.weeklySchedule?.[dayKey];
-        const timeStr = times && times.length > 0 ? times[0] : '9:00 AM';
-        
-        return `Next: ${dayNames[nextWeekday]} ${timeStr}`;
-      }
-      return 'Next: Not scheduled';
-    }
-    
-    if (type === 'Frequency') {
-      const targetCount = goal.frequency?.count || 3;
-      const currentCount = goal.completedSessions || 0;
-      return `This Week: ${currentCount}/${targetCount} completed`;
-    }
-    
-    if (type === 'Partner' && goal.partner) {
-      const partnerName = goal.partner.name || 'Partner';
-      const partnerRole = goal.partner.role || 'Collaborator';
-      return `Partner: ${partnerName} (${partnerRole}) | Next: Sun, 2:00 PM`;
-    }
-    
-    return 'No schedule info available';
-  };
-
-  const type = getTypeFromGoal(item);
 
   return (
     <TouchableOpacity
       onPress={() => onPress(item)}
-      className="bg-white rounded-xl p-4 mb-3 shadow-sm"
-      style={{ 
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 2,
-        elevation: 1
-      }}
+      className="bg-white rounded-2xl p-4 mb-3 border border-gray-100"
       activeOpacity={0.7}
     >
-      {/* Type Badge */}
-      <View className="flex-row items-center justify-between mb-3">
-        <View className={`${getTypeColor(type)} rounded-full px-3 py-1`}>
-          <Text className="text-white text-xs font-medium">{type}</Text>
+      {/* Top: Emoji + Title */}
+      <View className="flex-row items-start mb-2">
+        <Text className="text-2xl mr-2">{getCategoryEmoji(item.categoryLabel)}</Text>
+        <View className="flex-1">
+          <Text className="text-base font-bold text-gray-900" numberOfLines={2}>
+            {item.title || 'Untitled Goal'}
+          </Text>
         </View>
-        <TouchableOpacity onPress={() => onDelete(item)}>
-          <Ionicons name="ellipsis-horizontal" size={20} color="#6B7280" />
+        <TouchableOpacity>
+          <Ionicons name="pencil" size={18} color="#9CA3AF" />
         </TouchableOpacity>
       </View>
 
-      {/* Goal Title */}
-      <Text className="text-lg font-semibold text-gray-900 mb-2" numberOfLines={2}>
-        {item.title || 'Untitled Goal'}
-      </Text>
-
-      {/* Goal Details */}
-      <Text className="text-sm text-gray-600 mb-3">
-        {getNextSessionInfo(item, type) || 'No schedule info'}
+      {/* Category Label */}
+      <Text className="text-sm text-blue-600 font-medium mb-3">
+        {getCategoryLabel(item)}
       </Text>
 
       {/* Progress Bar */}
-      <View className="mb-3">
-          <View className="bg-gray-200 rounded-full h-2">
-          <View 
-            className="bg-yellow-400 h-2 rounded-full"
-            style={{ width: `${Math.min(item.successRate || 0, 100)}%` }} // ✅ Cap at 100%
-          />
-        </View>
+      <View className="bg-gray-100 rounded-full h-2 mb-2 overflow-hidden">
+        <View 
+          className="bg-blue-600 h-2 rounded-full"
+          style={{ width: `${Math.min(item.successRate || 0, 100)}%` }}
+        />
       </View>
 
-      {/* Bottom Info */}
-      <View className="space-y-1">
-        {type === 'Schedule' && (
-          <>
-            <Text className="text-xs text-gray-600">
-              ✅ {item.completedSessions || 0}/{item.totalSessions || 0} quests completed
-            </Text>
-            <View className="flex-row items-center justify-between">
-              <Text className="text-xs text-gray-600">
-                📅 {getDateRangeInfo(item)}
-              </Text>
-              <Text className="text-xs text-gray-600">
-                🕐 {getVerificationMethodsText(item)}
-              </Text>
-            </View>
-            <View className="flex-row items-center justify-between">
-              <Text className="text-xs text-gray-600">
-                📊 {getCurrentWeekInfo(item)}
-              </Text>
-              <Text className="text-xs text-gray-600">
-                📈 Progress: {Math.round(item.successRate || 0)}% {/* ✅ 실제 달성률 */}
-              </Text>
-            </View>
-          </>
-        )}
-        
-        {type === 'Frequency' && (
-          <>
-            <Text className="text-xs text-gray-600">
-              ✅ {item.completedSessions || 0}/{item.totalSessions || 0} quests completed
-            </Text>
-            <View className="flex-row items-center justify-between">
-              <Text className="text-xs text-gray-600">
-                📅 {getDateRangeInfo(item)}
-              </Text>
-              <Text className="text-xs text-gray-600">
-                🕐 {getVerificationMethodsText(item)}
-              </Text>
-            </View>
-            <View className="flex-row items-center justify-between">
-              <Text className="text-xs text-gray-600">
-                📊 {getCurrentWeekInfo(item)}
-              </Text>
-              <Text className="text-xs text-gray-600">
-                📈 Progress: {Math.round(item.successRate || 0)}% {/* ✅ 실제 달성률 */}
-              </Text>
-            </View>
-          </>
-        )}
+      {/* Bottom: Progress + Schedule Info */}
+      <View className="flex-row items-center justify-between">
+        <Text className="text-xs text-gray-900 font-semibold">
+          {getProgressText(item)}
+        </Text>
+        <View className="flex-row items-center">
+          <Ionicons name="refresh-circle" size={14} color="#9CA3AF" style={{ marginRight: 4 }} />
+          <Text className="text-xs text-gray-500">{getNextScheduleText(item)}</Text>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+});
 
-        {type === 'Partner' && (
-          <>
-            <Text className="text-xs text-gray-600">
-              ✅ {item.completedSessions || 0}/{item.totalSessions || 0} quests completed
-            </Text>
-            <View className="flex-row items-center justify-between">
-              <Text className="text-xs text-gray-600">
-                📅 {getDateRangeInfo(item)}
-              </Text>
-              <Text className="text-xs text-gray-600">
-                👥 Partner Verified
-              </Text>
-            </View>
-            <View className="flex-row items-center justify-between">
-              <Text className="text-xs text-gray-600">
-                📊 {getCurrentWeekInfo(item)}
-              </Text>
-              <Text className="text-xs text-gray-600">
-                📈 Progress: {Math.round(item.successRate || 0)}% {/* ✅ 실제 달성률 */}
-              </Text>
-            </View>
-            {item.requiredDocs && item.requiredDocs.length > 0 && (
-              <Text className="text-xs text-gray-600">
-                📄 Required: {item.requiredDocs.join(', ')}
-              </Text>
-            )}
-            {item.optionalDocs && item.optionalDocs.length > 0 && (
-              <Text className="text-xs text-gray-600">
-                ⭐ Optional: {item.optionalDocs.join(', ')}
-              </Text>
-            )}
-          </>
+// 투데이 탭의 퀘스트 카드
+const TodayQuestCard = React.memo(({ 
+  quest,
+  onPress 
+}: { 
+  quest: TodayQuest;
+  onPress: () => void;
+}) => {
+  const getCategoryEmoji = (category?: string) => {
+    if (!category) return '🎯';
+    if (category.includes('운동') || category.includes('건강')) return '💪';
+    if (category.includes('공부') || category.includes('성장')) return '📚';
+    return '🎯';
+  };
+
+  const getTimeText = () => {
+    if (quest.scheduledTime) {
+      const time = new Date(quest.scheduledTime);
+      const month = String(time.getMonth() + 1).padStart(2, '0');
+      const day = String(time.getDate()).padStart(2, '0');
+      const hours = String(time.getHours()).padStart(2, '0');
+      const minutes = String(time.getMinutes()).padStart(2, '0');
+      return `${month}-${day} ${hours}:${minutes}`;
+    }
+    return '시간 미정';
+  };
+
+  const getStatusText = () => {
+    if (quest.status === 'completed') return '완료';
+    return '진행';
+  };
+
+  const isCompleted = quest.status === 'completed';
+
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      className={`rounded-2xl p-4 mb-3 ${isCompleted ? 'bg-green-50 border-2 border-green-400' : 'bg-white border border-gray-200'}`}
+      activeOpacity={0.7}
+    >
+      {/* Goal Title with time */}
+      <View className="flex-row items-center justify-between mb-2">
+        <Text className="text-xs text-gray-600 font-medium">
+          {getTimeText()} 수행하세요
+        </Text>
+        {isCompleted && (
+          <View className="bg-green-500 rounded-full px-3 py-1">
+            <Text className="text-white text-xs font-bold">✓ 완료</Text>
+          </View>
         )}
+        {!isCompleted && (
+          <TouchableOpacity className="bg-white rounded-full px-3 py-1 border border-gray-200">
+            <Text className="text-gray-700 text-xs font-medium">진행하기 →</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* Quest Title */}
+      <View className="flex-row items-center">
+        <Text className="text-xl mr-2">{getCategoryEmoji(quest.goalCategory)}</Text>
+        <Text className="text-base font-bold text-gray-900 flex-1" numberOfLines={2}>
+          {quest.title || quest.goalTitle}
+        </Text>
       </View>
     </TouchableOpacity>
   );
@@ -390,41 +206,77 @@ export default function GoalsScreen() {
   const { user } = useAuth();
   const navigation = useNavigation<GoalsScreenNavigationProp>();
   const [goals, setGoals] = useState<GoalWithProgress[]>([]);
+  const [todayQuests, setTodayQuests] = useState<TodayQuest[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [searchText, setSearchText] = useState('');
+  const [selectedTab, setSelectedTab] = useState<'goals' | 'today'>('goals');
   const [selectedCategory, setSelectedCategory] = useState('All');
-  const [selectedType, setSelectedType] = useState('All');
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [goalToDelete, setGoalToDelete] = useState<GoalWithProgress | null>(null);
-  const [deletingGoal, setDeletingGoal] = useState(false);
   const [showGoalDetail, setShowGoalDetail] = useState(false);
   const [selectedGoal, setSelectedGoal] = useState<GoalWithProgress | null>(null);
   
   const mountedRef = useRef(true);
 
-  const categories = ['All', 'Health & Fitness', 'Study & Growth'];
-  const types = ['All', 'Schedule', 'Frequency', 'Partner'];
+  const categories = ['All', '공부 & 성장', '운동 & 건강', '수면'];
 
-  // Check navigation readiness
-  useEffect(() => {
+  // Fetch today's quests for all goals
+  const fetchTodayQuests = useCallback(async () => {
+    if (!user) return;
+
     try {
-      const state = navigation.getState();
-      console.log('[GoalsScreen] Navigation state:', state?.routeNames ? 'Ready' : 'Not ready');
+      const { QuestService } = await import('../services/questService');
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+
+      const allQuests: TodayQuest[] = [];
+
+      // Fetch quests for each goal
+      for (const goal of goals) {
+        const quests = await QuestService.getQuestsForGoal(goal.id, user.id);
+        
+        // Filter today's quests and upcoming quests
+        const relevantQuests = quests.filter(q => {
+          if (!q.targetDate) return false;
+          const questDate = new Date(q.targetDate);
+          const now = new Date();
+          
+          // Include today's quests and near-future quests (within 7 days)
+          const sevenDaysFromNow = new Date(now);
+          sevenDaysFromNow.setDate(now.getDate() + 7);
+          
+          return questDate >= today && questDate <= sevenDaysFromNow;
+        });
+
+        // Add goal info to quests
+        const questsWithGoalInfo = relevantQuests.map(q => ({
+          ...q,
+          goalTitle: goal.title,
+          goalCategory: (goal as any).categoryLabel || '운동 & 건강',
+          scheduledTime: q.targetDate ? new Date(q.targetDate) : undefined,
+        } as TodayQuest));
+
+        allQuests.push(...questsWithGoalInfo);
+      }
+
+      // Sort by scheduled time (nearest first)
+      allQuests.sort((a, b) => {
+        if (!a.scheduledTime || !b.scheduledTime) return 0;
+        return a.scheduledTime.getTime() - b.scheduledTime.getTime();
+      });
+
+      setTodayQuests(allQuests);
     } catch (error) {
-      console.log('[GoalsScreen] Navigation not ready yet:', error.message);
+      console.error('[GoalsScreen] Error fetching today quests:', error);
     }
-  }, [navigation]);
+  }, [user, goals]);
 
   // Setup realtime listener for goals
   useEffect(() => {
     if (!user) return;
 
     console.log('[GoalsScreen] Setting up realtime listener for goals');
-    
-    console.log('[GoalsScreen] Setting up goals listener for user:', user.id);
-    console.log('[GoalsScreen] Goals collection path:', `users/${user.id}/goals`);
     
     const goalsQuery = query(
       collection(db, 'users', user.id, 'goals'),
@@ -440,60 +292,37 @@ export default function GoalsScreen() {
         const goalsWithProgress = await Promise.all(
           snapshot.docs.map(async (doc) => {
             const goal = { id: doc.id, ...doc.data() } as Goal;
-            console.log('[GoalsScreen] Raw goal data for', doc.id, ':', {
-              title: goal.title,
-              type: (goal as any).type,
-              successRate: (goal as any).successRate,
-              verificationMethods: goal.verificationMethods,
-              duration: goal.duration,
-              weeklyWeekdays: goal.weeklyWeekdays,
-              weeklySchedule: goal.weeklySchedule
-            });
-            console.log('[GoalsScreen] FULL raw data:', goal);
+            
             try {
-              // ✅ Fetch real quest data
               const { QuestService } = await import('../services/questService');
               const [successRate, recentVerifications, quests] = await Promise.all([
                 VerificationService.calculateGoalSuccessRate(goal.id),
                 VerificationService.getRecentGoalVerifications(goal.id, 7),
-                QuestService.getQuestsForGoal(goal.id, user.id) // ✅ Get actual quests
+                QuestService.getQuestsForGoal(goal.id, user.id)
               ]);
 
-              // ✅ Calculate from real quest data
               const totalSessions = quests.length;
               const completedSessions = quests.filter(q => q.status === 'completed').length;
               
-              // ✅ Calculate actual success rate from quests
               const actualSuccessRate = totalSessions > 0 
                 ? Math.round((completedSessions / totalSessions) * 100)
                 : 0;
               
-              const processedGoal = {
+              return {
                 ...goal,
-                successRate: actualSuccessRate, // ✅ Use actual calculated success rate
+                successRate: actualSuccessRate,
                 recentVerifications: recentVerifications?.length || 0,
                 completedSessions,
                 totalSessions,
-                // Keep partner data if it exists
-                partner: (goal as any).partner || undefined
+                categoryLabel: (goal as any).category || '운동 & 건강',
               } as GoalWithProgress;
-              
-              console.log('[GoalsScreen] Processed goal:', {
-                id: goal.id,
-                title: goal.title,
-                type: (goal as any).type,
-                questsCount: totalSessions,
-                completedQuests: completedSessions,
-                successRate: actualSuccessRate
-              });
-              
-              return processedGoal;
             } catch (error) {
               console.warn(`[GoalsScreen] Error loading progress for goal ${goal.id}:`, error);
               return {
                 ...goal,
                 successRate: 0,
-                recentVerifications: 0
+                recentVerifications: 0,
+                categoryLabel: '운동 & 건강',
               } as GoalWithProgress;
             }
           })
@@ -534,6 +363,13 @@ export default function GoalsScreen() {
     };
   }, [user]);
 
+  // Fetch today quests when goals change or tab switches to today
+  useEffect(() => {
+    if (selectedTab === 'today' && goals.length > 0) {
+      fetchTodayQuests();
+    }
+  }, [selectedTab, goals, fetchTodayQuests]);
+
   useEffect(() => {
     return () => {
       mountedRef.current = false;
@@ -545,6 +381,15 @@ export default function GoalsScreen() {
     setSelectedGoal(goal);
     setShowGoalDetail(true);
   }, []);
+
+  const handleQuestPress = useCallback((quest: TodayQuest) => {
+    console.log('[QUEST:press]', { id: quest.id, goalId: quest.goalId });
+    // Find the goal and navigate to it
+    const goal = goals.find(g => g.id === quest.goalId);
+    if (goal) {
+      handleGoalPress(goal);
+    }
+  }, [goals, handleGoalPress]);
 
   const handleCreateGoal = useCallback(() => {
     setShowCreateModal(true);
@@ -558,120 +403,94 @@ export default function GoalsScreen() {
     setRefreshing(true);
   }, []);
 
-  const handleDeleteGoal = useCallback((goal: GoalWithProgress) => {
-    console.log('[GoalsScreen] handleDeleteGoal called with goal:', {
-      id: goal.id,
-      title: goal.title,
-      userId: goal.userId
-    });
-    setGoalToDelete(goal);
-    setShowDeleteModal(true);
-  }, []);
-
-  const confirmDeleteGoal = useCallback(async () => {
-    if (!goalToDelete || !user) {
-      console.error('[GoalsScreen] confirmDeleteGoal: Missing required data', { goalToDelete: !!goalToDelete, user: !!user });
-      return;
-    }
-    
-    console.log('[GoalsScreen] Starting goal deletion:', {
-      goalId: goalToDelete.id,
-      userId: user.id,
-      goalTitle: goalToDelete.title
-    });
-    
-    try {
-      setDeletingGoal(true);
-      
-      // Delete from the user's goals subcollection
-      console.log('[GoalsScreen] Calling GoalService.deleteGoal...');
-      await GoalService.deleteGoal(goalToDelete.id, user.id);
-      console.log('[GoalsScreen] GoalService.deleteGoal completed successfully');
-      
-      // Close modal
-      setShowDeleteModal(false);
-      setGoalToDelete(null);
-      
-      console.log(`[GoalsScreen] Goal ${goalToDelete.id} deleted successfully`);
-      Alert.alert('Success', 'Goal deleted successfully');
-    } catch (error) {
-      console.error('[GoalsScreen] Error deleting goal:', error);
-      console.error('[GoalsScreen] Error details:', {
-        message: error?.message,
-        code: error?.code,
-        stack: error?.stack
-      });
-      Alert.alert('Error', `Failed to delete goal: ${error?.message || 'Unknown error'}`);
-    } finally {
-      setDeletingGoal(false);
-    }
-  }, [goalToDelete, user]);
-
-  const cancelDeleteGoal = useCallback(() => {
-    setShowDeleteModal(false);
-    setGoalToDelete(null);
-  }, []);
-
-  const keyExtractor = useCallback((item: GoalWithProgress) => item.id, []);
+  const goalKeyExtractor = useCallback((item: GoalWithProgress) => item.id, []);
+  const questKeyExtractor = useCallback((item: TodayQuest) => item.id, []);
 
   const renderGoalItem = useCallback(({ item }: { item: GoalWithProgress }) => (
-    <GoalCard item={item} onPress={handleGoalPress} onDelete={handleDeleteGoal} />
-  ), [handleGoalPress, handleDeleteGoal]);
+    <GoalCard item={item} onPress={handleGoalPress} />
+  ), [handleGoalPress]);
+
+  const renderTodayQuestItem = useCallback(({ item }: { item: TodayQuest }) => (
+    <TodayQuestCard quest={item} onPress={() => handleQuestPress(item)} />
+  ), [handleQuestPress]);
 
   if (loading) {
     return (
-      <View className="flex-1 justify-center items-center bg-gray-50">
-        <ActivityIndicator size="large" color="#1E3A8A" />
-        <Text className="mt-4 text-gray-600">Loading your goals...</Text>
+      <View className="flex-1 justify-center items-center bg-white">
+        <ActivityIndicator size="large" color="#3B82F6" />
+        <Text className="mt-4 text-gray-600">Loading...</Text>
       </View>
     );
   }
 
+  const filteredGoals = selectedCategory === 'All' 
+    ? goals 
+    : goals.filter(g => g.categoryLabel === selectedCategory);
+
   return (
-    <View className="flex-1 bg-gray-50">
-      {/* Navy Header */}
-      <View className="bg-navy px-4 pt-12 pb-4">
-        {/* My Goals Title and Notification */}
+    <View className="flex-1 bg-white">
+      {/* Header */}
+      <View className="px-4 pt-14 pb-4">
+        {/* Title and Notification */}
         <View className="flex-row items-center justify-between mb-4">
-          <Text className="text-white text-xl font-bold">My Goals</Text>
+          <Text className="text-2xl font-bold text-gray-900">나의 목표</Text>
           <TouchableOpacity>
-            <Ionicons name="notifications-outline" size={24} color="white" />
+            <Ionicons name="notifications-outline" size={28} color="#3B82F6" />
           </TouchableOpacity>
         </View>
 
         {/* Search Bar and New Button */}
-        <View className="flex-row items-center justify-between">
-          <View className="flex-1 bg-white rounded-lg flex-row items-center px-3 py-2 mr-3">
-            <Ionicons name="search" size={20} color="#6B7280" />
-            <Text className="flex-1 ml-2 text-gray-500">search your goal</Text>
+        <View className="flex-row items-center mb-4">
+          <View className="flex-1 bg-gray-50 rounded-xl flex-row items-center px-4 py-3 mr-3">
+            <Ionicons name="search" size={20} color="#9CA3AF" />
+            <Text className="flex-1 ml-2 text-gray-400 text-sm">search your goal !</Text>
             <TouchableOpacity>
-              <Ionicons name="options" size={20} color="#6B7280" />
+              <Ionicons name="options-outline" size={20} color="#9CA3AF" />
             </TouchableOpacity>
           </View>
           <TouchableOpacity
             onPress={handleCreateGoal}
-            className="bg-sunny rounded-lg px-4 py-2"
+            className="bg-blue-600 rounded-full w-12 h-12 items-center justify-center"
           >
-            <Text className="text-gray-900 font-semibold">+ New</Text>
+            <Ionicons name="add" size={28} color="white" />
+          </TouchableOpacity>
+        </View>
+
+        {/* Tab Selector */}
+        <View className="flex-row bg-gray-50 rounded-xl p-1">
+          <TouchableOpacity
+            onPress={() => setSelectedTab('goals')}
+            className={`flex-1 py-3 rounded-lg ${selectedTab === 'goals' ? 'bg-white' : ''}`}
+          >
+            <Text className={`text-center font-bold ${selectedTab === 'goals' ? 'text-blue-600' : 'text-gray-500'}`}>
+              설정 목표
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setSelectedTab('today')}
+            className={`flex-1 py-3 rounded-lg ${selectedTab === 'today' ? 'bg-white' : ''}`}
+          >
+            <Text className={`text-center font-bold ${selectedTab === 'today' ? 'text-blue-600' : 'text-gray-500'}`}>
+              투데이
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* Category and Type Chips */}
-      <View className="bg-white px-4 pt-4 pb-4">
-        {/* Category Chips */}
-        <View className="mb-3">
+      {/* Category Chips - Only show for goals tab */}
+      {selectedTab === 'goals' && (
+        <View className="px-4 mb-3">
           <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row">
             {categories.map((category) => (
               <TouchableOpacity
                 key={category}
-                className={`mr-3 px-4 py-2 rounded-full ${
-                  selectedCategory === category ? 'bg-sunny' : 'bg-gray-200'
+                className={`mr-3 px-5 py-2 rounded-full ${
+                  selectedCategory === category ? 'bg-blue-600' : 'bg-gray-100'
                 }`}
                 onPress={() => setSelectedCategory(category)}
               >
-                <Text className={`font-medium ${
-                  selectedCategory === category ? 'text-gray-900' : 'text-gray-600'
+                <Text className={`font-bold text-sm ${
+                  selectedCategory === category ? 'text-white' : 'text-gray-600'
                 }`}>
                   {category}
                 </Text>
@@ -679,62 +498,69 @@ export default function GoalsScreen() {
             ))}
           </ScrollView>
         </View>
+      )}
 
-        {/* Type Chips */}
-        <View className="mb-3">
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row">
-            {types.map((type) => (
+      {/* Count */}
+      <View className="px-4 pt-2 pb-3">
+        <Text className="text-sm text-gray-600">
+          {selectedTab === 'goals' 
+            ? `${filteredGoals.length}개의 검색 결과` 
+            : `오늘의 퀘스트`}
+        </Text>
+      </View>
+
+      {/* Content */}
+      {selectedTab === 'goals' ? (
+        <FlatList
+          data={filteredGoals}
+          renderItem={renderGoalItem}
+          keyExtractor={goalKeyExtractor}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100 }}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
+          ListEmptyComponent={
+            <View className="flex-1 items-center justify-center py-16">
+              <Ionicons name="flag-outline" size={64} color="#D1D5DB" />
+              <Text className="text-xl font-bold text-gray-400 mt-4 text-center">
+                목표가 없습니다
+              </Text>
+              <Text className="text-gray-400 text-center mt-2 px-8">
+                첫 번째 목표를 만들어보세요!
+              </Text>
               <TouchableOpacity
-                key={type}
-                className={`mr-3 px-4 py-2 rounded-full ${
-                  selectedType === type ? 'bg-sunny' : 'bg-gray-200'
-                }`}
-                onPress={() => setSelectedType(type)}
+                className="bg-blue-600 px-6 py-3 rounded-full mt-6"
+                onPress={handleCreateGoal}
               >
-                <Text className={`font-medium ${
-                  selectedType === type ? 'text-gray-900' : 'text-gray-600'
-                }`}>
-                  {type}
-                </Text>
+                <Text className="text-white font-bold">목표 만들기</Text>
               </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-      </View>
-
-      {/* Goals Count */}
-      <View className="px-4 pt-3 pb-1">
-        <Text className="text-base font-medium text-gray-700">Found {goals.length} Goals</Text>
-      </View>
-
-      {/* Goals List */}
-      <FlatList
-        data={goals}
-        renderItem={renderGoalItem}
-        keyExtractor={keyExtractor}
-        contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-        ListEmptyComponent={
-          <View className="flex-1 items-center justify-center py-12">
-            <Ionicons name="flag-outline" size={64} color="#D1D5DB" />
-            <Text className="text-xl font-semibold text-gray-500 mt-4 text-center">
-              No Goals Yet
-            </Text>
-            <Text className="text-gray-400 text-center mt-2 px-8">
-              Start your journey by creating your first goal!
-            </Text>
-            <TouchableOpacity
-              className="bg-navy px-6 py-3 rounded-lg mt-6"
-              onPress={handleCreateGoal}
-            >
-              <Text className="text-white font-semibold">Create Goal</Text>
-            </TouchableOpacity>
-          </View>
-        }
-      />
+            </View>
+          }
+        />
+      ) : (
+        <FlatList
+          data={todayQuests}
+          renderItem={renderTodayQuestItem}
+          keyExtractor={questKeyExtractor}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100 }}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
+          ListEmptyComponent={
+            <View className="flex-1 items-center justify-center py-16">
+              <Ionicons name="calendar-outline" size={64} color="#D1D5DB" />
+              <Text className="text-xl font-bold text-gray-400 mt-4 text-center">
+                오늘 예정된 퀘스트가 없습니다
+              </Text>
+              <Text className="text-gray-400 text-center mt-2 px-8">
+                목표를 만들고 퀘스트를 시작하세요!
+              </Text>
+            </View>
+          }
+        />
+      )}
 
       {/* Create Goal Modal */}
       <CreateGoalModal
@@ -742,50 +568,6 @@ export default function GoalsScreen() {
         onClose={() => setShowCreateModal(false)}
         onGoalCreated={handleGoalCreated}
       />
-
-      {/* Delete Goal Modal */}
-      <Modal
-        visible={showDeleteModal}
-        transparent
-        animationType="fade"
-        onRequestClose={cancelDeleteGoal}
-      >
-        <View className="flex-1 justify-center items-center bg-black/50 px-4">
-          <View className="bg-white rounded-2xl p-6 w-full max-w-sm">
-            <View className="items-center mb-4">
-              <View className="w-16 h-16 bg-red-100 rounded-full items-center justify-center mb-4">
-                <Ionicons name="trash-outline" size={32} color="#DC2626" />
-              </View>
-              <Text className="text-xl font-bold text-gray-900 mb-2">Delete Goal</Text>
-              <Text className="text-gray-600 text-center">
-                Are you sure you want to delete "{goalToDelete?.title || 'this goal'}"? This action cannot be undone.
-              </Text>
-            </View>
-            
-            <View className="flex-row space-x-3">
-              <TouchableOpacity
-                onPress={cancelDeleteGoal}
-                disabled={deletingGoal}
-                className="flex-1 bg-gray-200 rounded-lg py-3"
-              >
-                <Text className="text-gray-700 font-semibold text-center">Cancel</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                onPress={confirmDeleteGoal}
-                disabled={deletingGoal}
-                className="flex-1 bg-red-600 rounded-lg py-3"
-              >
-                {deletingGoal ? (
-                  <ActivityIndicator size="small" color="white" />
-                ) : (
-                  <Text className="text-white font-semibold text-center">Delete</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
 
       {/* Goal Detail Modal */}
       <Modal
@@ -800,7 +582,7 @@ export default function GoalsScreen() {
               goBack: () => setShowGoalDetail(false),
               navigate: () => {},
               getState: () => ({ routeNames: [] }),
-              setOptions: undefined, // Modal context에서는 setOptions가 없음을 명시
+              setOptions: undefined,
               push: () => {},
               pop: () => {},
               popToTop: () => {},
