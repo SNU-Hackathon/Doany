@@ -113,6 +113,25 @@ service cloud.firestore {
       allow delete: if request.auth != null 
         && request.auth.uid == resource.data.userId;
     }
+
+    // Quest verifications collection - for swipe verification
+    match /questVerifications/{verificationId} {
+      // Anyone can read pending verifications except their own
+      allow read: if request.auth != null 
+        && (resource.data.status == 'pending' || request.auth.uid == resource.data.userId);
+      
+      // Users can create verifications for their quests
+      allow create: if request.auth != null 
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.status == 'pending';
+      
+      // Users can verify others' quests (but not their own)
+      allow update: if request.auth != null 
+        && request.auth.uid != resource.data.userId
+        && resource.data.status == 'pending'
+        && (request.resource.data.status == 'success' || request.resource.data.status == 'failed')
+        && request.resource.data.verifiedBy == request.auth.uid;
+    }
     
     // Deny all other access by default
     match /{document=**} {

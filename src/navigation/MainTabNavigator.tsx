@@ -1,20 +1,21 @@
-// Main tab navigation component - Navigator 완전 제거하고 단순한 화면 렌더링
+// Main tab navigation component
+// Updated order: Home, Goals, Swipe, Feed, Profile
 
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { TouchableOpacity, View } from 'react-native';
-import EvoHomeScreen from '../screens/EvoHomeScreen';
-import FeedScreen from '../screens/FeedScreen';
-import GoalsScreen from '../screens/GoalsScreen';
-import ProfileScreen from '../screens/ProfileScreen';
-import SpacesScreen from '../screens/SpacesScreen';
+import {
+  EvoHomeScreen,
+  FeedScreen,
+  GoalsScreen,
+  ProfileScreen,
+  SwipeScreen
+} from '../screens';
 
-type TabType = 'Home' | 'Goals' | 'Space' | 'Feed' | 'Profile';
+type TabType = 'Home' | 'Goals' | 'Swipe' | 'Feed' | 'Profile';
 
 export default function MainTabNavigator() {
   const [activeTab, setActiveTab] = useState<TabType>('Home');
-  const { t } = useTranslation();
 
   const renderScreen = () => {
     switch (activeTab) {
@@ -22,8 +23,8 @@ export default function MainTabNavigator() {
         return <EvoHomeScreen />;
       case 'Goals':
         return <GoalsScreen />;
-      case 'Space':
-        return <SpacesScreen />;
+      case 'Swipe':
+        return <SwipeScreen />;
       case 'Feed':
         return <FeedScreen />;
       case 'Profile':
@@ -38,39 +39,20 @@ export default function MainTabNavigator() {
       case 'Home':
         return focused ? 'home' : 'home-outline';
       case 'Goals':
-        return focused ? 'checkmark-done' : 'checkmark-done-outline';
-      case 'Space':
-        return focused ? 'people' : 'people-outline';
+        return focused ? 'disc' : 'disc-outline'; // Target/Goal icon
+      case 'Swipe':
+        return focused ? 'checkmark-done-circle' : 'checkmark-done-circle-outline'; // Check icon for verification
       case 'Feed':
-        return focused ? 'newspaper' : 'newspaper-outline';
+        return focused ? 'people' : 'people-outline'; // People icon for community feed
       case 'Profile':
-        return focused ? 'person' : 'person-outline';
+        return focused ? 'person-circle' : 'person-circle-outline';
       default:
         return 'help-outline';
     }
   };
 
-  const getTabLabel = (tab: TabType): string => {
-    switch (tab) {
-      case 'Home':
-        return t('nav.home');
-      case 'Goals':
-        return t('nav.goals');
-      case 'Space':
-        return t('nav.space');
-      case 'Feed':
-        return t('nav.feed');
-      case 'Profile':
-        return t('nav.profile');
-      default:
-        return tab;
-    }
-  };
-
   return (
     <View style={{ flex: 1 }}>
-      {/* Header removed to save space */}
-
       {/* Screen Content */}
       <View style={{ flex: 1 }}>
         {renderScreen()}
@@ -82,11 +64,11 @@ export default function MainTabNavigator() {
         backgroundColor: '#FFFFFF',
         borderTopWidth: 1,
         borderTopColor: '#E5E7EB',
-        height: 60,
-        paddingBottom: 8,
-        paddingTop: 8,
+        height: 65,
+        paddingBottom: 10,
+        paddingTop: 10,
       }}>
-        {(['Home', 'Goals', 'Space', 'Feed', 'Profile'] as TabType[]).map((tab) => {
+        {(['Home', 'Goals', 'Swipe', 'Feed', 'Profile'] as TabType[]).map((tab) => {
           const isActive = activeTab === tab;
           return (
             <TouchableOpacity
@@ -100,8 +82,8 @@ export default function MainTabNavigator() {
             >
               <Ionicons
                 name={getIconName(tab, isActive)}
-                size={24}
-                color={isActive ? '#1E3A8A' : '#6B7280'}
+                size={28}
+                color={isActive ? '#3B82F6' : '#9CA3AF'}
               />
             </TouchableOpacity>
           );

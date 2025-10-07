@@ -1,49 +1,36 @@
-// Profile screen for user details and settings
+// Profile screen redesigned to match screenshot style
+// Clean, modern design with friend system
 
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import {
   Alert,
   Modal,
   ScrollView,
   Text,
+  TextInput,
   TouchableOpacity,
   View
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../hooks/useAuth';
-import { getCurrentLanguage, Language, setLanguage } from '../services/userPrefs';
 
 export default function ProfileScreen() {
   const { user, signOut } = useAuth();
-  const { t } = useTranslation();
   const [signingOut, setSigningOut] = useState(false);
-  const [languageModalVisible, setLanguageModalVisible] = useState(false);
-  const [currentLanguage, setCurrentLanguage] = useState<Language>(getCurrentLanguage());
-
-  const handleLanguageChange = async (language: Language) => {
-    try {
-      await setLanguage(language);
-      setCurrentLanguage(language);
-      setLanguageModalVisible(false);
-      // No need to manually refresh - i18n will trigger re-render
-    } catch (error) {
-      Alert.alert('Error', 'Failed to change language');
-    }
-  };
+  const [friendModalVisible, setFriendModalVisible] = useState(false);
+  const [friendCode, setFriendCode] = useState('');
 
   const handleSignOut = async () => {
     Alert.alert(
-      'Sign Out',
-      'Are you sure you want to sign out?',
+      '로그아웃',
+      '정말 로그아웃 하시겠습니까?',
       [
         {
-          text: 'Cancel',
+          text: '취소',
           style: 'cancel',
         },
         {
-          text: 'Sign Out',
+          text: '로그아웃',
           style: 'destructive',
           onPress: async () => {
             setSigningOut(true);
@@ -60,286 +47,243 @@ export default function ProfileScreen() {
     );
   };
 
+  const handleAddFriend = () => {
+    if (!friendCode.trim()) {
+      Alert.alert('오류', '친구 코드를 입력해주세요');
+      return;
+    }
+    
+    // TODO: Implement friend add functionality
+    Alert.alert('준비중', '친구 추가 기능은 곧 추가됩니다!');
+    setFriendModalVisible(false);
+    setFriendCode('');
+  };
+
   if (!user) {
     return null;
   }
 
+  // Calculate streak days (dummy data for now)
+  const streakDays = 57;
+  const level = 3;
+  const points = user.points || 3900;
+
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#F9FAFB' }} edges={['top']}>
+    <View style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
       <ScrollView 
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: 90 }} // Add bottom padding for lowered tab bar
+        contentContainerStyle={{ paddingBottom: 100 }}
+        showsVerticalScrollIndicator={false}
       >
-      <View style={{ paddingHorizontal: 16, paddingTop: 16 }}>
-        {/* User Info Card */}
-        <View className="bg-white rounded-lg p-6 mb-6 shadow-sm">
-          <View className="items-center mb-4">
-            <View className="bg-blue-100 rounded-full w-20 h-20 items-center justify-center mb-3">
-              <Ionicons name="person" size={40} color="#3B82F6" />
+        {/* Header */}
+        <View className="px-4 pt-14 pb-4">
+          <View className="flex-row items-center justify-between">
+            <Text className="text-2xl font-bold text-gray-900">마이페이지</Text>
+            <TouchableOpacity>
+              <Ionicons name="notifications-outline" size={28} color="#3B82F6" />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* User Card */}
+        <View className="mx-4 mb-6 bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+          {/* Top Section: Avatar + Info + Level */}
+          <View className="flex-row items-start mb-4">
+            {/* Avatar */}
+            <View className="bg-gray-100 rounded-full w-16 h-16 items-center justify-center mr-4">
+              <Ionicons name="person" size={32} color="#9CA3AF" />
             </View>
-            <Text className="text-2xl font-bold text-gray-800">
-              {user.displayName}
-            </Text>
-            <Text className="text-gray-600 mt-1">
-              {user.email}
-            </Text>
+
+            {/* Name + Greeting */}
+            <View className="flex-1">
+              <Text className="text-sm text-gray-600 mb-1">안녕하세요!</Text>
+              <View className="flex-row items-center">
+                <Text className="text-xl font-bold text-gray-900 mr-2">
+                  {user.displayName || 'Lee Seo June'} 님
+                </Text>
+                <TouchableOpacity>
+                  <Ionicons name="settings-outline" size={18} color="#9CA3AF" />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Streak Badge */}
+            <View className="bg-yellow-100 rounded-full px-3 py-1">
+              <Text className="text-yellow-600 font-bold text-sm">D+{streakDays}</Text>
+            </View>
           </View>
 
-          {/* Stats */}
-          <View className="flex-row justify-around border-t border-gray-200 pt-4">
-            <View className="items-center">
-              <Text className="text-2xl font-bold text-blue-600">
-                {user.points}
-              </Text>
-              <Text className="text-gray-600 text-sm">{t('profile.points')}</Text>
+          {/* Divider */}
+          <View className="border-t border-gray-100 my-4" />
+
+          {/* Stats Section */}
+          <View className="flex-row items-center justify-between">
+            {/* Points */}
+            <View className="flex-row items-center">
+              <View className="bg-yellow-400 rounded-full w-10 h-10 items-center justify-center mr-2">
+                <Text className="font-bold text-white text-sm">P</Text>
+              </View>
+              <Text className="text-xl font-bold text-gray-900">{points.toLocaleString()}</Text>
             </View>
-            <View className="items-center">
-              <Text className="text-2xl font-bold text-green-600">
-                ${user.depositBalance}
-              </Text>
-              <Text className="text-gray-600 text-sm">{t('profile.balance')}</Text>
+
+            {/* Level */}
+            <View className="bg-yellow-100 rounded-full px-4 py-2">
+              <Text className="text-yellow-600 font-bold">Lv.{level}</Text>
             </View>
           </View>
         </View>
 
         {/* Menu Items */}
-        <View className="bg-white rounded-lg mb-6 shadow-sm">
-          {/* Language Selector */}
+        <View className="px-4">
+          {/* Friend Invite */}
           <TouchableOpacity 
-            className="flex-row items-center p-4 border-b border-gray-100"
-            onPress={() => setLanguageModalVisible(true)}
+            className="flex-row items-center py-4 border-b border-gray-100"
+            onPress={() => setFriendModalVisible(true)}
           >
-            <View className="bg-gray-100 rounded-full w-10 h-10 items-center justify-center mr-4">
-              <Ionicons name="language-outline" size={20} color="#6B7280" />
-            </View>
-            <View className="flex-1">
-              <Text className="text-gray-800 font-semibold">{t('profile.language')}</Text>
-              <Text className="text-gray-500 text-sm">
-                {currentLanguage === 'ko' ? t('profile.korean') : t('profile.english')}
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#6B7280" />
+            <Ionicons name="person-add-outline" size={20} color="#6B7280" />
+            <Text className="flex-1 ml-3 text-base text-gray-900 font-medium">친구 초대하기</Text>
+            <Ionicons name="chevron-forward" size={20} color="#D1D5DB" />
           </TouchableOpacity>
 
+          {/* Notice */}
           <TouchableOpacity 
-            className="flex-row items-center p-4 border-b border-gray-100"
-            onPress={() => Alert.alert('Coming Soon', 'Settings will be implemented soon!')}
+            className="flex-row items-center py-4 border-b border-gray-100"
+            onPress={() => Alert.alert('준비중', '공지사항은 곧 추가됩니다!')}
           >
-            <View className="bg-gray-100 rounded-full w-10 h-10 items-center justify-center mr-4">
-              <Ionicons name="settings-outline" size={20} color="#6B7280" />
-            </View>
-            <View className="flex-1">
-              <Text className="text-gray-800 font-semibold">{t('profile.settings')}</Text>
-              <Text className="text-gray-500 text-sm">{t('profile.app_preferences')}</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#6B7280" />
+            <Ionicons name="megaphone-outline" size={20} color="#6B7280" />
+            <Text className="flex-1 ml-3 text-base text-gray-900 font-medium">공지사항</Text>
+            <Ionicons name="chevron-forward" size={20} color="#D1D5DB" />
           </TouchableOpacity>
 
+          {/* Developer Info */}
           <TouchableOpacity 
-            className="flex-row items-center p-4 border-b border-gray-100"
-            onPress={() => Alert.alert('Coming Soon', 'Statistics will be implemented soon!')}
+            className="flex-row items-center py-4 border-b border-gray-100"
+            onPress={() => Alert.alert('준비중', '개인정보는 곧 추가됩니다!')}
           >
-            <View className="bg-gray-100 rounded-full w-10 h-10 items-center justify-center mr-4">
-              <Ionicons name="analytics-outline" size={20} color="#6B7280" />
-            </View>
-            <View className="flex-1">
-              <Text className="text-gray-800 font-semibold">{t('profile.statistics')}</Text>
-              <Text className="text-gray-500 text-sm">{t('profile.view_progress')}</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#6B7280" />
+            <Ionicons name="call-outline" size={20} color="#6B7280" />
+            <Text className="flex-1 ml-3 text-base text-gray-900 font-medium">개인정보</Text>
+            <Ionicons name="chevron-forward" size={20} color="#D1D5DB" />
           </TouchableOpacity>
 
+          {/* Language */}
           <TouchableOpacity 
-            className="flex-row items-center p-4 border-b border-gray-100"
-            onPress={() => Alert.alert('Coming Soon', 'Help section will be implemented soon!')}
+            className="flex-row items-center py-4 border-b border-gray-100"
+            onPress={() => Alert.alert('준비중', '언어 설정은 곧 추가됩니다!')}
           >
-            <View className="bg-gray-100 rounded-full w-10 h-10 items-center justify-center mr-4">
-              <Ionicons name="help-circle-outline" size={20} color="#6B7280" />
-            </View>
-            <View className="flex-1">
-              <Text className="text-gray-800 font-semibold">{t('profile.help')}</Text>
-              <Text className="text-gray-500 text-sm">{t('profile.get_support')}</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#6B7280" />
+            <Ionicons name="language-outline" size={20} color="#6B7280" />
+            <Text className="flex-1 ml-3 text-base text-gray-900 font-medium">Language</Text>
+            <Ionicons name="chevron-forward" size={20} color="#D1D5DB" />
           </TouchableOpacity>
 
+          {/* Logout */}
           <TouchableOpacity 
-            className="flex-row items-center p-4"
-            onPress={() => Alert.alert('Coming Soon', 'About section will be implemented soon!')}
+            className="flex-row items-center py-4 border-b border-gray-100"
+            onPress={handleSignOut}
+            disabled={signingOut}
           >
-            <View className="bg-gray-100 rounded-full w-10 h-10 items-center justify-center mr-4">
-              <Ionicons name="information-circle-outline" size={20} color="#6B7280" />
-            </View>
-            <View className="flex-1">
-              <Text className="text-gray-800 font-semibold">{t('profile.about')}</Text>
-              <Text className="text-gray-500 text-sm">{t('profile.app_info')}</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#6B7280" />
+            <Ionicons name="log-out-outline" size={20} color="#6B7280" />
+            <Text className="flex-1 ml-3 text-base text-gray-900 font-medium">
+              {signingOut ? '로그아웃 중...' : '로그아웃'}
+            </Text>
+            <Ionicons name="chevron-forward" size={20} color="#D1D5DB" />
+          </TouchableOpacity>
+
+          {/* Customer Center */}
+          <TouchableOpacity 
+            className="flex-row items-center py-4"
+            onPress={() => Alert.alert('준비중', '고객센터는 곧 추가됩니다!')}
+          >
+            <Ionicons name="help-circle-outline" size={20} color="#6B7280" />
+            <Text className="flex-1 ml-3 text-base text-gray-900 font-medium">고객센터</Text>
+            <Ionicons name="chevron-forward" size={20} color="#D1D5DB" />
           </TouchableOpacity>
         </View>
+      </ScrollView>
 
-        {/* Account Section */}
-        <View className="bg-white rounded-lg mb-6 shadow-sm">
-          <TouchableOpacity 
-            className="flex-row items-center p-4 border-b border-gray-100"
-            onPress={() => Alert.alert('Coming Soon', 'Account management will be implemented soon!')}
-          >
-            <View className="bg-gray-100 rounded-full w-10 h-10 items-center justify-center mr-4">
-              <Ionicons name="person-outline" size={20} color="#6B7280" />
-            </View>
-            <View className="flex-1">
-              <Text className="text-gray-800 font-semibold">{t('profile.account')}</Text>
-              <Text className="text-gray-500 text-sm">{t('profile.manage_account')}</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#6B7280" />
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            className="flex-row items-center p-4"
-            onPress={() => Alert.alert('Coming Soon', 'Privacy settings will be implemented soon!')}
-          >
-            <View className="bg-gray-100 rounded-full w-10 h-10 items-center justify-center mr-4">
-              <Ionicons name="shield-outline" size={20} color="#6B7280" />
-            </View>
-            <View className="flex-1">
-              <Text className="text-gray-800 font-semibold">{t('profile.privacy')}</Text>
-              <Text className="text-gray-500 text-sm">{t('profile.manage_privacy')}</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#6B7280" />
-          </TouchableOpacity>
-        </View>
-
-        {/* Sign Out Button */}
-        <TouchableOpacity
-          className="bg-red-600 rounded-lg p-4 mb-8 flex-row items-center justify-center"
-          onPress={handleSignOut}
-          disabled={signingOut}
-        >
-          <Ionicons 
-            name="log-out-outline" 
-            size={20} 
-            color="white" 
-          />
-          <Text className="text-white font-bold text-lg ml-2">
-            {signingOut ? t('profile.signing_out') : t('profile.sign_out')}
-          </Text>
-        </TouchableOpacity>
-
-        {/* App Info */}
-        <View className="items-center mb-8">
-          <Text className="text-gray-500 text-sm">{t('profile.version')} 1.0.0</Text>
-          <Text className="text-gray-400 text-xs mt-1">
-            {t('profile.member_since')} {user.createdAt.toLocaleDateString()}
-          </Text>
-        </View>
-      </View>
-    </ScrollView>
-
-    {/* Language Selection Modal */}
-    <Modal
-      visible={languageModalVisible}
-      transparent
-      animationType="fade"
-      onRequestClose={() => setLanguageModalVisible(false)}
-    >
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          justifyContent: 'center',
-          alignItems: 'center',
-          padding: 20,
-        }}
+      {/* Friend Add Modal */}
+      <Modal
+        visible={friendModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setFriendModalVisible(false)}
       >
         <View
           style={{
-            backgroundColor: '#FFFFFF',
-            borderRadius: 16,
-            padding: 24,
-            width: '100%',
-            maxWidth: 400,
+            flex: 1,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            justifyContent: 'center',
+            alignItems: 'center',
+            padding: 20,
           }}
         >
-          <Text style={{ fontSize: 20, fontWeight: '700', color: '#0F172A', marginBottom: 16 }}>
-            {t('profile.select_language')}
-          </Text>
-
-          <TouchableOpacity
-            onPress={() => handleLanguageChange('ko')}
+          <View
             style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              padding: 16,
-              backgroundColor: currentLanguage === 'ko' ? '#EFF6FF' : '#F9FAFB',
-              borderRadius: 12,
-              borderWidth: currentLanguage === 'ko' ? 2 : 1,
-              borderColor: currentLanguage === 'ko' ? '#2F6BFF' : '#E5E7EB',
-              marginBottom: 12,
+              backgroundColor: '#FFFFFF',
+              borderRadius: 20,
+              padding: 24,
+              width: '100%',
+              maxWidth: 400,
             }}
           >
-            <Ionicons
-              name={currentLanguage === 'ko' ? 'radio-button-on' : 'radio-button-off'}
-              size={24}
-              color={currentLanguage === 'ko' ? '#2F6BFF' : '#6B7280'}
+            {/* Header */}
+            <View className="flex-row items-center justify-between mb-6">
+              <Text style={{ fontSize: 20, fontWeight: '700', color: '#0F172A' }}>
+                친구 추가
+              </Text>
+              <TouchableOpacity onPress={() => setFriendModalVisible(false)}>
+                <Ionicons name="close" size={24} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Description */}
+            <Text className="text-sm text-gray-600 mb-4">
+              친구의 코드를 입력하여 함께 목표를 달성하세요!
+            </Text>
+
+            {/* Input */}
+            <TextInput
+              value={friendCode}
+              onChangeText={setFriendCode}
+              placeholder="친구 코드 입력"
+              placeholderTextColor="#9CA3AF"
+              className="bg-gray-50 rounded-xl px-4 py-3 mb-6 text-base"
             />
-            <Text
-              style={{
-                marginLeft: 12,
-                fontSize: 16,
-                fontWeight: currentLanguage === 'ko' ? '600' : '500',
-                color: currentLanguage === 'ko' ? '#2F6BFF' : '#374151',
-              }}
-            >
-              {t('profile.korean')}
-            </Text>
-          </TouchableOpacity>
 
-          <TouchableOpacity
-            onPress={() => handleLanguageChange('en')}
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              padding: 16,
-              backgroundColor: currentLanguage === 'en' ? '#EFF6FF' : '#F9FAFB',
-              borderRadius: 12,
-              borderWidth: currentLanguage === 'en' ? 2 : 1,
-              borderColor: currentLanguage === 'en' ? '#2F6BFF' : '#E5E7EB',
-              marginBottom: 20,
-            }}
-          >
-            <Ionicons
-              name={currentLanguage === 'en' ? 'radio-button-on' : 'radio-button-off'}
-              size={24}
-              color={currentLanguage === 'en' ? '#2F6BFF' : '#6B7280'}
-            />
-            <Text
-              style={{
-                marginLeft: 12,
-                fontSize: 16,
-                fontWeight: currentLanguage === 'en' ? '600' : '500',
-                color: currentLanguage === 'en' ? '#2F6BFF' : '#374151',
-              }}
-            >
-              {t('profile.english')}
-            </Text>
-          </TouchableOpacity>
+            {/* My Code Section */}
+            <View className="bg-blue-50 rounded-xl p-4 mb-6">
+              <Text className="text-xs text-gray-600 mb-1">내 코드</Text>
+              <View className="flex-row items-center justify-between">
+                <Text className="text-lg font-bold text-gray-900">{user.uid.substring(0, 8).toUpperCase()}</Text>
+                <TouchableOpacity 
+                  className="bg-blue-600 rounded-lg px-4 py-2"
+                  onPress={() => {
+                    // TODO: Copy to clipboard
+                    Alert.alert('복사됨', '코드가 복사되었습니다!');
+                  }}
+                >
+                  <Text className="text-white font-bold text-sm">복사</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
 
-          <TouchableOpacity
-            onPress={() => setLanguageModalVisible(false)}
-            style={{
-              padding: 12,
-              backgroundColor: '#F3F4F6',
-              borderRadius: 12,
-              alignItems: 'center',
-            }}
-          >
-            <Text style={{ fontSize: 16, fontWeight: '600', color: '#6B7280' }}>
-              Cancel
-            </Text>
-          </TouchableOpacity>
+            {/* Buttons */}
+            <View className="flex-row gap-3">
+              <TouchableOpacity
+                onPress={() => setFriendModalVisible(false)}
+                className="flex-1 bg-gray-100 rounded-xl py-3"
+              >
+                <Text className="text-center text-gray-700 font-bold">취소</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleAddFriend}
+                className="flex-1 bg-blue-600 rounded-xl py-3"
+              >
+                <Text className="text-center text-white font-bold">추가</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
-      </View>
-    </Modal>
-    </SafeAreaView>
+      </Modal>
+    </View>
   );
 }
