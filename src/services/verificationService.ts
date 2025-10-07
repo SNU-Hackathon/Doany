@@ -19,7 +19,7 @@ import { createQueuedAttempt, enqueueAttempt } from './verification/OfflineQueue
 import { evaluateByGoalType } from './verificationRules';
 
 export class VerificationService {
-  // Create a new verification record
+  // Create a new verification record with improved error handling
   static async createVerification(
     goalId: string,
     userId: string,
@@ -32,12 +32,82 @@ export class VerificationService {
       
       // Upload screenshot if provided
       if (screenshotBlob) {
+        console.log('[Verification] Starting photo upload...');
+        console.log('[Verification] Blob size:', screenshotBlob.size, 'bytes');
+        console.log('[Verification] Blob type:', screenshotBlob.type);
+        
+        // Validate blob
+        if (screenshotBlob.size === 0) {
+          throw new Error('이미지 파일이 비어있습니다.');
+        }
+        
+        if (screenshotBlob.size > 10 * 1024 * 1024) {
+          throw new Error('이미지 파일이 너무 큽니다 (최대 10MB).');
+        }
+        
+        // Check auth state
+        const currentUser = auth?.currentUser || getAuth().currentUser;
+        if (!currentUser) {
+          throw new Error('로그인이 필요합니다.');
+        }
+        
+        console.log('[Verification] Current user:', currentUser.uid);
+        console.log('[Verification] User ID param:', userId);
+        
+        if (currentUser.uid !== userId) {
+          throw new Error('사용자 인증 오류가 발생했습니다.');
+        }
+        
         const timestamp = Date.now();
-        const screenshotRef = ref(storage, `verifications/${userId}/${goalId}/${timestamp}.jpg`);
-        await uploadBytes(screenshotRef, screenshotBlob);
-        screenshotUrl = await getDownloadURL(screenshotRef);
+        const fileName = `${timestamp}.jpg`;
+        const storagePath = `verifications/${userId}/${goalId}/${fileName}`;
+        
+        console.log('[Verification] Upload path:', storagePath);
+        
+        try {
+          const screenshotRef = ref(storage, storagePath);
+          
+          // Upload with metadata
+          const metadata = {
+            contentType: 'image/jpeg',
+            customMetadata: {
+              'userId': userId,
+              'goalId': goalId,
+              'timestamp': timestamp.toString()
+            }
+          };
+          
+          console.log('[Verification] Uploading to Firebase Storage...');
+          const uploadResult = await uploadBytes(screenshotRef, screenshotBlob, metadata);
+          console.log('[Verification] Upload successful:', uploadResult.metadata.fullPath);
+          
+          console.log('[Verification] Getting download URL...');
+          screenshotUrl = await getDownloadURL(screenshotRef);
+          console.log('[Verification] Download URL obtained:', screenshotUrl);
+          
+        } catch (uploadError: any) {
+          console.error('[Verification] Storage upload error:', uploadError);
+          console.error('[Verification] Error code:', uploadError.code);
+          console.error('[Verification] Error message:', uploadError.message);
+          
+          // Provide user-friendly error messages
+          if (uploadError.code === 'storage/unauthorized') {
+            throw new Error('사진 업로드 권한이 없습니다. Firebase Storage 규칙을 확인해주세요.');
+          } else if (uploadError.code === 'storage/quota-exceeded') {
+            throw new Error('저장 공간이 부족합니다.');
+          } else if (uploadError.code === 'storage/unauthenticated') {
+            throw new Error('인증이 만료되었습니다. 다시 로그인해주세요.');
+          } else if (uploadError.code === 'storage/retry-limit-exceeded') {
+            throw new Error('네트워크 오류입니다. 인터넷 연결을 확인해주세요.');
+          } else if (uploadError.code === 'storage/canceled') {
+            throw new Error('업로드가 취소되었습니다.');
+          } else {
+            throw new Error(`사진 업로드 실패: ${uploadError.message || '알 수 없는 오류'}`);
+          }
+        }
       }
       
+      console.log('[Verification] Creating Firestore document...');
       const verificationDoc = {
         goalId,
         userId,
@@ -48,10 +118,19 @@ export class VerificationService {
       };
 
       const docRef = await addDoc(collection(db, 'verifications'), verificationDoc);
+      console.log('[Verification] Document created:', docRef.id);
       return docRef.id;
-    } catch (error) {
-      console.error('Error creating verification:', error);
-      throw error;
+      
+    } catch (error: any) {
+      console.error('[Verification] Error creating verification:', error);
+      
+      // Re-throw user-friendly errors as-is
+      if (error.message && error.message.includes('사진') || error.message.includes('권한') || error.message.includes('로그인')) {
+        throw error;
+      }
+      
+      // Generic error for unexpected issues
+      throw new Error(`검증 생성 실패: ${error.message || '알 수 없는 오류'}`);
     }
   }
 
