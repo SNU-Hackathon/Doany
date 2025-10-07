@@ -1,10 +1,11 @@
 // Goal Detail Screen V2 - Separated Calendar and Detail tabs
-// Tab 1 (퀘스트): Calendar only
+// Tab 1 (퀘스트): Calendar only with quest schedules
 // Tab 2 (상세보기): Quest list only
 
 import { Ionicons } from '@expo/vector-icons';
 import { RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
+import * as ImagePicker from 'expo-image-picker';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -15,9 +16,11 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
+import { ShareToFeedDialog } from '../components/feed';
 import { useAuth } from '../hooks/useAuth';
 import { GoalService } from '../services/goalService';
 import { QuestService } from '../services/questService';
+import { VerificationService } from '../services/verificationService';
 import { Goal, Quest, RootStackParamList } from '../types';
 
 type GoalDetailScreenRouteProp = RouteProp<RootStackParamList, 'GoalDetail'>;
@@ -117,14 +120,14 @@ function CalendarTab({ selectedMonth, quests, onMonthChange }: CalendarTabProps)
           flex: 1, 
           alignItems: 'center', 
           justifyContent: 'flex-start',
-          paddingTop: 4
+          paddingTop: 6
         }}>
           {/* Day number */}
           <Text style={{ 
-            fontSize: 12, 
+            fontSize: 13, 
             fontWeight: today ? '700' : '500',
             color: today ? '#3B82F6' : '#374151',
-            marginBottom: 4
+            marginBottom: 6
           }}>
             {dayNumber}
           </Text>
@@ -137,7 +140,8 @@ function CalendarTab({ selectedMonth, quests, onMonthChange }: CalendarTabProps)
                   backgroundColor: '#FBBF24', 
                   borderRadius: 8, 
                   paddingHorizontal: 6, 
-                  paddingVertical: 2 
+                  paddingVertical: 2,
+                  marginBottom: 2
                 }}>
                   <Text style={{ fontSize: 8, fontWeight: '700', color: '#000' }}>
                     Today !
@@ -146,41 +150,41 @@ function CalendarTab({ selectedMonth, quests, onMonthChange }: CalendarTabProps)
               )}
               {isCompleted && (
                 <View style={{ 
-                  backgroundColor: '#3B82F6', 
+                  backgroundColor: '#10B981', 
                   borderRadius: 12, 
-                  width: 20, 
-                  height: 20, 
+                  width: 24, 
+                  height: 24, 
                   alignItems: 'center', 
                   justifyContent: 'center' 
                 }}>
-                  <Ionicons name="checkmark" size={14} color="white" />
+                  <Ionicons name="checkmark" size={16} color="white" />
                 </View>
               )}
               {!isCompleted && !today && (
                 <View style={{ 
-                  backgroundColor: '#D1D5DB', 
+                  backgroundColor: '#E5E7EB', 
                   borderRadius: 12, 
-                  width: 20, 
-                  height: 20, 
+                  width: 24, 
+                  height: 24, 
                   alignItems: 'center', 
                   justifyContent: 'center' 
                 }}>
-                  <Ionicons name="lock-closed" size={10} color="#6B7280" />
+                  <Ionicons name="lock-closed" size={12} color="#9CA3AF" />
                 </View>
               )}
             </View>
           )}
 
-          {/* Level up badge */}
+          {/* Level up badge on 29th */}
           {dayNumber === 29 && item.inMonth && (
             <View style={{ 
-              backgroundColor: '#FBBF24', 
+              backgroundColor: '#FEF3C7', 
               borderRadius: 4, 
               paddingHorizontal: 4, 
-              paddingVertical: 1,
+              paddingVertical: 2,
               marginTop: 2
             }}>
-              <Text style={{ fontSize: 7, fontWeight: '700' }}>Level up</Text>
+              <Text style={{ fontSize: 7, fontWeight: '700', color: '#92400E' }}>Level up</Text>
             </View>
           )}
         </View>
@@ -198,25 +202,25 @@ function CalendarTab({ selectedMonth, quests, onMonthChange }: CalendarTabProps)
         flexDirection: 'row', 
         alignItems: 'center', 
         justifyContent: 'center', 
-        paddingVertical: 16,
+        paddingVertical: 20,
         paddingHorizontal: 16
       }}>
         <TouchableOpacity onPress={() => onMonthChange('prev')} style={{ padding: 8 }}>
-          <Text style={{ fontSize: 20, color: '#6B7280' }}>◀</Text>
+          <Text style={{ fontSize: 18, color: '#6B7280' }}>◀</Text>
         </TouchableOpacity>
-        <Text style={{ fontSize: 16, fontWeight: '700', color: '#111827', marginHorizontal: 20 }}>
+        <Text style={{ fontSize: 17, fontWeight: '700', color: '#111827', marginHorizontal: 24 }}>
           {monthYear}
         </Text>
         <TouchableOpacity onPress={() => onMonthChange('next')} style={{ padding: 8 }}>
-          <Text style={{ fontSize: 20, color: '#6B7280' }}>▶</Text>
+          <Text style={{ fontSize: 18, color: '#6B7280' }}>▶</Text>
         </TouchableOpacity>
       </View>
 
       {/* Week days header */}
-      <View style={{ flexDirection: 'row', paddingHorizontal: 16, marginBottom: 8 }}>
+      <View style={{ flexDirection: 'row', paddingHorizontal: 16, marginBottom: 12 }}>
         {weekDays.map((day, index) => (
           <View key={index} style={{ flex: 1, alignItems: 'center' }}>
-            <Text style={{ fontSize: 12, fontWeight: '600', color: '#6B7280' }}>{day}</Text>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: '#6B7280' }}>{day}</Text>
           </View>
         ))}
       </View>
@@ -241,9 +245,12 @@ interface DetailTabProps {
   goal: Goal | null;
   refreshing: boolean;
   onRefresh: () => void;
+  onUpload: (quest: Quest) => void;
+  onComplete: (quest: Quest) => void;
+  onSkip: (quest: Quest) => void;
 }
 
-function DetailTab({ quests, goal, refreshing, onRefresh }: DetailTabProps) {
+function DetailTab({ quests, goal, refreshing, onRefresh, onUpload, onComplete, onSkip }: DetailTabProps) {
   const isToday = (date: Date | null) => {
     if (!date) return false;
     const today = new Date();
@@ -263,31 +270,51 @@ function DetailTab({ quests, goal, refreshing, onRefresh }: DetailTabProps) {
         marginBottom: 12,
         marginHorizontal: 16,
         borderWidth: today ? 2 : 1,
-        borderColor: today ? '#10B981' : '#E5E7EB'
+        borderColor: today ? '#10B981' : '#E5E7EB',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 2,
+        elevation: 1
       }}>
         {/* Header with Today badge and Upload button */}
-        {today && (
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          {today && (
             <View style={{ backgroundColor: '#3B82F6', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 4 }}>
               <Text style={{ color: 'white', fontSize: 11, fontWeight: '700' }}>Today !</Text>
             </View>
-            <TouchableOpacity style={{ backgroundColor: '#F0FDF4', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 4 }}>
-              <Text style={{ color: '#10B981', fontSize: 12, fontWeight: '700' }}>업로드</Text>
+          )}
+          {!today && <View />}
+          {today && !isCompleted && (
+            <TouchableOpacity 
+              onPress={() => onUpload(item)}
+              style={{ 
+                backgroundColor: '#10B981', 
+                borderRadius: 12, 
+                paddingHorizontal: 14, 
+                paddingVertical: 6,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 4
+              }}
+            >
+              <Ionicons name="camera" size={14} color="white" />
+              <Text style={{ color: 'white', fontSize: 12, fontWeight: '700' }}>업로드</Text>
             </TouchableOpacity>
-          </View>
-        )}
+          )}
+        </View>
 
         {/* Quest info */}
-        <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 12 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 14 }}>
           <View style={{ marginRight: 12, marginTop: 2 }}>
             <Ionicons 
               name={isCompleted ? "checkmark-circle" : "refresh-circle-outline"} 
-              size={24} 
+              size={28} 
               color={isCompleted ? "#10B981" : "#F97316"} 
             />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 15, fontWeight: '700', color: '#111827', marginBottom: 4 }}>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: '#111827', marginBottom: 6 }}>
               {item.title || goal?.title}
             </Text>
             {date && (
@@ -299,30 +326,48 @@ function DetailTab({ quests, goal, refreshing, onRefresh }: DetailTabProps) {
         </View>
 
         {/* Action buttons */}
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <TouchableOpacity style={{
-            flex: 1,
-            backgroundColor: 'white',
-            borderWidth: 1,
-            borderColor: '#10B981',
-            borderRadius: 8,
+        {today && !isCompleted && (
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TouchableOpacity 
+              onPress={() => onComplete(item)}
+              style={{
+                flex: 1,
+                backgroundColor: 'white',
+                borderWidth: 1.5,
+                borderColor: '#10B981',
+                borderRadius: 10,
+                paddingVertical: 11,
+                alignItems: 'center'
+              }}
+            >
+              <Text style={{ color: '#10B981', fontWeight: '700', fontSize: 14 }}>✓ 완료</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              onPress={() => onSkip(item)}
+              style={{
+                flex: 1,
+                backgroundColor: 'white',
+                borderWidth: 1,
+                borderColor: '#D1D5DB',
+                borderRadius: 10,
+                paddingVertical: 11,
+                alignItems: 'center'
+              }}
+            >
+              <Text style={{ color: '#6B7280', fontWeight: '600', fontSize: 14 }}>→ 건너뛰기</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        {isCompleted && (
+          <View style={{ 
+            backgroundColor: '#D1FAE5', 
+            borderRadius: 8, 
             paddingVertical: 10,
             alignItems: 'center'
           }}>
-            <Text style={{ color: '#10B981', fontWeight: '700' }}>✓ 완료</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={{
-            flex: 1,
-            backgroundColor: 'white',
-            borderWidth: 1,
-            borderColor: '#D1D5DB',
-            borderRadius: 8,
-            paddingVertical: 10,
-            alignItems: 'center'
-          }}>
-            <Text style={{ color: '#6B7280', fontWeight: '600' }}>→ 건너뛰기</Text>
-          </TouchableOpacity>
-        </View>
+            <Text style={{ color: '#065F46', fontWeight: '700', fontSize: 14 }}>✓ 완료됨</Text>
+          </View>
+        )}
       </View>
     );
   };
@@ -354,6 +399,11 @@ export default function GoalDetailScreenV2({ route, navigation }: GoalDetailScre
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('calendar');
   const [selectedMonth, setSelectedMonth] = useState(new Date());
+
+  // Feed share dialog state
+  const [shareDialogVisible, setShareDialogVisible] = useState(false);
+  const [currentQuest, setCurrentQuest] = useState<Quest | null>(null);
+  const [lastPhotoUri, setLastPhotoUri] = useState<string>('');
 
   const loadGoalData = useCallback(async () => {
     if (!goalId || !user) return;
@@ -408,6 +458,124 @@ export default function GoalDetailScreenV2({ route, navigation }: GoalDetailScre
     setSelectedMonth(newMonth);
   };
 
+  // Upload photo handler
+  const handleUpload = async (quest: Quest) => {
+    if (!user || !goal) return;
+
+    try {
+      // Request camera permissions
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('권한 필요', '사진을 업로드하려면 카메라 권한이 필요합니다.');
+        return;
+      }
+
+      // Launch camera
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        const photoUri = result.assets[0].uri;
+        setLastPhotoUri(photoUri);
+
+        // Convert URI to Blob for upload
+        const response = await fetch(photoUri);
+        const blob = await response.blob();
+
+        // Create verification
+        await VerificationService.createVerification(
+          goal.id,
+          user.id,
+          'success',
+          undefined,
+          blob
+        );
+
+        // Update quest status
+        await QuestService.updateQuestStatus(quest.id, 'completed', user.id);
+
+        // Show share dialog
+        setCurrentQuest(quest);
+        setShareDialogVisible(true);
+
+        Alert.alert('성공', '퀘스트가 완료되었습니다!');
+        loadGoalData();
+      }
+    } catch (error) {
+      console.error('[Upload] Error:', error);
+      Alert.alert('오류', '사진 업로드에 실패했습니다.');
+    }
+  };
+
+  // Complete quest handler
+  const handleComplete = async (quest: Quest) => {
+    if (!user || !goal) return;
+
+    Alert.alert(
+      '퀘스트 완료',
+      '이 퀘스트를 완료하시겠습니까?',
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '완료',
+          onPress: async () => {
+            try {
+              // Create manual verification
+              await VerificationService.createVerification(
+                goal.id,
+                user.id,
+                'success'
+              );
+
+              // Update quest status
+              await QuestService.updateQuestStatus(quest.id, 'completed', user.id);
+
+              // Show share dialog
+              setCurrentQuest(quest);
+              setShareDialogVisible(true);
+
+              Alert.alert('성공', '퀘스트가 완료되었습니다!');
+              loadGoalData();
+            } catch (error) {
+              console.error('[Complete] Error:', error);
+              Alert.alert('오류', '퀘스트 완료 처리에 실패했습니다.');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  // Skip quest handler
+  const handleSkip = async (quest: Quest) => {
+    Alert.alert(
+      '퀘스트 건너뛰기',
+      '이 퀘스트를 건너뛰시겠습니까?',
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '건너뛰기',
+          onPress: async () => {
+            try {
+              if (!user) return;
+              // Update quest status to skipped
+              await QuestService.updateQuestStatus(quest.id, 'skipped', user.id);
+              Alert.alert('알림', '퀘스트를 건너뛰었습니다.');
+              loadGoalData();
+            } catch (error) {
+              console.error('[Skip] Error:', error);
+              Alert.alert('오류', '퀘스트 건너뛰기에 실패했습니다.');
+            }
+          }
+        }
+      ]
+    );
+  };
+
   if (loading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'white' }}>
@@ -425,7 +593,10 @@ export default function GoalDetailScreenV2({ route, navigation }: GoalDetailScre
         paddingBottom: 16, 
         flexDirection: 'row', 
         alignItems: 'center', 
-        justifyContent: 'space-between' 
+        justifyContent: 'space-between',
+        backgroundColor: 'white',
+        borderBottomWidth: 1,
+        borderBottomColor: '#F3F4F6'
       }}>
         <TouchableOpacity onPress={handleBack} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
           <Ionicons name="chevron-back" size={28} color="#111827" />
@@ -437,18 +608,19 @@ export default function GoalDetailScreenV2({ route, navigation }: GoalDetailScre
       </View>
 
       {/* Tabs */}
-      <View style={{ flexDirection: 'row', paddingHorizontal: 16, marginBottom: 16 }}>
+      <View style={{ flexDirection: 'row', paddingHorizontal: 16, backgroundColor: 'white' }}>
         <TouchableOpacity
           style={{ 
             flex: 1, 
-            paddingVertical: 12, 
+            paddingVertical: 14, 
             borderBottomWidth: 2, 
-            borderBottomColor: activeTab === 'calendar' ? '#3B82F6' : '#E5E7EB' 
+            borderBottomColor: activeTab === 'calendar' ? '#3B82F6' : 'transparent' 
           }}
           onPress={() => setActiveTab('calendar')}
         >
           <Text style={{ 
             textAlign: 'center', 
+            fontSize: 15,
             fontWeight: '700', 
             color: activeTab === 'calendar' ? '#3B82F6' : '#9CA3AF' 
           }}>
@@ -458,14 +630,15 @@ export default function GoalDetailScreenV2({ route, navigation }: GoalDetailScre
         <TouchableOpacity
           style={{ 
             flex: 1, 
-            paddingVertical: 12, 
+            paddingVertical: 14, 
             borderBottomWidth: 2, 
-            borderBottomColor: activeTab === 'detail' ? '#3B82F6' : '#E5E7EB' 
+            borderBottomColor: activeTab === 'detail' ? '#3B82F6' : 'transparent' 
           }}
           onPress={() => setActiveTab('detail')}
         >
           <Text style={{ 
             textAlign: 'center', 
+            fontSize: 15,
             fontWeight: '700', 
             color: activeTab === 'detail' ? '#3B82F6' : '#9CA3AF' 
           }}>
@@ -487,6 +660,32 @@ export default function GoalDetailScreenV2({ route, navigation }: GoalDetailScre
           goal={goal}
           refreshing={refreshing}
           onRefresh={handleRefresh}
+          onUpload={handleUpload}
+          onComplete={handleComplete}
+          onSkip={handleSkip}
+        />
+      )}
+
+      {/* Share to Feed Dialog */}
+      {currentQuest && (
+        <ShareToFeedDialog
+          visible={shareDialogVisible}
+          onClose={() => {
+            setShareDialogVisible(false);
+            setCurrentQuest(null);
+            setLastPhotoUri('');
+          }}
+          onSuccess={() => {
+            loadGoalData();
+          }}
+          questTitle={currentQuest.title || goal?.title || '퀘스트'}
+          goalId={goalId}
+          questId={currentQuest.id}
+          userId={user?.id || ''}
+          userName={user?.displayName}
+          photoUrls={lastPhotoUri ? [lastPhotoUri] : []}
+          hasLocation={false}
+          hasTime={true}
         />
       )}
     </View>
