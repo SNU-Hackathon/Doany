@@ -11,6 +11,7 @@ export interface Quest {
   scheduledDate?: string; // ISO date string - legacy field
   weekNumber?: number; // For frequency goals
   sequence?: number; // For milestone goals
+  verificationPhotos?: string[]; // Array of photo URLs from verifications
   verification?: string[]; // Verification methods (사진, 위치 등록, etc.)
   verificationRules?: VerificationRule[]; // Legacy detailed rules
   difficulty?: string; // easy, medium, hard

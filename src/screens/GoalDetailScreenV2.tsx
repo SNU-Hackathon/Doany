@@ -1,6 +1,6 @@
 // Goal Detail Screen V2 - Separated Calendar and Detail tabs
 // Tab 1 (퀘스트): Calendar only with quest schedules
-// Tab 2 (상세보기): Quest list only
+// Tab 2 (상세보기): Quest list only with past/present/future states
 
 import { Ionicons } from '@expo/vector-icons';
 import { RouteProp } from '@react-navigation/native';
@@ -11,7 +11,10 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
+  Modal,
   RefreshControl,
+  ScrollView,
   Text,
   TouchableOpacity,
   View
@@ -39,6 +42,9 @@ interface GridDay {
   inMonth: boolean;
   key: string;
 }
+
+// Quest state types
+type QuestState = 'past' | 'today' | 'future';
 
 // Helper to build a stable 6-week (42-day) calendar grid
 function buildMonthGrid(year: number, month0: number): GridDay[] {
@@ -76,6 +82,22 @@ function buildMonthGrid(year: number, month0: number): GridDay[] {
   return grid;
 }
 
+// Determine quest state
+function getQuestState(quest: Quest): QuestState {
+  if (!quest.targetDate) return 'future';
+  
+  const questDate = new Date(quest.targetDate);
+  const today = new Date();
+  
+  // Set times to midnight for comparison
+  questDate.setHours(0, 0, 0, 0);
+  today.setHours(0, 0, 0, 0);
+  
+  if (questDate < today) return 'past';
+  if (questDate.getTime() === today.getTime()) return 'today';
+  return 'future';
+}
+
 interface CalendarTabProps {
   selectedMonth: Date;
   quests: Quest[];
@@ -103,9 +125,18 @@ function CalendarTab({ selectedMonth, quests, onMonthChange }: CalendarTabProps)
     return iso === today;
   };
 
+  const isPast = (iso: string) => {
+    const date = new Date(iso);
+    const today = new Date();
+    date.setHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
+    return date < today;
+  };
+
   const renderDayCell = ({ item }: { item: GridDay }) => {
     const quest = questMap.get(item.iso);
     const today = isToday(item.iso);
+    const past = isPast(item.iso);
     const isCompleted = quest?.status === 'completed';
     const dayNumber = item.date.getDate();
 
@@ -126,7 +157,7 @@ function CalendarTab({ selectedMonth, quests, onMonthChange }: CalendarTabProps)
           <Text style={{ 
             fontSize: 13, 
             fontWeight: today ? '700' : '500',
-            color: today ? '#3B82F6' : '#374151',
+            color: today ? '#3B82F6' : (past ? '#9CA3AF' : '#374151'),
             marginBottom: 6
           }}>
             {dayNumber}
@@ -150,7 +181,7 @@ function CalendarTab({ selectedMonth, quests, onMonthChange }: CalendarTabProps)
               )}
               {isCompleted && (
                 <View style={{ 
-                  backgroundColor: '#10B981', 
+                  backgroundColor: past ? '#9CA3AF' : '#10B981', 
                   borderRadius: 12, 
                   width: 24, 
                   height: 24, 
@@ -160,7 +191,19 @@ function CalendarTab({ selectedMonth, quests, onMonthChange }: CalendarTabProps)
                   <Ionicons name="checkmark" size={16} color="white" />
                 </View>
               )}
-              {!isCompleted && !today && (
+              {!isCompleted && past && (
+                <View style={{ 
+                  backgroundColor: '#F3F4F6', 
+                  borderRadius: 12, 
+                  width: 24, 
+                  height: 24, 
+                  alignItems: 'center', 
+                  justifyContent: 'center' 
+                }}>
+                  <Ionicons name="close" size={16} color="#9CA3AF" />
+                </View>
+              )}
+              {!isCompleted && !today && !past && (
                 <View style={{ 
                   backgroundColor: '#E5E7EB', 
                   borderRadius: 12, 
@@ -176,7 +219,7 @@ function CalendarTab({ selectedMonth, quests, onMonthChange }: CalendarTabProps)
           )}
 
           {/* Level up badge on 29th */}
-          {dayNumber === 29 && item.inMonth && (
+          {dayNumber === 29 && item.inMonth && !past && (
             <View style={{ 
               backgroundColor: '#FEF3C7', 
               borderRadius: 4, 
@@ -248,44 +291,76 @@ interface DetailTabProps {
   onUpload: (quest: Quest) => void;
   onComplete: (quest: Quest) => void;
   onSkip: (quest: Quest) => void;
+  onViewPhotos: (quest: Quest) => void;
 }
 
-function DetailTab({ quests, goal, refreshing, onRefresh, onUpload, onComplete, onSkip }: DetailTabProps) {
-  const isToday = (date: Date | null) => {
-    if (!date) return false;
-    const today = new Date();
-    return date.toDateString() === today.toDateString();
-  };
-
+function DetailTab({ quests, goal, refreshing, onRefresh, onUpload, onComplete, onSkip, onViewPhotos }: DetailTabProps) {
   const renderQuestCard = ({ item }: { item: Quest }) => {
     const date = item.targetDate ? new Date(item.targetDate) : null;
-    const today = date && isToday(date);
+    const state = getQuestState(item);
     const isCompleted = item.status === 'completed';
+    const hasPhotos = item.verificationPhotos && item.verificationPhotos.length > 0;
+
+    // Styling based on state
+    const getBorderColor = () => {
+      if (state === 'past') return isCompleted ? '#9CA3AF' : '#F3F4F6';
+      if (state === 'today') return isCompleted ? '#10B981' : '#10B981';
+      return '#E5E7EB';
+    };
+
+    const getBackgroundColor = () => {
+      if (state === 'past') return isCompleted ? '#F9FAFB' : '#FAFAFA';
+      if (state === 'today') return isCompleted ? '#D1FAE5' : '#F0FDF4';
+      return '#FFFFFF';
+    };
+
+    const getIconColor = () => {
+      if (state === 'past') return isCompleted ? '#9CA3AF' : '#D1D5DB';
+      if (state === 'today') return isCompleted ? '#10B981' : '#F97316';
+      return '#D1D5DB';
+    };
+
+    const getTextColor = () => {
+      if (state === 'past') return '#9CA3AF';
+      return '#111827';
+    };
 
     return (
       <View style={{
-        backgroundColor: today ? '#F0FDF4' : '#FFFFFF',
+        backgroundColor: getBackgroundColor(),
         borderRadius: 16,
         padding: 16,
         marginBottom: 12,
         marginHorizontal: 16,
-        borderWidth: today ? 2 : 1,
-        borderColor: today ? '#10B981' : '#E5E7EB',
+        borderWidth: state === 'today' ? 2 : 1,
+        borderColor: getBorderColor(),
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
+        shadowOpacity: state === 'past' ? 0 : 0.05,
         shadowRadius: 2,
-        elevation: 1
+        elevation: state === 'past' ? 0 : 1
       }}>
         {/* Header with Today badge and Upload button */}
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-          {today && (
+          {state === 'today' && !isCompleted && (
             <View style={{ backgroundColor: '#3B82F6', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 4 }}>
               <Text style={{ color: 'white', fontSize: 11, fontWeight: '700' }}>Today !</Text>
             </View>
           )}
-          {!today && <View />}
-          {today && !isCompleted && (
+          {state === 'past' && isCompleted && (
+            <View style={{ backgroundColor: '#E5E7EB', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 4 }}>
+              <Text style={{ color: '#6B7280', fontSize: 11, fontWeight: '600' }}>완료됨</Text>
+            </View>
+          )}
+          {state === 'future' && (
+            <View style={{ backgroundColor: '#F3F4F6', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 4 }}>
+              <Text style={{ color: '#6B7280', fontSize: 11, fontWeight: '600' }}>대기</Text>
+            </View>
+          )}
+          {(state === 'past' && !isCompleted) && <View />}
+          {(state !== 'today' && state !== 'past' && state !== 'future') && <View />}
+          
+          {state === 'today' && !isCompleted && (
             <TouchableOpacity 
               onPress={() => onUpload(item)}
               style={{ 
@@ -302,31 +377,48 @@ function DetailTab({ quests, goal, refreshing, onRefresh, onUpload, onComplete, 
               <Text style={{ color: 'white', fontSize: 12, fontWeight: '700' }}>업로드</Text>
             </TouchableOpacity>
           )}
+          {hasPhotos && state === 'past' && (
+            <TouchableOpacity 
+              onPress={() => onViewPhotos(item)}
+              style={{ 
+                backgroundColor: '#E0E7FF', 
+                borderRadius: 12, 
+                paddingHorizontal: 14, 
+                paddingVertical: 6,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 4
+              }}
+            >
+              <Ionicons name="images" size={14} color="#3B82F6" />
+              <Text style={{ color: '#3B82F6', fontSize: 12, fontWeight: '700' }}>사진 보기</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Quest info */}
-        <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 14 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: state === 'today' && !isCompleted ? 14 : 0 }}>
           <View style={{ marginRight: 12, marginTop: 2 }}>
             <Ionicons 
-              name={isCompleted ? "checkmark-circle" : "refresh-circle-outline"} 
+              name={isCompleted ? "checkmark-circle" : (state === 'future' ? "lock-closed" : "refresh-circle-outline")} 
               size={28} 
-              color={isCompleted ? "#10B981" : "#F97316"} 
+              color={getIconColor()} 
             />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 15, fontWeight: '700', color: '#111827', marginBottom: 6 }}>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: getTextColor(), marginBottom: 6 }}>
               {item.title || goal?.title}
             </Text>
             {date && (
-              <Text style={{ fontSize: 13, color: '#6B7280' }}>
+              <Text style={{ fontSize: 13, color: state === 'past' ? '#D1D5DB' : '#6B7280' }}>
                 {date.getFullYear()}-{String(date.getMonth() + 1).padStart(2, '0')}-{String(date.getDate()).padStart(2, '0')} 7:00에 수행하세요
               </Text>
             )}
           </View>
         </View>
 
-        {/* Action buttons */}
-        {today && !isCompleted && (
+        {/* Action buttons - only for today's quest */}
+        {state === 'today' && !isCompleted && (
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <TouchableOpacity 
               onPress={() => onComplete(item)}
@@ -358,16 +450,6 @@ function DetailTab({ quests, goal, refreshing, onRefresh, onUpload, onComplete, 
             </TouchableOpacity>
           </View>
         )}
-        {isCompleted && (
-          <View style={{ 
-            backgroundColor: '#D1FAE5', 
-            borderRadius: 8, 
-            paddingVertical: 10,
-            alignItems: 'center'
-          }}>
-            <Text style={{ color: '#065F46', fontWeight: '700', fontSize: 14 }}>✓ 완료됨</Text>
-          </View>
-        )}
       </View>
     );
   };
@@ -389,6 +471,49 @@ function DetailTab({ quests, goal, refreshing, onRefresh, onUpload, onComplete, 
   );
 }
 
+// Photo viewer modal
+interface PhotoViewerProps {
+  visible: boolean;
+  photos: string[];
+  onClose: () => void;
+}
+
+function PhotoViewer({ visible, photos, onClose }: PhotoViewerProps) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.9)' }}>
+        <TouchableOpacity 
+          onPress={onClose}
+          style={{ position: 'absolute', top: 50, right: 20, zIndex: 10, padding: 10 }}
+        >
+          <Ionicons name="close" size={32} color="white" />
+        </TouchableOpacity>
+        <ScrollView 
+          horizontal 
+          pagingEnabled 
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ alignItems: 'center' }}
+        >
+          {photos.map((photo, index) => (
+            <View key={index} style={{ width: 390, height: '100%', justifyContent: 'center', alignItems: 'center' }}>
+              <Image 
+                source={{ uri: photo }} 
+                style={{ width: '90%', height: '70%' }}
+                resizeMode="contain"
+              />
+            </View>
+          ))}
+        </ScrollView>
+        <View style={{ position: 'absolute', bottom: 40, alignSelf: 'center' }}>
+          <Text style={{ color: 'white', fontSize: 14 }}>
+            {photos.length > 1 ? `${photos.length}장의 사진` : '1장의 사진'}
+          </Text>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 export default function GoalDetailScreenV2({ route, navigation }: GoalDetailScreenProps) {
   const { goalId } = route.params;
   const { user } = useAuth();
@@ -404,6 +529,10 @@ export default function GoalDetailScreenV2({ route, navigation }: GoalDetailScre
   const [shareDialogVisible, setShareDialogVisible] = useState(false);
   const [currentQuest, setCurrentQuest] = useState<Quest | null>(null);
   const [lastPhotoUri, setLastPhotoUri] = useState<string>('');
+
+  // Photo viewer state
+  const [photoViewerVisible, setPhotoViewerVisible] = useState(false);
+  const [viewingPhotos, setViewingPhotos] = useState<string[]>([]);
 
   const loadGoalData = useCallback(async () => {
     if (!goalId || !user) return;
@@ -423,7 +552,27 @@ export default function GoalDetailScreenV2({ route, navigation }: GoalDetailScre
         return dateA - dateB;
       });
       
-      setQuests(sortedQuests);
+      // Load verification photos for each quest
+      const questsWithPhotos = await Promise.all(
+        sortedQuests.map(async (quest) => {
+          try {
+            const verifications = await VerificationService.getGoalVerifications(goalId);
+            const questVerifications = verifications.filter(v => 
+              v.screenshotUrl && 
+              Math.abs(new Date(v.timestamp).getTime() - new Date(quest.targetDate || '').getTime()) < 86400000 // Within 24 hours
+            );
+            return {
+              ...quest,
+              verificationPhotos: questVerifications.map(v => v.screenshotUrl).filter(Boolean) as string[]
+            };
+          } catch (error) {
+            console.error('[Quest] Error loading photos:', error);
+            return quest;
+          }
+        })
+      );
+      
+      setQuests(questsWithPhotos);
     } catch (error) {
       console.error('[GoalDetailV2] Error loading data:', error);
       Alert.alert('오류', '데이터를 불러오는데 실패했습니다');
@@ -458,7 +607,7 @@ export default function GoalDetailScreenV2({ route, navigation }: GoalDetailScre
     setSelectedMonth(newMonth);
   };
 
-  // Upload photo handler
+  // Upload photo handler with proper error handling
   const handleUpload = async (quest: Quest) => {
     if (!user || !goal) return;
 
@@ -486,14 +635,16 @@ export default function GoalDetailScreenV2({ route, navigation }: GoalDetailScre
         const response = await fetch(photoUri);
         const blob = await response.blob();
 
-        // Create verification
-        await VerificationService.createVerification(
+        // Create verification with photo
+        const verificationId = await VerificationService.createVerification(
           goal.id,
           user.id,
           'success',
           undefined,
           blob
         );
+
+        console.log('[Upload] Verification created:', verificationId);
 
         // Update quest status
         await QuestService.updateQuestStatus(quest.id, 'completed', user.id);
@@ -505,9 +656,9 @@ export default function GoalDetailScreenV2({ route, navigation }: GoalDetailScre
         Alert.alert('성공', '퀘스트가 완료되었습니다!');
         loadGoalData();
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('[Upload] Error:', error);
-      Alert.alert('오류', '사진 업로드에 실패했습니다.');
+      Alert.alert('오류', `사진 업로드에 실패했습니다: ${error.message || '알 수 없는 오류'}`);
     }
   };
 
@@ -574,6 +725,14 @@ export default function GoalDetailScreenV2({ route, navigation }: GoalDetailScre
         }
       ]
     );
+  };
+
+  // View photos handler
+  const handleViewPhotos = (quest: Quest) => {
+    if (quest.verificationPhotos && quest.verificationPhotos.length > 0) {
+      setViewingPhotos(quest.verificationPhotos);
+      setPhotoViewerVisible(true);
+    }
   };
 
   if (loading) {
@@ -663,6 +822,7 @@ export default function GoalDetailScreenV2({ route, navigation }: GoalDetailScre
           onUpload={handleUpload}
           onComplete={handleComplete}
           onSkip={handleSkip}
+          onViewPhotos={handleViewPhotos}
         />
       )}
 
@@ -688,6 +848,16 @@ export default function GoalDetailScreenV2({ route, navigation }: GoalDetailScre
           hasTime={true}
         />
       )}
+
+      {/* Photo Viewer */}
+      <PhotoViewer
+        visible={photoViewerVisible}
+        photos={viewingPhotos}
+        onClose={() => {
+          setPhotoViewerVisible(false);
+          setViewingPhotos([]);
+        }}
+      />
     </View>
   );
 }
