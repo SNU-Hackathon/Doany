@@ -14,13 +14,13 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { GoalDetailScreenV2 } from '.';
 import CreateGoalModal from '../components/CreateGoalModal';
 import { useAuth } from '../hooks/useAuth';
 import { db } from '../services/firebase';
 import { VerificationService } from '../services/verificationService';
 import { Goal, RootStackParamList } from '../types';
 import { Quest } from '../types/quest';
-import GoalDetailScreenV2 from './GoalDetailScreenV2';
 
 type GoalsScreenNavigationProp = StackNavigationProp<RootStackParamList>;
 
@@ -219,45 +219,43 @@ export default function GoalsScreen() {
 
   const categories = ['All', '공부 & 성장', '운동 & 건강', '수면'];
 
-  // Fetch today's quests for all goals
+  // Fetch closest quest for each goal
   const fetchTodayQuests = useCallback(async () => {
     if (!user) return;
 
     try {
       const { QuestService } = await import('../services/questService');
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-
+      const now = new Date();
       const allQuests: TodayQuest[] = [];
 
-      // Fetch quests for each goal
+      // Fetch quests for each goal and get only the closest one
       for (const goal of goals) {
         const quests = await QuestService.getQuestsForGoal(goal.id, user.id);
         
-        // Filter today's quests and upcoming quests
-        const relevantQuests = quests.filter(q => {
+        // Find the closest future quest or today's quest
+        const upcomingQuests = quests.filter(q => {
           if (!q.targetDate) return false;
           const questDate = new Date(q.targetDate);
-          const now = new Date();
-          
-          // Include today's quests and near-future quests (within 7 days)
-          const sevenDaysFromNow = new Date(now);
-          sevenDaysFromNow.setDate(now.getDate() + 7);
-          
-          return questDate >= today && questDate <= sevenDaysFromNow;
+          return questDate >= now;
         });
 
-        // Add goal info to quests
-        const questsWithGoalInfo = relevantQuests.map(q => ({
-          ...q,
-          goalTitle: goal.title,
-          goalCategory: (goal as any).categoryLabel || '운동 & 건강',
-          scheduledTime: q.targetDate ? new Date(q.targetDate) : undefined,
-        } as TodayQuest));
+        // Sort by date and get the closest one
+        upcomingQuests.sort((a, b) => {
+          const dateA = a.targetDate ? new Date(a.targetDate).getTime() : 0;
+          const dateB = b.targetDate ? new Date(b.targetDate).getTime() : 0;
+          return dateA - dateB;
+        });
 
-        allQuests.push(...questsWithGoalInfo);
+        // Add only the closest quest
+        if (upcomingQuests.length > 0) {
+          const closestQuest = upcomingQuests[0];
+          allQuests.push({
+            ...closestQuest,
+            goalTitle: goal.title,
+            goalCategory: (goal as any).categoryLabel || '운동 & 건강',
+            scheduledTime: closestQuest.targetDate ? new Date(closestQuest.targetDate) : undefined,
+          } as TodayQuest);
+        }
       }
 
       // Sort by scheduled time (nearest first)
