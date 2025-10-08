@@ -219,18 +219,25 @@ export default function GoalsScreen() {
 
   const categories = ['All', '공부 & 성장', '운동 & 건강', '수면'];
 
-  // Fetch closest quest for each goal
+  // Fetch closest quest for each goal - optimized version
   const fetchTodayQuests = useCallback(async () => {
-    if (!user) return;
+    if (!user || goals.length === 0) return;
 
     try {
       const { QuestService } = await import('../services/questService');
       const now = new Date();
+      
+      // Fetch all quests for all goals in parallel
+      const questsPromises = goals.map(goal => 
+        QuestService.getQuestsForGoal(goal.id, user.id)
+      );
+      
+      const allQuestsResults = await Promise.all(questsPromises);
       const allQuests: TodayQuest[] = [];
 
-      // Fetch quests for each goal and get only the closest one
-      for (const goal of goals) {
-        const quests = await QuestService.getQuestsForGoal(goal.id, user.id);
+      // Process each goal's quests
+      goals.forEach((goal, index) => {
+        const quests = allQuestsResults[index];
         
         // Find the closest future quest or today's quest
         const upcomingQuests = quests.filter(q => {
@@ -256,7 +263,7 @@ export default function GoalsScreen() {
             scheduledTime: closestQuest.targetDate ? new Date(closestQuest.targetDate) : undefined,
           } as TodayQuest);
         }
-      }
+      });
 
       // Sort by scheduled time (nearest first)
       allQuests.sort((a, b) => {
@@ -287,16 +294,30 @@ export default function GoalsScreen() {
       try {
         console.log('[GoalsScreen] Goals snapshot received:', snapshot.docs.length, 'documents');
         
+        // Optimize: Load all quests for all goals in parallel first
+        const { QuestService } = await import('../services/questService');
+        
+        const goalIds = snapshot.docs.map(doc => doc.id);
+        
+        // Load all quests for all goals in parallel
+        const allQuestsPromises = goalIds.map(goalId => 
+          QuestService.getQuestsForGoal(goalId, user.id)
+        );
+        
+        const allQuestsResults = await Promise.all(allQuestsPromises);
+        const questsByGoalId = new Map(
+          goalIds.map((goalId, index) => [goalId, allQuestsResults[index]])
+        );
+
         const goalsWithProgress = await Promise.all(
           snapshot.docs.map(async (doc) => {
             const goal = { id: doc.id, ...doc.data() } as Goal;
             
             try {
-              const { QuestService } = await import('../services/questService');
-              const [successRate, recentVerifications, quests] = await Promise.all([
+              const quests = questsByGoalId.get(goal.id) || [];
+              const [successRate, recentVerifications] = await Promise.all([
                 VerificationService.calculateGoalSuccessRate(goal.id),
-                VerificationService.getRecentGoalVerifications(goal.id, 7),
-                QuestService.getQuestsForGoal(goal.id, user.id)
+                VerificationService.getRecentGoalVerifications(goal.id, 7)
               ]);
 
               const totalSessions = quests.length;
@@ -428,6 +449,7 @@ export default function GoalsScreen() {
         onPress: () => {},
       }}
       contentPadding={false}
+      scrollable={false}
     >
 
       {/* Search Bar and New Button */}
@@ -514,6 +536,15 @@ export default function GoalsScreen() {
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
+          initialNumToRender={10}
+          maxToRenderPerBatch={5}
+          windowSize={10}
+          removeClippedSubviews={true}
+          getItemLayout={(data, index) => ({
+            length: 120, // Approximate height of GoalCard
+            offset: 120 * index,
+            index,
+          })}
           ListEmptyComponent={
             <View className="flex-1 items-center justify-center py-16">
               <Ionicons name="flag-outline" size={64} color="#D1D5DB" />
@@ -542,6 +573,15 @@ export default function GoalsScreen() {
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
+          initialNumToRender={10}
+          maxToRenderPerBatch={5}
+          windowSize={10}
+          removeClippedSubviews={true}
+          getItemLayout={(data, index) => ({
+            length: 100, // Approximate height of TodayQuestCard
+            offset: 100 * index,
+            index,
+          })}
           ListEmptyComponent={
             <View className="flex-1 items-center justify-center py-16">
               <Ionicons name="calendar-outline" size={64} color="#D1D5DB" />
