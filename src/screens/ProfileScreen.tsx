@@ -6,12 +6,12 @@ import React, { useState } from 'react';
 import {
   Alert,
   Modal,
-  ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
   View
 } from 'react-native';
+import { BaseScreen } from '../components';
 import { useAuth } from '../hooks/useAuth';
 
 export default function ProfileScreen() {
@@ -69,21 +69,14 @@ export default function ProfileScreen() {
   const points = user.points || 3900;
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
-      <ScrollView 
-        style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: 100 }}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Header */}
-        <View className="px-4 pt-14 pb-4">
-          <View className="flex-row items-center justify-between">
-            <Text className="text-2xl font-bold text-gray-900">마이페이지</Text>
-            <TouchableOpacity>
-              <Ionicons name="notifications-outline" size={28} color="#3B82F6" />
-            </TouchableOpacity>
-          </View>
-        </View>
+    <BaseScreen
+      title="마이페이지"
+      rightAction={{
+        icon: 'notifications-outline',
+        onPress: () => {},
+      }}
+      contentPadding={false}
+    >
 
         {/* User Card */}
         <View className="mx-4 mb-6 bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
@@ -284,6 +277,6 @@ export default function ProfileScreen() {
           </View>
         </View>
       </Modal>
-    </View>
+    </BaseScreen>
   );
 }

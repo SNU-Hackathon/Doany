@@ -4,10 +4,10 @@ import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
 import {
   Alert,
-  ScrollView,
   Text,
   View
 } from 'react-native';
+import { BaseScreen, LoadingState } from '../components';
 import { useAuth } from '../hooks/useAuth';
 import { GoalService } from '../services/goalService';
 import { VerificationService } from '../services/verificationService';
@@ -87,17 +87,14 @@ export default function CalendarScreen() {
   };
 
   if (loading) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F9FAFB' }}>
-        <Text style={{ color: '#6B7280' }}>Loading calendar...</Text>
-      </View>
-    );
+    return <LoadingState message="Loading calendar..." fullScreen />;
   }
 
   return (
-    <ScrollView 
-      style={{ flex: 1, backgroundColor: '#F9FAFB' }}
-      contentContainerStyle={{ paddingBottom: 90 }} // Account for lowered tab bar
+    <BaseScreen
+      title="캘린더"
+      backgroundColor="#F9FAFB"
+      contentPadding={false}
     >
       <View style={{ paddingHorizontal: 16, paddingTop: 16 }}>
         {/* Date Header */}
@@ -237,6 +234,6 @@ export default function CalendarScreen() {
           </View>
         </View>
       </View>
-    </ScrollView>
+    </BaseScreen>
   );
 }

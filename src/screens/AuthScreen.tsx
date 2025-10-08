@@ -4,15 +4,12 @@ import { StatusBar } from 'expo-status-bar';
 import React, { useState } from 'react';
 import {
   Alert,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ScreenContainer } from '../components';
 import { useAuth } from '../hooks/useAuth';
 import { AuthError, sendReset } from '../services/auth';
 
@@ -152,13 +149,14 @@ export default function AuthScreen() {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: 'white' }}>
-      <SafeAreaView style={{ flex: 1 }}>
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
-          <ScrollView contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 20, paddingVertical: 16 }}>
+    <ScreenContainer
+      backgroundColor="white"
+      keyboardAvoidingView
+      contentPadding
+      paddingHorizontal={20}
+      paddingVertical={16}
+      contentContainerStyle={{ flexGrow: 1 }}
+    >
             {/* Header */}
             <View style={{ marginBottom: 32, marginTop: 16 }}>
               <Text style={{ fontSize: 30, fontWeight: 'bold', color: '#111827', marginBottom: 8 }}>
@@ -281,10 +279,7 @@ export default function AuthScreen() {
                 </Text>
               </Text>
             </TouchableOpacity>
-          </ScrollView>
-        </KeyboardAvoidingView>
-      </SafeAreaView>
       <StatusBar style="auto" />
-    </View>
+    </ScreenContainer>
   );
 }

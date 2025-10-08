@@ -4,6 +4,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { BaseScreen } from '../components';
 
 export default function FeedScreen() {
   const [searchText, setSearchText] = useState('');
@@ -14,17 +15,16 @@ export default function FeedScreen() {
   const types = ['All', 'Schedule', 'Frequency', 'Milestone'];
 
   return (
-    <View className="flex-1 bg-white">
-      {/* Header */}
-      <View className="px-4 pt-14 pb-4">
-        <View className="flex-row items-center justify-between mb-4">
-          <Text className="text-2xl font-bold text-gray-900">피드</Text>
-          <TouchableOpacity>
-            <Ionicons name="notifications-outline" size={28} color="#3B82F6" />
-          </TouchableOpacity>
-        </View>
-        
-        {/* Search Bar */}
+    <BaseScreen
+      title="피드"
+      rightAction={{
+        icon: 'notifications-outline',
+        onPress: () => {},
+      }}
+      contentPadding={false}
+    >
+      {/* Search Bar */}
+      <View className="px-4 mb-4">
         <View className="bg-gray-50 rounded-xl flex-row items-center px-4 py-3">
           <Ionicons name="search" size={20} color="#9CA3AF" />
           <Text className="flex-1 ml-2 text-gray-400 text-sm">search others goal</Text>
@@ -34,7 +34,7 @@ export default function FeedScreen() {
         </View>
       </View>
 
-      <ScrollView className="flex-1 px-4" showsVerticalScrollIndicator={false}>
+      <View className="px-4">
         {/* Category Chips */}
         <View className="mb-3">
           <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row">
@@ -92,7 +92,7 @@ export default function FeedScreen() {
             </Text>
           </View>
         </View>
-      </ScrollView>
-    </View>
+      </View>
+    </BaseScreen>
   );
 }

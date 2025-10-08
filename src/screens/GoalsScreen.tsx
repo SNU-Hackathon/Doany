@@ -4,7 +4,6 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   FlatList,
   Modal,
@@ -12,9 +11,10 @@ import {
   ScrollView,
   Text,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native';
 import { GoalDetailScreenV2 } from '.';
+import { BaseScreen, LoadingState } from '../components';
 import CreateGoalModal from '../components/CreateGoalModal';
 import { useAuth } from '../hooks/useAuth';
 import { db } from '../services/firebase';
@@ -413,12 +413,7 @@ export default function GoalsScreen() {
   ), [handleQuestPress]);
 
   if (loading) {
-    return (
-      <View className="flex-1 justify-center items-center bg-white">
-        <ActivityIndicator size="large" color="#3B82F6" />
-        <Text className="mt-4 text-gray-600">Loading...</Text>
-      </View>
-    );
+    return <LoadingState message="Loading goals..." fullScreen />;
   }
 
   const filteredGoals = selectedCategory === 'All' 
@@ -426,19 +421,18 @@ export default function GoalsScreen() {
     : goals.filter(g => g.categoryLabel === selectedCategory);
 
   return (
-    <View className="flex-1 bg-white">
-      {/* Header */}
-      <View className="px-4 pt-14 pb-4">
-        {/* Title and Notification */}
-        <View className="flex-row items-center justify-between mb-4">
-          <Text className="text-2xl font-bold text-gray-900">나의 목표</Text>
-          <TouchableOpacity>
-            <Ionicons name="notifications-outline" size={28} color="#3B82F6" />
-          </TouchableOpacity>
-        </View>
+    <BaseScreen
+      title="나의 목표"
+      rightAction={{
+        icon: 'notifications-outline',
+        onPress: () => {},
+      }}
+      contentPadding={false}
+    >
 
-        {/* Search Bar and New Button */}
-        <View className="flex-row items-center mb-4">
+      {/* Search Bar and New Button */}
+      <View className="px-4 mb-4">
+        <View className="flex-row items-center">
           <View className="flex-1 bg-gray-50 rounded-xl flex-row items-center px-4 py-3 mr-3">
             <Ionicons name="search" size={20} color="#9CA3AF" />
             <Text className="flex-1 ml-2 text-gray-400 text-sm">search your goal !</Text>
@@ -453,8 +447,10 @@ export default function GoalsScreen() {
             <Ionicons name="add" size={28} color="white" />
           </TouchableOpacity>
         </View>
+      </View>
 
-        {/* Tab Selector */}
+      {/* Tab Selector */}
+      <View className="px-4 mb-4">
         <View className="flex-row bg-gray-50 rounded-xl p-1">
           <TouchableOpacity
             onPress={() => setSelectedTab('goals')}
@@ -599,6 +595,6 @@ export default function GoalsScreen() {
           />
         )}
       </Modal>
-    </View>
+    </BaseScreen>
   );
 }

@@ -5,28 +5,24 @@ import { Ionicons } from '@expo/vector-icons';
 import { QueryDocumentSnapshot } from 'firebase/firestore';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    FlatList,
-    KeyboardAvoidingView,
-    Platform,
-    RefreshControl,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  RefreshControl,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import EmptyState from '../components/common/EmptyState';
-import SkeletonList from '../components/common/SkeletonList';
+import { BaseScreen, ErrorState, LoadingState } from '../components';
 import FeedCard from '../components/feed/FeedCard';
 import { useAuth } from '../hooks/useAuth';
 import {
-    addComment,
-    deleteComment,
-    fetchComments,
-    getFeedPost,
-    getUserReaction
+  addComment,
+  deleteComment,
+  fetchComments,
+  getFeedPost,
+  getUserReaction
 } from '../services/feedService';
 import { FeedComment, FeedPost, FeedReaction } from '../types/feed';
 
@@ -266,50 +262,31 @@ export default function FeedDetailScreen({ postId, onBack }: FeedDetailScreenPro
   };
 
   if (loading && !post) {
-    return <SkeletonList count={1} type="feed" />;
+    return <LoadingState message="Loading post..." fullScreen />;
   }
 
   if (error || !post) {
     return (
-      <EmptyState
-        icon="alert-circle-outline"
+      <ErrorState
         title="게시물을 찾을 수 없습니다"
         message={error || '삭제되었거나 존재하지 않는 게시물입니다.'}
         actionLabel="돌아가기"
         onAction={onBack}
+        fullScreen
       />
     );
   }
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: '#F6F7FB' }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+    <BaseScreen
+      title="게시물"
+      showBackButton={!!onBack}
+      onBackPress={onBack}
+      backgroundColor="#F6F7FB"
+      keyboardAvoidingView
+      scrollable={false}
+      contentPadding={false}
     >
-      {/* Header */}
-      <View
-        style={{
-          backgroundColor: '#FFFFFF',
-          paddingTop: insets.top + 12,
-          paddingBottom: 12,
-          paddingHorizontal: 16,
-          borderBottomWidth: 1,
-          borderBottomColor: '#E5E7EB',
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 12,
-        }}
-      >
-        {onBack && (
-          <TouchableOpacity onPress={onBack}>
-            <Ionicons name="arrow-back" size={24} color="#0F172A" />
-          </TouchableOpacity>
-        )}
-        <Text style={{ fontSize: 18, fontWeight: '700', color: '#0F172A', flex: 1 }}>
-          게시물
-        </Text>
-      </View>
 
       <FlatList
         data={comments}
@@ -409,7 +386,7 @@ export default function FeedDetailScreen({ postId, onBack }: FeedDetailScreenPro
           </TouchableOpacity>
         </View>
       </View>
-    </KeyboardAvoidingView>
+    </BaseScreen>
   );
 }
 

@@ -4,15 +4,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Dimensions,
-    Image,
-    RefreshControl,
-    ScrollView,
-    Text,
-    TouchableOpacity,
-    View
+  Dimensions,
+  Image,
+  RefreshControl,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  View
 } from 'react-native';
+import { BaseScreen, LoadingState } from '../components';
 import { useAuth } from '../hooks/useAuth';
 import { fetchFeedPage } from '../services/feedService';
 import { FeedPost } from '../types/feed';
@@ -60,14 +60,7 @@ export default function SwipeScreen() {
   };
 
   if (loading) {
-    return (
-      <View style={{ flex: 1, backgroundColor: '#F9FAFB', justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color="#3B82F6" />
-        <Text style={{ marginTop: 16, color: '#6B7280', fontSize: 14 }}>
-          피드를 불러오는 중...
-        </Text>
-      </View>
-    );
+    return <LoadingState message="피드를 불러오는 중..." fullScreen />;
   }
 
   if (feedPosts.length === 0) {
@@ -134,25 +127,18 @@ export default function SwipeScreen() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#F9FAFB' }}>
-      {/* Header */}
-      <View style={{ 
-        paddingHorizontal: 20, 
-        paddingTop: 56, 
-        paddingBottom: 16, 
-        backgroundColor: 'white',
-        borderBottomWidth: 1,
-        borderBottomColor: '#E5E7EB'
-      }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Text style={{ fontSize: 24, fontWeight: '800', color: '#111827' }}>
-            스와이프
-          </Text>
-          <TouchableOpacity onPress={handleRefresh}>
-            <Ionicons name="refresh-outline" size={24} color="#3B82F6" />
-          </TouchableOpacity>
-        </View>
-        <Text style={{ fontSize: 13, color: '#6B7280', marginTop: 4 }}>
+    <BaseScreen
+      title="스와이프"
+      rightAction={{
+        icon: 'refresh-outline',
+        onPress: handleRefresh,
+      }}
+      backgroundColor="#F9FAFB"
+      contentPadding={false}
+    >
+      {/* Subtitle */}
+      <View className="px-5 pb-4">
+        <Text className="text-sm text-gray-500">
           다른 사람들의 퀘스트 완료 기록을 확인해보세요
         </Text>
       </View>
@@ -306,6 +292,6 @@ export default function SwipeScreen() {
           </View>
         ))}
       </ScrollView>
-    </View>
+    </BaseScreen>
   );
 }

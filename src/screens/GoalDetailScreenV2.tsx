@@ -8,7 +8,6 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import * as ImagePicker from 'expo-image-picker';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   FlatList,
   Image,
@@ -19,6 +18,7 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
+import { LoadingState, ScreenContainer, ScreenHeader } from '../components';
 import { ShareToFeedDialog } from '../components/feed';
 import { useAuth } from '../hooks/useAuth';
 import { GoalService } from '../services/goalService';
@@ -736,35 +736,21 @@ export default function GoalDetailScreenV2({ route, navigation }: GoalDetailScre
   };
 
   if (loading) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'white' }}>
-        <ActivityIndicator size="large" color="#3B82F6" />
-      </View>
-    );
+    return <LoadingState message="Loading goal details..." fullScreen />;
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: 'white' }}>
-      {/* Header */}
-      <View style={{ 
-        paddingHorizontal: 16, 
-        paddingTop: 56, 
-        paddingBottom: 16, 
-        flexDirection: 'row', 
-        alignItems: 'center', 
-        justifyContent: 'space-between',
-        backgroundColor: 'white',
-        borderBottomWidth: 1,
-        borderBottomColor: '#F3F4F6'
-      }}>
-        <TouchableOpacity onPress={handleBack} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-          <Ionicons name="chevron-back" size={28} color="#111827" />
-        </TouchableOpacity>
-        <Text style={{ fontSize: 18, fontWeight: '700', color: '#111827' }}>퀘스트</Text>
-        <TouchableOpacity>
-          <Ionicons name="notifications-outline" size={28} color="#3B82F6" />
-        </TouchableOpacity>
-      </View>
+    <ScreenContainer backgroundColor="white">
+      <ScreenHeader
+        title="퀘스트"
+        showBackButton
+        onBackPress={handleBack}
+        rightAction={{
+          icon: 'notifications-outline',
+          onPress: () => {},
+        }}
+        borderBottom
+      />
 
       {/* Tabs */}
       <View style={{ flexDirection: 'row', paddingHorizontal: 16, backgroundColor: 'white' }}>
@@ -858,6 +844,6 @@ export default function GoalDetailScreenV2({ route, navigation }: GoalDetailScre
           setViewingPhotos([]);
         }}
       />
-    </View>
+    </ScreenContainer>
   );
 }
