@@ -191,7 +191,6 @@ export default function ProfileScreen() {
             <Ionicons name="chevron-forward" size={20} color="#D1D5DB" />
           </TouchableOpacity>
         </View>
-      </ScrollView>
 
       {/* Friend Add Modal */}
       <Modal

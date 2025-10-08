@@ -6,7 +6,7 @@ import {
   getExamplesForPrompt,
   getPolicyDescriptionForPrompt
 } from '../constants/verificationPolicy';
-import { validateGoalSpec, validateGoalSpecWithRecovery, validateTypeSpecificFields, type GoalSpec } from '../schemas/goalSpec';
+import { validateGoalSpec, validateGoalSpecWithRecovery, validateTypeSpecificFields, type GoalSpec } from '../schemas/goalSpecV2';
 import { AIContext, AIGoal, CalendarEvent, ValidationResult, VerificationType } from '../types';
 import { sliceCompleteWeeks } from '../utils/dateSlices';
 import { parseKoreanSchedule } from '../utils/koreanParsing';

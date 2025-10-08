@@ -5,8 +5,8 @@
  */
 
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { GoalSpec } from '../../schemas/goalSpec';
-import { validateGoalSpec } from '../../schemas/goalSpec';
+import type { GoalSpec } from '../../schemas/goalSpecV2';
+import { validateGoalSpec } from '../../schemas/goalSpecV2';
 import type { GoalDoc, GoalType, VerificationSignals } from '../../types/firestore';
 import { evalFrequencyRule, evalScheduleRule, evaluateByGoalType } from '../verificationRules';
 
