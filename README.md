@@ -55,24 +55,7 @@ Enable the following services in Firebase Console:
 5. Copy the Firebase config object
 
 ### 4. Environment Variables
-Create a `.env` file in your project root:
-
-```env
-# Firebase Configuration (required)
-EXPO_PUBLIC_FIREBASE_API_KEY=your_firebase_api_key_here
-EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=your-project-id.firebaseapp.com
-EXPO_PUBLIC_FIREBASE_PROJECT_ID=your-project-id
-EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET=your-project-id.appspot.com
-EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=123456789
-EXPO_PUBLIC_FIREBASE_APP_ID=1:123456789:web:abcdefghijk
-
-# Optional: Firebase Analytics
-EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID=G-ABCDEFGHIJ
-
-# Other API Keys (optional)
-EXPO_PUBLIC_OPENAI_API_KEY=sk-your_openai_key_here
-EXPO_PUBLIC_GOOGLE_MAPS_API_KEY=your_google_maps_key_here
-```
+Create a `.env` file in your project root.
 
 **Important:** After making changes to `.env`, restart Metro with `expo start --clear`
 
