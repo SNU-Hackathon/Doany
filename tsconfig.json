@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "types": ["react", "jest", "node"],
+    "types": ["react", "jest", "node", "nativewind/types"],
     "typeRoots": ["./node_modules/@types"],
     "strict": false,
     "jsx": "react-native",
