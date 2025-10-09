@@ -5,7 +5,8 @@
  */
 
 import { useEffect, useState } from 'react';
-import { getAuthState, subscribe, type AuthState } from '../state/auth.store';
+import { loginPassword } from '../api/auth';
+import { clearAuth, getAuthState, setAuth, subscribe, type AuthState } from '../state/auth.store';
 
 export interface User {
   id: string;
@@ -17,6 +18,10 @@ export interface UseAuthReturn {
   user: User | undefined;
   isAuthenticated: boolean;
   isLoading: boolean;
+  loading: boolean; // Alias for compatibility
+  signIn: (email: string, password: string) => Promise<void>;
+  signUp: (email: string, password: string, userData?: any) => Promise<void>;
+  signOut: () => Promise<void>;
 }
 
 /**
@@ -46,10 +51,37 @@ export function useAuth(): UseAuthReturn {
     };
   }, []);
 
+  const signIn = async (email: string, password: string) => {
+    try {
+      const authResponse = await loginPassword({ email, password });
+      setAuth({
+        accessToken: authResponse.accessToken,
+        refreshToken: authResponse.refreshToken,
+        user: authResponse.user,
+      });
+    } catch (error) {
+      console.error('[useAuth.signIn] Error:', error);
+      throw error;
+    }
+  };
+
+  const signUp = async (email: string, password: string, userData?: any) => {
+    console.warn('[useAuth.signUp] Not yet implemented - use src/api/users.join');
+    throw new Error('signUp not yet implemented');
+  };
+
+  const signOut = async () => {
+    clearAuth();
+  };
+
   return {
     user: authState.user,
     isAuthenticated: authState.isAuthenticated,
     isLoading,
+    loading: isLoading, // Alias for compatibility
+    signIn,
+    signUp,
+    signOut,
   };
 }
 

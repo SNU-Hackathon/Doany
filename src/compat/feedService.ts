@@ -25,7 +25,7 @@ export async function fetchFeedPage(options?: {
 
     // Transform to FeedPage format
     const feedItems: FeedPost[] = response.items.map(item => ({
-      id: item.goalId,
+      id: item.goalId || '',
       userId: item.userId,
       userName: item.userName,
       goalId: item.goalId,
@@ -33,13 +33,13 @@ export async function fetchFeedPage(options?: {
       title: item.title,
       description: item.description,
       media: [],
-      createdAt: item.createdAt,
-      likes: item.likes,
-      likeCount: item.likes,
+      createdAt: item.createdAt || new Date(),
+      likes: item.likes || 0,
+      likeCount: item.likes || 0,
       didILike: item.didILike,
       comments: 0,
       commentCount: 0,
-    }));
+    } as FeedPost));
 
     return {
       items: feedItems,
@@ -152,5 +152,26 @@ export async function createFeedPost(postData: any): Promise<string> {
     console.error('[feedService.createFeedPost] Error:', error);
     throw error;
   }
+}
+
+/**
+ * Toggle like on a post (stub)
+ */
+export async function toggleLike(postId: string, userId: string): Promise<void> {
+  console.warn('[feedService.toggleLike] Use likeGoal/unlikeGoal from REST API');
+}
+
+/**
+ * Toggle save on a post (stub)
+ */
+export async function toggleSave(postId: string, userId: string): Promise<void> {
+  console.warn('[feedService.toggleSave] Not yet implemented in REST API');
+}
+
+/**
+ * Toggle trust on a post (stub)
+ */
+export async function toggleTrust(postId: string, userId: string): Promise<void> {
+  console.warn('[feedService.toggleTrust] Not yet implemented in REST API');
 }
 

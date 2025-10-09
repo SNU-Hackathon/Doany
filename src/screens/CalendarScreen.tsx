@@ -10,7 +10,7 @@ import {
 import { BaseScreen, LoadingState } from '../components';
 import { useAuth } from '../hooks/useAuth';
 import { GoalService } from '../compat/goalService';
-import { VerificationService } from '../services/verificationService';
+import { VerificationService } from '../compat/verificationService';
 import { Goal, Verification } from '../types';
 
 interface GoalProgress {

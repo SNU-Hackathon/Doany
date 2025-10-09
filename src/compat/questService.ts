@@ -32,10 +32,10 @@ export class QuestService {
    * @param questId Quest ID
    * @param updates Partial quest updates
    */
-  static async updateQuest(questId: string, updates: Partial<Quest>): Promise<void> {
+  static async updateQuest(questId: string, updates: any): Promise<void> {
     try {
       await goalsApi.patchQuest(questId, {
-        state: updates.state as any,
+        state: updates.state,
         completedAt: updates.completedAt,
         description: updates.description,
       });
@@ -43,6 +43,16 @@ export class QuestService {
       console.error('[QuestService.updateQuest] Error:', error);
       throw error;
     }
+  }
+
+  /**
+   * Generate quests for preview (stub)
+   * @param data Goal data
+   * @param userId User ID (optional second parameter)
+   */
+  static async generateQuestsForPreview(data: any, userId?: string): Promise<any[]> {
+    console.warn('[QuestService.generateQuestsForPreview] Not yet implemented');
+    return [];
   }
 
   /**
@@ -59,16 +69,16 @@ export class QuestService {
       }
 
       // Transform to Quest type
-      return goal.quests.map((apiQuest): Quest => ({
+      return goal.quests.map((apiQuest): any => ({
         id: apiQuest.questId,
         goalId: apiQuest.goalId,
         date: apiQuest.date,
         time: apiQuest.time,
         description: apiQuest.description,
-        state: apiQuest.state as any,
+        state: apiQuest.state,
         completedAt: apiQuest.completedAt,
-        method: apiQuest.method as any,
-      } as Quest));
+        method: apiQuest.method,
+      }));
     } catch (error) {
       console.error('[QuestService.getQuestsByGoalId] Error:', error);
       return [];
@@ -77,5 +87,5 @@ export class QuestService {
 }
 
 // Export individual functions
-export const { createQuest, updateQuest, getQuestsByGoalId } = QuestService;
+export const { createQuest, updateQuest, getQuestsByGoalId, generateQuestsForPreview } = QuestService;
 

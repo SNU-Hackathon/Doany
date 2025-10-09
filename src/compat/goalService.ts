@@ -111,8 +111,16 @@ export class GoalService {
       return null;
     }
   }
+
+  /**
+   * Get active goals (stub)
+   */
+  static async getActiveGoals(userId: string): Promise<Goal[]> {
+    console.warn('[GoalService.getActiveGoals] Use getUserGoals instead');
+    return this.getUserGoals(userId);
+  }
 }
 
 // Export individual functions for convenience
-export const { createGoal, getUserGoals, updateGoal, deleteGoal, getGoal } = GoalService;
+export const { createGoal, getUserGoals, updateGoal, deleteGoal, getGoal, getActiveGoals } = GoalService;
 

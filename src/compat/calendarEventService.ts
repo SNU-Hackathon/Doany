@@ -10,6 +10,26 @@
  */
 export class CalendarEventService {
   /**
+   * Create calendar events (batch)
+   * @param events Array of event data
+   * @param userId User ID (optional second parameter)
+   */
+  static async createCalendarEvents(events: any[], userId?: string): Promise<void> {
+    console.warn('[CalendarEventService.createCalendarEvents] Calendar events are part of goal/quest scheduling');
+    // Stub for batch creation
+  }
+
+  /**
+   * Delete calendar events (batch)
+   * @param eventIds Array of event IDs
+   * @param userId User ID (optional second parameter)
+   */
+  static async deleteCalendarEvents(eventIds: string[], userId?: string): Promise<void> {
+    console.warn('[CalendarEventService.deleteCalendarEvents] Calendar events are part of goal/quest scheduling');
+    // Stub for batch deletion
+  }
+
+  /**
    * Create a calendar event
    * @param eventData Event data
    */
@@ -73,8 +93,10 @@ export class CalendarEventService {
 // Export individual functions
 export const {
   createCalendarEvent,
+  createCalendarEvents,
   updateCalendarEvent,
   deleteCalendarEvent,
+  deleteCalendarEvents,
   getCalendarEvents,
 } = CalendarEventService;
 
