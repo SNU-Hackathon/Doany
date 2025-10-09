@@ -3126,7 +3126,7 @@ function CreateGoalModalContentLegacy({ visible, onClose, onGoalCreated }: Creat
             unit: aiDraft.frequency.unit || 'per_week'
           } : formData.frequency
         }} 
-        userId={user?.uid || 'test_user'}
+        userId={user?.id || 'test_user'}
         onLoadingChange={setQuestPreviewLoading}
       />
       
