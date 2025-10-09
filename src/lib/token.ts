@@ -2,23 +2,17 @@
  * Token resolver for DoAny API
  * 
  * This module manages authentication tokens.
- * Currently returns undefined - will be wired to auth store later.
+ * Reads from auth store when available.
  */
+
+import { getAccessToken as getAccessTokenFromStore } from '../state/auth.store';
 
 /**
  * Get the current access token
  * @returns Access token string or undefined if not authenticated
- * 
- * TODO: Wire this to the auth store once authentication is implemented
- * For now, returns undefined to allow unauthenticated mock API calls
  */
 export const getAccessToken = (): string | undefined => {
-  // TODO: Read from auth store when auth module is complete
-  // Example:
-  // import { useAuthStore } from '@/state/auth.store';
-  // return useAuthStore.getState().accessToken;
-  
-  return undefined;
+  return getAccessTokenFromStore();
 };
 
 /**
