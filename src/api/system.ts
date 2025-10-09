@@ -4,7 +4,7 @@
  * Health check and system status endpoints
  */
 
-import { httpClient } from '@/lib/http';
+import { httpClient } from '../lib/http';
 import { HealthResponse } from './types';
 
 /**

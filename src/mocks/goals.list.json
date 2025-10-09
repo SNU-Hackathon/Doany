@@ -1,0 +1,49 @@
+{
+  "page": 1,
+  "pageSize": 20,
+  "total": 3,
+  "items": [
+    {
+      "goalId": "goal-123",
+      "title": "Learn TypeScript",
+      "description": "Master TypeScript in 30 days",
+      "tags": ["learning", "programming"],
+      "method": "schedule",
+      "visibility": "public",
+      "state": "onTrack",
+      "likes": 15,
+      "startAt": 1609459200000,
+      "endAt": 1612051200000,
+      "createdAt": 1609459200000,
+      "updatedAt": 1609545600000
+    },
+    {
+      "goalId": "goal-456",
+      "title": "Morning Workout",
+      "description": "Exercise every morning for 21 days",
+      "tags": ["health", "fitness"],
+      "method": "frequency",
+      "visibility": "friends",
+      "state": "onTrack",
+      "likes": 8,
+      "startAt": 1609459200000,
+      "endAt": 1611273600000,
+      "createdAt": 1609459200000
+    },
+    {
+      "goalId": "goal-789",
+      "title": "Read 12 Books",
+      "description": "Read one book per month",
+      "tags": ["reading", "self-improvement"],
+      "method": "schedule",
+      "visibility": "public",
+      "state": "complete",
+      "likes": 42,
+      "startAt": 1577836800000,
+      "endAt": 1609459200000,
+      "createdAt": 1577836800000,
+      "updatedAt": 1609459200000
+    }
+  ]
+}
+

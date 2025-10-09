@@ -1,0 +1,50 @@
+{
+  "goalId": "goal-123",
+  "userId": "user-123",
+  "title": "Learn TypeScript",
+  "description": "Master TypeScript in 30 days",
+  "tags": ["learning", "programming"],
+  "method": "schedule",
+  "visibility": "public",
+  "state": "onTrack",
+  "likes": 15,
+  "didILike": false,
+  "startAt": 1609459200000,
+  "endAt": 1612051200000,
+  "createdAt": 1609459200000,
+  "updatedAt": 1609545600000,
+  "quests": [
+    {
+      "questId": "quest-001",
+      "goalId": "goal-123",
+      "date": "2021-01-05",
+      "time": "09:00",
+      "description": "Study TypeScript basics",
+      "state": "complete",
+      "completedAt": 1609840800000,
+      "method": "camera",
+      "proof": {
+        "proofId": "proof-001",
+        "url": "https://cdn.example.com/proof-001.jpg",
+        "description": "Completed chapter 1",
+        "type": "photo",
+        "votes": {
+          "yes": 12,
+          "no": 1
+        },
+        "createdAt": 1609840800000,
+        "updatedAt": 1609840800000
+      }
+    },
+    {
+      "questId": "quest-002",
+      "goalId": "goal-123",
+      "date": "2021-01-06",
+      "time": "09:00",
+      "description": "Practice TypeScript exercises",
+      "state": "onTrack",
+      "method": "camera"
+    }
+  ]
+}
+

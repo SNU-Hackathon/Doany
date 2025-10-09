@@ -4,7 +4,7 @@
  * User profile and registration endpoints
  */
 
-import { httpClient } from '@/lib/http';
+import { httpClient } from '../lib/http';
 import { UserMe } from './types';
 
 /**

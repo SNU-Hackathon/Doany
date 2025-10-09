@@ -1,0 +1,9 @@
+{
+  "goalId": "goal-new-123",
+  "title": "Learn TypeScript",
+  "description": "Master TypeScript in 30 days",
+  "visibility": "public",
+  "state": "onTrack",
+  "createdAt": 1609459200000
+}
+

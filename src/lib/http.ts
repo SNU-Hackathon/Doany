@@ -8,9 +8,9 @@
  * - Request/response logging in development
  */
 
-import { apiConfig, isMockMode } from '@/config/api';
-import { resolveMock } from '@/mocks/resolver';
 import axios, { AxiosError, AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
+import { apiConfig, isMockMode } from '../config/api';
+import { resolveMock } from '../mocks/resolver';
 import { getAuthorizationHeader } from './token';
 
 /**

@@ -5,7 +5,7 @@
  * Keeps response shapes identical to API spec for seamless transition.
  */
 
-import { HttpMethod } from '@/lib/http';
+import { HttpMethod } from '../lib/http';
 
 // Mock data imports (will be added as we create JSON files)
 // For now, we'll use dynamic requires to avoid errors before files exist

@@ -1,0 +1,10 @@
+{
+  "proofId": "proof-new-789",
+  "questId": "quest-456",
+  "goalId": "goal-123",
+  "url": "https://cdn.example.com/proof-new.jpg",
+  "description": "Task completed successfully",
+  "type": "photo",
+  "createdAt": 1609840800000
+}
+

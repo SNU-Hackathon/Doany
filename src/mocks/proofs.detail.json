@@ -1,0 +1,16 @@
+{
+  "proofId": "proof-789",
+  "questId": "quest-456",
+  "goalId": "goal-123",
+  "userId": "user-123",
+  "url": "https://cdn.example.com/proof-789.jpg",
+  "description": "Completed task with evidence",
+  "type": "photo",
+  "votes": {
+    "yes": 18,
+    "no": 2
+  },
+  "createdAt": 1609840800000,
+  "updatedAt": 1609840800000
+}
+
