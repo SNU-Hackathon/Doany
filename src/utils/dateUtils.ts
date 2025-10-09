@@ -3,20 +3,18 @@
  * 
  * DATE FORMAT POLICY:
  * - All dates must be stored and handled as "YYYY-MM-DD" strings
- * - Firestore Timestamps are converted to "YYYY-MM-DD" 
+ * - API timestamps (numbers) are converted to "YYYY-MM-DD" 
  * - ISO strings are converted to "YYYY-MM-DD"
  * - Partial formats (yyyy-M-D) are zero-padded to "YYYY-MM-DD"
  */
 
-import { Timestamp } from 'firebase/firestore';
-
 /**
  * Normalize various date formats to "YYYY-MM-DD" string
- * @param input Date, Timestamp, or string in various formats
+ * @param input Date, number (timestamp), or string in various formats
  * @returns "YYYY-MM-DD" string
  * @throws Error if input format is invalid
  */
-export function normalizeDate(input: Date | Timestamp | string): string {
+export function normalizeDate(input: Date | number | string): string {
   if (!input) {
     throw new Error('Invalid date format. Use YYYY-MM-DD');
   }
@@ -26,8 +24,12 @@ export function normalizeDate(input: Date | Timestamp | string): string {
 
     if (input instanceof Date) {
       date = input;
-    } else if (input instanceof Timestamp) {
-      date = input.toDate();
+    } else if (typeof input === 'number') {
+      // Handle Unix timestamp (milliseconds)
+      date = new Date(input);
+      if (isNaN(date.getTime())) {
+        throw new Error('Invalid timestamp');
+      }
     } else if (typeof input === 'string') {
       // Handle ISO string format (yyyy-MM-ddTHH:mm:ssZ)
       if (input.includes('T')) {

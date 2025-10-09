@@ -1,8 +1,6 @@
 // Feed-related type definitions for community sharing feature
 // Enables users to share verified quest achievements with the community
 
-import { Timestamp } from 'firebase/firestore';
-
 /**
  * Visibility options for feed posts
  * - public: Visible to all users
@@ -45,8 +43,8 @@ export interface FeedPost {
   media: FeedMedia[];
   verification: FeedVerification;
   visibility: Visibility;
-  createdAt: Timestamp | number;
-  updatedAt?: Timestamp | number;
+  createdAt: Date | number;
+  updatedAt?: Date | number;
   likeCount: number;
   trustCount: number;       // ✅ trust votes
   commentCount: number;
@@ -67,8 +65,8 @@ export interface FeedReaction {
   liked?: boolean;
   trusted?: boolean;        // ✅ trust vote
   saved?: boolean;
-  createdAt?: Timestamp | number;
-  updatedAt: Timestamp | number;
+  createdAt?: Date | number;
+  updatedAt: Date | number;
 }
 
 /**
@@ -82,8 +80,8 @@ export interface FeedComment {
   userName?: string;        // Cached for display
   userAvatar?: string;      // Cached for display
   text: string;
-  createdAt: Timestamp | number;
-  updatedAt?: Timestamp | number;
+  createdAt: Date | number;
+  updatedAt?: Date | number;
   isDeleted?: boolean;
 }
 
