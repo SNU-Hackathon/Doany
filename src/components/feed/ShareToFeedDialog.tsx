@@ -13,7 +13,7 @@ import {
     TouchableOpacity,
     View
 } from 'react-native';
-import { createFeedPost } from '../../services/feedService';
+import { createFeedPost } from '../../compat/feedService';
 import { Visibility } from '../../types/feed';
 
 interface ShareToFeedDialogProps {

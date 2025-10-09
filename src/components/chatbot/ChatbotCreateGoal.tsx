@@ -6,7 +6,7 @@ import { formatGoalTypeConfirmation, generateNextQuestionWithAI, useChatbotState
 import { useAuth } from '../../hooks/useAuth';
 import { GoalSpecV2, SlotId } from '../../schemas/goalSpecV2';
 import { AIService } from '../../services/ai';
-import { GoalService } from '../../services/goalService';
+import { GoalService } from '../../compat/goalService';
 import { normalize } from '../../services/normalize';
 import { buildOccurrences, previewOccurrences } from '../../services/scheduleCompute';
 import { CreateGoalForm } from '../../types';

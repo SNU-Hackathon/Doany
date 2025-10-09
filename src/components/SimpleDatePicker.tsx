@@ -50,7 +50,7 @@ import {
   View
 } from 'react-native';
 import { convertDurationToRange } from '../features/goals/aiDraft';
-import { CalendarEventService } from '../services/calendarEventService';
+import { CalendarEventService } from '../compat/calendarEventService';
 import { CalendarEvent, GoalSpec, TargetLocation } from '../types';
 import { DateRange, minMaxFromRanges } from '../utils/dateRanges';
 import { getLocalYMD } from '../utils/dateUtils';

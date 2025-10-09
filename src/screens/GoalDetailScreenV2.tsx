@@ -21,8 +21,8 @@ import {
 import { LoadingState, ScreenContainer, ScreenHeader } from '../components';
 import { ShareToFeedDialog } from '../components/feed';
 import { useAuth } from '../hooks/useAuth';
-import { GoalService } from '../services/goalService';
-import { QuestService } from '../services/questService';
+import { GoalService } from '../compat/goalService';
+import { QuestService } from '../compat/questService';
 import { VerificationService } from '../services/verificationService';
 import { Goal, Quest, RootStackParamList } from '../types';
 

@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { BaseScreen, LoadingState } from '../components';
 import { useAuth } from '../hooks/useAuth';
-import { GoalService } from '../services/goalService';
+import { GoalService } from '../compat/goalService';
 import { VerificationService } from '../services/verificationService';
 import { Goal, Verification } from '../types';
 

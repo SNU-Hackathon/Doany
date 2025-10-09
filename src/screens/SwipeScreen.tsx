@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { BaseScreen, LoadingState } from '../components';
 import { useAuth } from '../hooks/useAuth';
-import { fetchFeedPage } from '../services/feedService';
+import { fetchFeedPage } from '../compat/feedService';
 import { FeedPost } from '../types/feed';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
