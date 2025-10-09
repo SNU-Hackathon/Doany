@@ -1,0 +1,14 @@
+{
+  "userId": "user-123",
+  "name": "John Doe",
+  "email": "john@example.com",
+  "streak": 7,
+  "badges": ["early-adopter", "consistent"],
+  "swipeStats": {
+    "totalVotes": 150,
+    "accuracy": 0.85
+  },
+  "createdAt": 1609459200000,
+  "updatedAt": 1609545600000
+}
+
