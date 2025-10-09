@@ -143,15 +143,14 @@ const GoalsScreen = () => {
     return goalsData.items.map((apiGoal): GoalWithProgress => ({
       // Map API fields to local Goal type
       id: apiGoal.goalId,
-      goalId: apiGoal.goalId,
       userId: user?.id || '',
       title: apiGoal.title,
-      description: apiGoal.description,
-      type: 'schedule', // Default
-      tags: apiGoal.tags,
-      visibility: apiGoal.visibility as any,
-      state: apiGoal.state as any,
-      createdAtClient: new Date(),
+      description: apiGoal.description || '',
+      category: apiGoal.tags?.[0] || '기타',
+      verificationMethods: [],
+      frequency: { count: 1, unit: 'per_day' },
+      duration: { type: 'days', value: 30 },
+      createdAt: new Date(),
       updatedAt: new Date(),
       
       // Progress fields (mock for now)
@@ -272,7 +271,7 @@ const GoalsScreen = () => {
         renderItem={({ item }) => (
           <GoalCard item={item} onPress={handleGoalPress} />
         )}
-        keyExtractor={(item) => item.goalId}
+        keyExtractor={(item) => item.id}
         contentContainerStyle={{ padding: 16 }}
         ListEmptyComponent={
           <View className="items-center justify-center py-20">
@@ -301,7 +300,7 @@ const GoalsScreen = () => {
           onRequestClose={handleGoalDetailClose}
         >
           <GoalDetailScreenV2
-            goalId={selectedGoal.goalId}
+            goalId={selectedGoal.id}
             onClose={handleGoalDetailClose}
           />
         </Modal>

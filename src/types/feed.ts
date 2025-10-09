@@ -36,19 +36,25 @@ export interface FeedPost {
   userId: string;
   userName?: string;        // Cached for display
   userAvatar?: string;      // Cached for display
-  goalId: string;
+  goalId?: string;
+  goalTitle?: string;       // Goal title
   questId?: string;
-  title: string;            // Quest title
+  title?: string;           // Quest title
+  description?: string;     // Description
   caption?: string;         // User's custom message
-  media: FeedMedia[];
-  verification: FeedVerification;
-  visibility: Visibility;
-  createdAt: Date | number;
+  media?: FeedMedia[];
+  verification?: FeedVerification;
+  visibility?: Visibility;
+  timestamp?: Date;         // For backwards compatibility
+  createdAt?: Date | number;
   updatedAt?: Date | number;
-  likeCount: number;
-  trustCount: number;       // ✅ trust votes
-  commentCount: number;
-  saveCount: number;
+  likes?: number;           // Likes count
+  likeCount?: number;
+  didILike?: boolean;       // Did current user like this
+  trustCount?: number;      // ✅ trust votes
+  comments?: number;        // Comments count
+  commentCount?: number;
+  saveCount?: number;
   school?: string;          // For filtering by school
   isDeleted?: boolean;
 }
