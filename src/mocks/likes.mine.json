@@ -1,0 +1,32 @@
+{
+  "page": 1,
+  "pageSize": 50,
+  "total": 12,
+  "items": [
+    {
+      "goalId": "goal-like-1",
+      "title": "Learn Spanish",
+      "description": "30 minutes of Spanish practice daily",
+      "userId": "user-789",
+      "userName": "Bob Smith",
+      "likedAt": 1609545600000
+    },
+    {
+      "goalId": "goal-like-2",
+      "title": "Morning Yoga",
+      "description": "15 minutes of yoga every morning",
+      "userId": "user-654",
+      "userName": "Emily White",
+      "likedAt": 1609459200000
+    },
+    {
+      "goalId": "goal-like-3",
+      "title": "Cook Healthy Meals",
+      "description": "Prepare healthy meals for the week",
+      "userId": "user-987",
+      "userName": "David Brown",
+      "likedAt": 1609372800000
+    }
+  ]
+}
+

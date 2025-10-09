@@ -1,0 +1,59 @@
+{
+  "page": 1,
+  "pageSize": 10,
+  "total": 25,
+  "items": [
+    {
+      "proofId": "proof-swipe-1",
+      "questId": "quest-swipe-1",
+      "goalId": "goal-swipe-1",
+      "userId": "user-456",
+      "userName": "Alice Johnson",
+      "goalTitle": "Run 5K Every Morning",
+      "url": "https://cdn.example.com/proof-swipe-1.jpg",
+      "description": "Completed 5K run in 28 minutes",
+      "type": "photo",
+      "votes": {
+        "yes": 8,
+        "no": 1
+      },
+      "createdAt": 1609545600000,
+      "serveId": "serve-session-abc123"
+    },
+    {
+      "proofId": "proof-swipe-2",
+      "questId": "quest-swipe-2",
+      "goalId": "goal-swipe-2",
+      "userId": "user-789",
+      "userName": "Bob Smith",
+      "goalTitle": "Learn Spanish",
+      "url": "https://cdn.example.com/proof-swipe-2.jpg",
+      "description": "Completed lesson 5 with 95% score",
+      "type": "photo",
+      "votes": {
+        "yes": 12,
+        "no": 0
+      },
+      "createdAt": 1609459200000,
+      "serveId": "serve-session-def456"
+    },
+    {
+      "proofId": "proof-swipe-3",
+      "questId": "quest-swipe-3",
+      "goalId": "goal-swipe-3",
+      "userId": "user-321",
+      "userName": "Carol Davis",
+      "goalTitle": "Meditation Challenge",
+      "url": "https://cdn.example.com/proof-swipe-3.jpg",
+      "description": "10-minute morning meditation session",
+      "type": "photo",
+      "votes": {
+        "yes": 5,
+        "no": 2
+      },
+      "createdAt": 1609372800000,
+      "serveId": "serve-session-ghi789"
+    }
+  ]
+}
+

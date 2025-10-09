@@ -1,0 +1,62 @@
+{
+  "page": 1,
+  "pageSize": 20,
+  "total": 5,
+  "items": [
+    {
+      "goalId": "goal-feed-1",
+      "userId": "user-456",
+      "userName": "Alice Johnson",
+      "title": "Run 5K Every Morning",
+      "description": "Building stamina through daily running",
+      "tags": ["fitness", "running", "health"],
+      "visibility": "public",
+      "state": "onTrack",
+      "likes": 28,
+      "didILike": false,
+      "createdAt": 1609459200000,
+      "updatedAt": 1609545600000,
+      "recentProofs": [
+        {
+          "proofId": "proof-feed-1",
+          "url": "https://cdn.example.com/proof-feed-1.jpg",
+          "type": "photo",
+          "votes": {
+            "yes": 15,
+            "no": 2
+          },
+          "createdAt": 1609545600000
+        }
+      ]
+    },
+    {
+      "goalId": "goal-feed-2",
+      "userId": "user-789",
+      "userName": "Bob Smith",
+      "title": "Learn Spanish",
+      "description": "30 minutes of Spanish practice daily",
+      "tags": ["language", "learning", "spanish"],
+      "visibility": "public",
+      "state": "onTrack",
+      "likes": 42,
+      "didILike": true,
+      "createdAt": 1609372800000,
+      "recentProofs": []
+    },
+    {
+      "goalId": "goal-feed-3",
+      "userId": "user-321",
+      "userName": "Carol Davis",
+      "title": "Meditation Challenge",
+      "description": "Meditate for 10 minutes each day",
+      "tags": ["mindfulness", "meditation", "wellness"],
+      "visibility": "public",
+      "state": "onTrack",
+      "likes": 19,
+      "didILike": false,
+      "createdAt": 1609286400000,
+      "updatedAt": 1609459200000
+    }
+  ]
+}
+
