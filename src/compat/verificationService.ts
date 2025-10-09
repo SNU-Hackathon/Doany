@@ -22,5 +22,15 @@ export class VerificationService {
   static async deleteVerification(verificationId: string): Promise<void> {
     console.warn('[VerificationService.deleteVerification] Use deleteProof from src/api/goals.ts');
   }
+
+  static async getRecentGoalVerifications(userId: number | string, goalId: string): Promise<number> {
+    console.warn('[VerificationService.getRecentGoalVerifications] Not yet implemented');
+    return 0;
+  }
+
+  static async calculateGoalSuccessRate(userId: number | string, goalId: string): Promise<number> {
+    console.warn('[VerificationService.calculateGoalSuccessRate] Not yet implemented');
+    return 0;
+  }
 }
 

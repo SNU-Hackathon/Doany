@@ -11,20 +11,20 @@
 export class CalendarEventService {
   /**
    * Create calendar events (batch)
-   * @param events Array of event data
+   * @param events Array of event data or single event
    * @param userId User ID (optional second parameter)
    */
-  static async createCalendarEvents(events: any[], userId?: string): Promise<void> {
+  static async createCalendarEvents(events: any[] | any, userId?: string): Promise<void> {
     console.warn('[CalendarEventService.createCalendarEvents] Calendar events are part of goal/quest scheduling');
     // Stub for batch creation
   }
 
   /**
    * Delete calendar events (batch)
-   * @param eventIds Array of event IDs
+   * @param eventIds Array of event IDs or single event ID
    * @param userId User ID (optional second parameter)
    */
-  static async deleteCalendarEvents(eventIds: string[], userId?: string): Promise<void> {
+  static async deleteCalendarEvents(eventIds: string[] | string, userId?: string): Promise<void> {
     console.warn('[CalendarEventService.deleteCalendarEvents] Calendar events are part of goal/quest scheduling');
     // Stub for batch deletion
   }
