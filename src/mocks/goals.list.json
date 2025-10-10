@@ -17,10 +17,10 @@
       "iconType": "fitness",
       "progressCurrent": 9,
       "progressTotal": 16,
-      "startAt": 1696320000000,
-      "endAt": 1698796800000,
-      "createdAt": 1696320000000,
-      "updatedAt": 1699545600000
+      "startAt": 1704067200000,
+      "endAt": 1706659200000,
+      "createdAt": 1704067200000,
+      "updatedAt": 1704153600000
     },
     {
       "goalId": "goal-456",
@@ -36,10 +36,10 @@
       "iconType": "study",
       "progressCurrent": 15,
       "progressTotal": 27,
-      "startAt": 1696320000000,
-      "endAt": 1698796800000,
-      "createdAt": 1696320000000,
-      "updatedAt": 1699545600000
+      "startAt": 1701388800000,
+      "endAt": 1709251200000,
+      "createdAt": 1701388800000,
+      "updatedAt": 1701475200000
     }
   ]
 }

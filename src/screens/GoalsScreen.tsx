@@ -75,11 +75,22 @@ const GoalCard = React.memo(({
 
   const formatDateRange = () => {
     if (item.startAt && item.endAt) {
-      const start = new Date(item.startAt);
-      const end = new Date(item.endAt);
-      return `${start.getMonth() + 1}월 ${start.getDate()}일-${end.getMonth() + 1}월 ${end.getDate()}일`;
+      try {
+        const start = new Date(Number(item.startAt));
+        const end = new Date(Number(item.endAt));
+        
+        // 유효한 날짜인지 확인
+        if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+          return '날짜 미정';
+        }
+        
+        return `${start.getMonth() + 1}월 ${start.getDate()}일-${end.getMonth() + 1}월 ${end.getDate()}일`;
+      } catch (error) {
+        console.error('Date formatting error:', error);
+        return '날짜 미정';
+      }
     }
-    return '10월 3일-10월 30일';
+    return '날짜 미정';
   };
 
   return (
