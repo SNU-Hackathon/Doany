@@ -189,19 +189,53 @@ const voteResult = await swipeApi.voteOnProof({
 ### Auth (`src/api/auth.ts`)
 
 ```typescript
-import { loginPassword, loginGoogle } from './api/auth';
+import { login, loginPassword, loginGoogle } from './api/auth';
+import type { LoginRequest, LoginResponse } from './api/types';
 
 // Login with password
-const auth = await loginPassword({
+const result: LoginResponse = await loginPassword({
   email: 'user@example.com',
   password: 'secure-password'
 });
+// Result: { accessToken, tokenType: 'Bearer', expiresIn: 3600, userId }
 
-// Login with Google
-const googleAuth = await loginGoogle({
-  provider: 'google',
-  token: 'google-oauth-token'
+// Login with Google OAuth
+const googleResult = await loginGoogle({
+  code: 'oauth-code',
+  redirectUri: 'https://app.example.com/callback'
 });
+
+// Or use unified login function
+const unified = await login({
+  provider: 'password',
+  email: 'user@example.com',
+  password: 'password'
+});
+```
+
+### Using with useAuth Hook
+
+```typescript
+import { useAuth } from './hooks/useAuth';
+
+function LoginScreen() {
+  const { signIn, signOut, user, isAuthenticated, isLoading } = useAuth();
+
+  const handleLogin = async () => {
+    try {
+      await signIn('user@example.com', 'password');
+      // Token automatically stored
+      // User profile automatically fetched
+      // Authorization header automatically added to all requests
+    } catch (error) {
+      console.error('Login failed:', error);
+    }
+  };
+
+  if (isLoading) return <Loading />;
+  if (isAuthenticated) return <Dashboard user={user} />;
+  return <LoginForm onSubmit={handleLogin} />;
+}
 ```
 
 ## 🎣 React Hooks
