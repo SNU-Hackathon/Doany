@@ -9,8 +9,7 @@ import {
   Paged,
   SwipeProofItem,
   SwipeProofsResponse,
-  VoteResponse,
-  VoteValue
+  VoteResponse
 } from './types';
 
 /**
@@ -53,19 +52,22 @@ export async function getSwipeProofs(query?: {
  * const result = await voteOnProof('proof-456', 'yes', 'serve-session-789');
  * ```
  */
-export async function voteOnProof(
-  proofId: string,
-  vote: VoteValue,
-  serveId: string
-): Promise<VoteResponse> {
-  if (__DEV__) {
-    console.log(`[voteOnProof] proofId=${proofId}, vote=${vote}`);
+export async function voteOnProof(opts: {
+  goalId?: string;
+  proofId?: string;
+  body: VoteRequest;
+}): Promise<VoteResponse> {
+  const { proofId, body } = opts;
+  
+  if (!proofId) {
+    throw new Error('proofId is required for voting');
   }
 
-  return httpClient.patch<VoteResponse>(`/swipe/proofs/${proofId}`, {
-    vote,
-    serveId,
-  });
+  if (__DEV__) {
+    console.log(`[voteOnProof] proofId=${proofId}, vote=${body.vote}`);
+  }
+
+  return httpClient.patch<VoteResponse>(`/swipe/proofs/${proofId}`, body);
 }
 
 /**

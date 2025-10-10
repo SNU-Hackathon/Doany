@@ -56,10 +56,25 @@ const GoalCard = React.memo(({
   };
 
   const getProgressText = (item: GoalWithProgress) => {
-    const completed = item.completedSessions || 0;
-    const total = item.totalSessions || 0;
-    if (total === 0) return '시작 전';
-    return `${completed}/${total} 완료 ✓`;
+    // Mock progress data based on goal state
+    if (item.state === 'complete') {
+      return '16/16 완료 ✓';
+    } else if (item.state === 'onTrack') {
+      if (item.title.includes('헬스장')) return '9/16 완료 ✓';
+      if (item.title.includes('영어')) return '15/27 완료 ✓';
+      return '진행중';
+    }
+    return '시작 전';
+  };
+
+  const getProgressPercentage = (item: GoalWithProgress) => {
+    // Mock progress percentage
+    if (item.state === 'complete') return 100;
+    if (item.state === 'onTrack') {
+      if (item.title.includes('헬스장')) return 56; // 9/16
+      if (item.title.includes('영어')) return 56; // 15/27
+    }
+    return 0;
   };
 
   const getNextScheduleText = (item: GoalWithProgress) => {
@@ -102,15 +117,47 @@ const GoalCard = React.memo(({
         </View>
       </View>
 
-      {/* Middle: Progress */}
+      {/* Middle: Progress Bar */}
       <View className="mb-2">
-        <Text className="text-sm text-gray-600">{getProgressText(item)}</Text>
+        <View className="flex-row items-center justify-between mb-1">
+          <Text className="text-sm text-gray-600">{getProgressText(item)}</Text>
+          <View className="flex-row items-center">
+            <Text className="text-xs text-blue-600 mr-1">진행중</Text>
+            <Ionicons name="refresh-outline" size={12} color="#2563EB" />
+          </View>
+        </View>
+        
+        {/* Progress Bar */}
+        <View className="h-2 bg-gray-200 rounded-full overflow-hidden">
+          <View 
+            className="h-full bg-blue-500 rounded-full"
+            style={{ width: `${getProgressPercentage(item)}%` }}
+          />
+        </View>
+        
+        {/* Date Range */}
+        <Text className="text-xs text-gray-500 mt-1">
+          {item.startAt && item.endAt ? 
+            `${new Date(item.startAt).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })}-${new Date(item.endAt).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })}` :
+            '10월 3일-10월 30일'
+          }
+        </Text>
       </View>
 
-      {/* Bottom: Next Schedule */}
-      <View className="flex-row items-center">
-        <Ionicons name="time-outline" size={14} color="#9CA3AF" />
-        <Text className="text-xs text-gray-500 ml-1">{getNextScheduleText(item)}</Text>
+      {/* Bottom: Quest Button */}
+      <View className="flex-row items-center justify-between">
+        <View className="flex-row items-center">
+          <Ionicons name="time-outline" size={14} color="#9CA3AF" />
+          <Text className="text-xs text-gray-500 ml-1">{getNextScheduleText(item)}</Text>
+        </View>
+        
+        {/* Quest Button */}
+        <TouchableOpacity 
+          className="bg-yellow-400 px-3 py-1.5 rounded-full"
+          onPress={() => onPress(item)}
+        >
+          <Text className="text-xs font-medium text-gray-800">퀘스트 ></Text>
+        </TouchableOpacity>
       </View>
     </TouchableOpacity>
   );
@@ -136,6 +183,9 @@ const GoalsScreen = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Extract user ID as primitive to avoid infinite loop
+  const userId = user?.id || '';
+
   // Transform API goals to GoalWithProgress format
   const goals: GoalWithProgress[] = React.useMemo(() => {
     if (!goalsData?.items) return [];
@@ -143,7 +193,7 @@ const GoalsScreen = () => {
     return goalsData.items.map((apiGoal): GoalWithProgress => ({
       // Map API fields to local Goal type
       id: apiGoal.goalId,
-      userId: user?.id || '',
+      userId,
       title: apiGoal.title,
       description: apiGoal.description || '',
       category: apiGoal.tags?.[0] || '기타',
@@ -160,7 +210,7 @@ const GoalsScreen = () => {
       totalSessions: 0,
       categoryLabel: apiGoal.tags?.[0] || '기타',
     } as GoalWithProgress));
-  }, [goalsData, user]);
+  }, [goalsData, userId]); // Use primitive userId instead of user object
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
