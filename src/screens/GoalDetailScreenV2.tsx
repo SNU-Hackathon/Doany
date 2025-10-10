@@ -534,45 +534,54 @@ export default function GoalDetailScreenV2({ route, navigation }: GoalDetailScre
   const [photoViewerVisible, setPhotoViewerVisible] = useState(false);
   const [viewingPhotos, setViewingPhotos] = useState<string[]>([]);
 
+  // Extract primitives to prevent infinite loop
+  const userId = user?.id;
+
   const loadGoalData = useCallback(async () => {
-    if (!goalId || !user) return;
+    if (!goalId || !userId) return;
 
     try {
-      const [goalData, questsData] = await Promise.all([
-        getGoal(goalId, { expand: 'quests' }),
-        QuestService.getQuestsForGoal(goalId, user.id)
-      ]);
+      // Get goal with quests (mock includes quests with proofs)
+      const goalData = await getGoal(goalId, { expand: 'quests' });
 
-      setGoal(goalData);
+      setGoal(goalData as any);
       
-      // Sort quests by date
-      const sortedQuests = questsData.sort((a, b) => {
-        const dateA = a.targetDate ? new Date(a.targetDate).getTime() : 0;
-        const dateB = b.targetDate ? new Date(b.targetDate).getTime() : 0;
-        return dateA - dateB;
-      });
-      
-      // Load verification photos for each quest
-      const questsWithPhotos = await Promise.all(
-        sortedQuests.map(async (quest) => {
-          try {
-            const verifications = await VerificationService.getGoalVerifications(goalId);
-            const questVerifications = verifications.filter(v => 
-              v.screenshotUrl && 
-              Math.abs(new Date(v.timestamp).getTime() - new Date(quest.targetDate || '').getTime()) < 86400000 // Within 24 hours
-            );
-            return {
-              ...quest,
-              verificationPhotos: questVerifications.map(v => v.screenshotUrl).filter(Boolean) as string[]
-            };
-          } catch (error) {
-            console.error('[Quest] Error loading photos:', error);
-            return quest;
-          }
-        })
-      );
-      
-      setQuests(questsWithPhotos);
+      // Transform API quests to Quest type
+      if (goalData.quests) {
+        const transformedQuests = goalData.quests.map(apiQuest => {
+          // Normalize API state to Quest status
+          let status: 'pending' | 'completed' | 'failed' | 'skipped' = 'pending';
+          if (apiQuest.state === 'complete') status = 'completed';
+          else if (apiQuest.state === 'fail') status = 'failed';
+          else if (apiQuest.state === 'onTrack') status = 'pending';
+
+          return {
+            id: apiQuest.questId,
+            goalId: apiQuest.goalId,
+            userId: userId,
+            title: apiQuest.description || '',
+            description: apiQuest.description,
+            status,
+            targetDate: apiQuest.date,
+            completedAt: typeof apiQuest.completedAt === 'number'
+              ? new Date(apiQuest.completedAt).toISOString()
+              : apiQuest.completedAt,
+            // Extract proof photos if available
+            verificationPhotos: apiQuest.proof?.url ? [apiQuest.proof.url] : [],
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          } as Quest;
+        });
+
+        // Sort by date
+        const sortedQuests = transformedQuests.sort((a, b) => {
+          const dateA = a.targetDate ? new Date(a.targetDate).getTime() : 0;
+          const dateB = b.targetDate ? new Date(b.targetDate).getTime() : 0;
+          return dateA - dateB;
+        });
+
+        setQuests(sortedQuests);
+      }
     } catch (error) {
       console.error('[GoalDetailV2] Error loading data:', error);
       Alert.alert('오류', '데이터를 불러오는데 실패했습니다');
@@ -580,7 +589,7 @@ export default function GoalDetailScreenV2({ route, navigation }: GoalDetailScre
       setLoading(false);
       setRefreshing(false);
     }
-  }, [goalId, user]);
+  }, [goalId, userId]); // Use primitive userId
 
   useEffect(() => {
     loadGoalData();
