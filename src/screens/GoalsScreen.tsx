@@ -352,6 +352,10 @@ export default function GoalsScreen() {
           <GoalDetailScreenV2
             route={{ params: { goalId: selectedGoal.goalId } } as any}
             navigation={navigation as any}
+            onClose={() => {
+              setShowGoalDetail(false);
+              setSelectedGoal(null);
+            }}
           />
         )}
       </Modal>

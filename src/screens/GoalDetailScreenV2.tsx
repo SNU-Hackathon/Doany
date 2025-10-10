@@ -35,6 +35,7 @@ type GoalDetailScreenNavigationProp = StackNavigationProp<RootStackParamList, 'G
 interface GoalDetailScreenProps {
   route: GoalDetailScreenRouteProp;
   navigation: GoalDetailScreenNavigationProp;
+  onClose?: () => void; // Modal을 닫기 위한 콜백
 }
 
 type TabType = 'calendar' | 'detail';
@@ -517,7 +518,7 @@ function PhotoViewer({ visible, photos, onClose }: PhotoViewerProps) {
   );
 }
 
-export default function GoalDetailScreenV2({ route, navigation }: GoalDetailScreenProps) {
+export default function GoalDetailScreenV2({ route, navigation, onClose }: GoalDetailScreenProps) {
   const { goalId } = route.params;
   const { user } = useAuth();
 
@@ -566,7 +567,11 @@ export default function GoalDetailScreenV2({ route, navigation }: GoalDetailScre
           duration: 300,
           useNativeDriver: true,
         }).start(() => {
-          navigation.goBack();
+          if (onClose) {
+            onClose();
+          } else if (navigation.canGoBack()) {
+            navigation.goBack();
+          }
         });
       } else {
         // Snap back to original position
@@ -645,7 +650,10 @@ export default function GoalDetailScreenV2({ route, navigation }: GoalDetailScre
   };
 
   const handleBack = () => {
-    if (navigation.canGoBack()) {
+    // Modal 내부에서 열린 경우 onClose 콜백 사용
+    if (onClose) {
+      onClose();
+    } else if (navigation.canGoBack()) {
       navigation.goBack();
     }
   };
