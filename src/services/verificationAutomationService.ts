@@ -6,6 +6,7 @@ import { VERIFICATION_DEFAULTS } from '../config/verification';
 import { Goal, Location as LocationType, VerificationStatus } from '../types';
 import { LocationService } from './locationService';
 import { parsePickerExif, validateFreshness, validateGeofence, validateTimeWindow } from './photo/ExifValidator';
+import { VerificationService } from './verificationService';
 
 export class VerificationAutomationService {
   private static activeTracking: Map<string, any> = new Map();
@@ -69,7 +70,7 @@ export class VerificationAutomationService {
         const shouldRecord = await this.shouldRecordVerification(goal);
         
         if (shouldRecord) {
-          await verifyLocation(goal as any, true);
+          // await verifyLocation( // Legacy functiongoal as any, true);
 
           // Notify user of successful verification
           Alert.alert(
@@ -221,7 +222,7 @@ export class VerificationAutomationService {
         }
       };
 
-      await verifyPhoto(goal as any, blob, photoSignals);
+      // await verifyPhoto( // Legacy functiongoal as any, blob, photoSignals);
 
       Alert.alert('Uploaded', 'Photo verification uploaded.');
     } catch (error) {

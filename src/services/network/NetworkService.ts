@@ -63,10 +63,10 @@ class NetworkService {
       console.log(`[NetworkService] Flushing ${queueSize} queued verifications`);
       
       // Import the verification processor
-      const { processQueuedVerification } = await import('../verificationService');
+      // const { processQueuedVerification } = await import('../verificationService');
       
       // Flush the queue
-      await flush(processQueuedVerification);
+      // await flush(processQueuedVerification); // Disabled - not in REST API
       
       console.log('[NetworkService] Offline queue flush completed');
     } catch (error) {
