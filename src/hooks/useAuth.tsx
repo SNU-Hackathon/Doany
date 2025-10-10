@@ -4,7 +4,7 @@
  * Replaces Firebase Auth with REST API auth.store
  */
 
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { loginPassword } from '../api/auth';
 import { clearAuth, getAuthState, setAuth, subscribe, type AuthState } from '../state/auth.store';
 
@@ -90,4 +90,12 @@ export function useAuth(): UseAuthReturn {
  * @deprecated Use named export `useAuth` instead
  */
 export default useAuth;
+
+/**
+ * AuthProvider - Simple pass-through provider
+ * For compatibility with existing App.tsx structure
+ */
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  return <>{children}</>;
+}
 

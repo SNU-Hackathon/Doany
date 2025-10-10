@@ -101,21 +101,21 @@ export const QuestDetailList = React.memo(
             <View style={{ alignItems: 'center' }}>
               <Ionicons
                 name={
-                  quest.state === 'complete'
+                  quest.status === 'completed'
                     ? 'checkmark-circle'
-                    : quest.state === 'failed'
+                    : quest.status === 'failed'
                     ? 'close-circle'
-                    : quest.state === 'pending'
+                    : quest.status === 'pending'
                     ? 'time'
                     : 'help-circle'
                 }
                 size={24}
                 color={
-                  quest.state === 'complete'
+                  quest.status === 'completed'
                     ? '#10B981'
-                    : quest.state === 'failed'
+                    : quest.status === 'failed'
                     ? '#EF4444'
-                    : quest.state === 'pending'
+                    : quest.status === 'pending'
                     ? '#F59E0B'
                     : '#6B7280'
                 }
@@ -126,20 +126,20 @@ export const QuestDetailList = React.memo(
                   fontWeight: '500',
                   marginTop: 4,
                   color:
-                    quest.state === 'complete'
+                    quest.status === 'completed'
                       ? '#10B981'
-                      : quest.state === 'failed'
+                      : quest.status === 'failed'
                       ? '#EF4444'
-                      : quest.state === 'pending'
+                      : quest.status === 'pending'
                       ? '#F59E0B'
                       : '#6B7280',
                 }}
               >
-                {quest.state === 'complete'
+                {quest.status === 'completed'
                   ? '완료'
-                  : quest.state === 'failed'
+                  : quest.status === 'failed'
                   ? '실패'
-                  : quest.state === 'pending'
+                  : quest.status === 'pending'
                   ? '대기'
                   : '알 수 없음'}
               </Text>
@@ -210,7 +210,7 @@ export const QuestDetailList = React.memo(
               justifyContent: 'flex-end',
             }}
           >
-            {quest.state === 'pending' && (
+            {quest.status === 'pending' && (
               <>
                 <TouchableOpacity
                   style={{
@@ -264,7 +264,7 @@ export const QuestDetailList = React.memo(
               </>
             )}
 
-            {quest.state === 'complete' && (
+            {quest.status === 'completed' && (
               <TouchableOpacity
                 style={{
                   flexDirection: 'row',

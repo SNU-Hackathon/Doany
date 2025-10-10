@@ -26,7 +26,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useBurstyCallPrevention, useDuplicateRequestTelemetry } from '../hooks/useBurstyCallPrevention';
 import { AIService } from '../services/ai';
 import { CalendarEventService } from '../services/calendarEventService';
-import { GoalService } from '../api/goals';
+import { GoalService, createGoal } from '../services/goalService';
 import { getPlaceDetails } from '../services/places';
 import { CreateGoalForm, GoalDuration, GoalFrequency, GoalSpec, TargetLocation, ValidationResult, VerificationType } from '../types';
 import { getLocaleConfig } from '../utils/languageDetection';

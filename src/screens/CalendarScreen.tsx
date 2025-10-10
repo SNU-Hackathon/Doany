@@ -14,7 +14,7 @@ import { Goal, Verification } from '../types';
 
 interface GoalProgress {
   goal: Goal;
-  todayVerifications: Verification[];
+  todayVerifications: number;
   weeklyProgress: number;
 }
 
