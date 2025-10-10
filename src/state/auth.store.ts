@@ -4,6 +4,7 @@
  * Manages authentication state and token persistence
  */
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { UserMe } from '../api/types';
 
 export interface AuthState {

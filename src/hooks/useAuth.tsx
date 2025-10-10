@@ -4,12 +4,16 @@
  * Replaces Firebase Auth with REST API auth.store
  */
 
-import React, { useEffect, useState } from 'react';
-import type { UserMe } from '../api/types';
+import React, { useCallback, useEffect, useState } from 'react';
+import { loginPassword as apiLoginPassword, logout as apiLogout } from '../api/auth';
+import type { LoginResponse, UserMe } from '../api/types';
+import { getMe } from '../api/users';
 import {
   clearAuth,
   getAuthState,
+  getStoredToken,
   setAuth,
+  setUser as setUserInStore,
   subscribe,
   type AuthState
 } from '../state/auth.store';
