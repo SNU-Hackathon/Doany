@@ -323,7 +323,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#3B82F6',
+    backgroundColor: '#0007D2',
   },
   container: {
     flex: 1,
@@ -332,24 +332,24 @@ const styles = StyleSheet.create({
   userCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 20,
-    padding: 24,
-    marginHorizontal: 16,
-    marginBottom: 24,
+    padding: 20,
+    marginHorizontal: 20,
+    marginBottom: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.04,
     shadowRadius: 12,
     elevation: 4,
   },
   topSection: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginBottom: 16,
+    marginBottom: 3,
   },
   avatarContainer: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 55,
+    height: 55,
+    borderRadius: 27.5,
     backgroundColor: '#F3F4F6',
     alignItems: 'center',
     justifyContent: 'center',
@@ -383,14 +383,14 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   streakText: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: 'bold',
     color: '#10B981', // 더 밝은 녹색 텍스트
   },
   divider: {
     height: 1,
     backgroundColor: '#E5E7EB',
-    marginVertical: 16,
+    marginVertical: 10,
   },
   bottomSection: {
     flexDirection: 'row',
@@ -402,26 +402,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   pointsIcon: {
-    width: 40,
-    height: 40,
+    width: 30,
+    height: 30,
     borderRadius: 20,
-    backgroundColor: '#F59E0B', // 노란색
+    backgroundColor: '#E9FF20', // 노란색
     alignItems: 'center',
     justifyContent: 'center',
+    marginLeft: 8,
     marginRight: 8,
   },
   pointsIconText: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#FFFFFF',
+    color: '#0007D2',
   },
   pointsText: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: 'bold',
     color: '#1F2937',
   },
   levelBadge: {
-    backgroundColor: '#FEF3C7', // 연한 노란색
+    backgroundColor: '#E9FF20', // 연한 노란색
     borderRadius: 16,
     paddingHorizontal: 16,
     paddingVertical: 8,
@@ -429,7 +430,7 @@ const styles = StyleSheet.create({
   levelText: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#D97706', // 노란색 텍스트
+    color: '#0007D2', // 노란색 텍스트
   },
   menuContainer: {
     paddingHorizontal: 16,

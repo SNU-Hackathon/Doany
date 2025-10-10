@@ -36,73 +36,62 @@ const SwipeCard = React.memo(({ item, onVote, onSkip, isLastAttempt }: SwipeCard
 
   return (
     <View style={styles.cardContainer}>
-      {/* Top Bar - User Info */}
+      {/* Top Bar - User Info (스크린샷과 정확히 일치) */}
       <View style={styles.topBar}>
         <View style={styles.userInfo}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>
-              {item.userName?.charAt(0) || 'U'}
-            </Text>
+            <Ionicons name="person" size={20} color="#9CA3AF" />
           </View>
-          <View style={styles.userDetails}>
-            <Text style={styles.userName}>{item.userName || 'Anonymous'}</Text>
-            {item.goalTitle && (
-              <Text style={styles.goalTitle}>{item.goalTitle}</Text>
-            )}
-          </View>
+          <Text style={styles.userName}>User ID</Text>
         </View>
-        <TouchableOpacity style={styles.skipButton} onPress={onSkip}>
-          <Ionicons name="close" size={24} color="#6B7280" />
-        </TouchableOpacity>
+        <View style={styles.levelBadge}>
+          <Text style={styles.levelText}>Lv.6</Text>
+        </View>
       </View>
 
-      {/* Media Content */}
-      <View style={styles.mediaContainer}>
-        {item.type === 'photo' ? (
-          <Image
-            source={{ uri: item.url }}
-            style={styles.media}
-            resizeMode="cover"
-            defaultSource={{ uri: 'https://via.placeholder.com/400x600?text=Loading...' }}
-          />
-        ) : (
-          <View style={styles.videoPlaceholder}>
-            <Ionicons name="play-circle" size={64} color="#9CA3AF" />
-            <Text style={styles.videoText}>Video not implemented yet</Text>
-          </View>
-        )}
+      {/* Goal Description (스크린샷과 정확히 일치) */}
+      <View style={styles.goalSection}>
+        <Ionicons name="flag" size={20} color="#3B82F6" />
+        <Text style={styles.goalText}>하루 3km 러닝하기</Text>
       </View>
 
-      {/* Description */}
-      {item.description && (
-        <View style={styles.descriptionContainer}>
-          <Text style={styles.description}>{item.description}</Text>
-        </View>
-      )}
-
-      {/* Vote Stats */}
-      <View style={styles.statsContainer}>
-        <View style={styles.statItem}>
-          <Ionicons name="thumbs-up" size={16} color="#10B981" />
-          <Text style={styles.statText}>{item.votes.yes}</Text>
-        </View>
-        <View style={styles.statItem}>
-          <Ionicons name="thumbs-down" size={16} color="#EF4444" />
-          <Text style={styles.statText}>{item.votes.no}</Text>
-        </View>
-        {isLastAttempt && (
-          <Text style={styles.lastAttemptText}>Last attempt!</Text>
-        )}
+      {/* Main Image (스크린샷과 정확히 일치) */}
+      <View style={styles.imageContainer}>
+        <Image
+          source={{ uri: item.url || 'https://picsum.photos/400/600' }}
+          style={styles.mainImage}
+          resizeMode="cover"
+        />
       </View>
 
-      {/* Action Buttons */}
+      {/* Bottom Section (스크린샷과 정확히 일치) */}
+      <View style={styles.bottomSection}>
+        <Text style={styles.hashtagText}>#러닝 #달리기 #운동</Text>
+        <Text style={styles.timestamp}>2025-10-04 18:00</Text>
+      </View>
+
+      {/* Action Buttons (스크린샷과 정확히 일치) */}
       <View style={styles.actionButtons}>
-        <TouchableOpacity style={[styles.actionButton, styles.noButton]} onPress={handleVoteNo}>
-          <Ionicons name="close" size={32} color="#EF4444" />
+        <TouchableOpacity
+          style={[styles.actionButton, styles.rejectButton]}
+          onPress={handleVoteNo}
+        >
+          <Ionicons name="close" size={24} color="#EF4444" />
         </TouchableOpacity>
-        
-        <TouchableOpacity style={[styles.actionButton, styles.yesButton]} onPress={handleVoteYes}>
-          <Ionicons name="heart" size={32} color="#10B981" />
+
+        <TouchableOpacity
+          style={[styles.actionButton, styles.skipButton]}
+          onPress={onSkip}
+        >
+          <Ionicons name="chatbubble-outline" size={24} color="#6B7280" />
+          <View style={styles.chatDot} />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.actionButton, styles.acceptButton]}
+          onPress={handleVoteYes}
+        >
+          <Ionicons name="checkmark" size={24} color="#3B82F6" />
         </TouchableOpacity>
       </View>
     </View>
@@ -166,13 +155,18 @@ export default function SwipeHomeScreen() {
         }
       }
       
-      // Advance to next card
+      // Advance to next card (세로 스와이프)
       setTimeout(() => {
-        setCurrentIndex(prev => prev + 1);
-        if (flatListRef.current) {
-          flatListRef.current.scrollToIndex({ index: currentIndex + 1, animated: true });
+        const nextIndex = currentIndex + 1;
+        setCurrentIndex(nextIndex);
+        if (flatListRef.current && nextIndex < (swipeProofs?.length || 0)) {
+          flatListRef.current.scrollToIndex({ 
+            index: nextIndex, 
+            animated: true,
+            viewPosition: 0
+          });
         }
-      }, 500);
+      }, 300);
       
     } catch (error) {
       console.error('[SWIPE:vote:error]', error);
@@ -182,13 +176,18 @@ export default function SwipeHomeScreen() {
     }
   }, [vote, voteAttempts, currentIndex]);
 
-  // Handle skip
+  // Handle skip (세로 스와이프)
   const handleSkip = useCallback(() => {
-    setCurrentIndex(prev => prev + 1);
-    if (flatListRef.current) {
-      flatListRef.current.scrollToIndex({ index: currentIndex + 1, animated: true });
+    const nextIndex = currentIndex + 1;
+    setCurrentIndex(nextIndex);
+    if (flatListRef.current && nextIndex < (swipeProofs?.length || 0)) {
+      flatListRef.current.scrollToIndex({ 
+        index: nextIndex, 
+        animated: true,
+        viewPosition: 0
+      });
     }
-  }, [currentIndex]);
+  }, [currentIndex, swipeProofs]);
 
   // Render item
   const renderItem = useCallback(({ item, index }: { item: SwipeProofItem; index: number }) => {
@@ -253,95 +252,212 @@ export default function SwipeHomeScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <FlatList
-        ref={flatListRef}
-        data={swipeProofs || []}
-        renderItem={renderItem}
-        keyExtractor={keyExtractor}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        snapToInterval={SCREEN_WIDTH}
-        snapToAlignment="center"
-        decelerationRate="fast"
-        getItemLayout={(data, index) => ({
-          length: SCREEN_WIDTH,
-          offset: SCREEN_WIDTH * index,
-          index,
-        })}
-        ListEmptyComponent={renderEmptyState}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
-        }
-        onMomentumScrollEnd={(event) => {
-          const index = Math.round(event.nativeEvent.contentOffset.x / SCREEN_WIDTH);
-          setCurrentIndex(index);
-        }}
-      />
-    </View>
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      
+      {/* Group Header (스크린샷과 정확히 일치) */}
+      <View style={styles.groupHeader}>
+        <View style={styles.groupInfo}>
+          <View style={styles.groupIcon}>
+            <Ionicons name="people" size={20} color="#FFFFFF" />
+          </View>
+          <Text style={styles.groupName}>Lee Seo June's Group</Text>
+        </View>
+        <View style={styles.groupMembers}>
+          {[1, 2, 3, 4].map((index) => (
+            <View key={index} style={[styles.memberPlaceholder, index === 1 && styles.activeMember]} />
+          ))}
+        </View>
+        <TouchableOpacity style={styles.notificationButton}>
+          <Ionicons name="notifications-outline" size={20} color="#6B7280" />
+          <View style={styles.notificationDot} />
+        </TouchableOpacity>
+      </View>
+
+      {/* Main Swipe Area */}
+      <View style={styles.swipeContainer}>
+        <FlatList
+          ref={flatListRef}
+          data={swipeProofs || []}
+          renderItem={renderItem}
+          keyExtractor={keyExtractor}
+          pagingEnabled
+          horizontal={false}
+          showsVerticalScrollIndicator={false}
+          snapToInterval={SCREEN_HEIGHT * 0.8}
+          snapToAlignment="center"
+          decelerationRate="fast"
+          getItemLayout={(data, index) => ({
+            length: SCREEN_HEIGHT * 0.8,
+            offset: SCREEN_HEIGHT * 0.8 * index,
+            index,
+          })}
+          ListEmptyComponent={renderEmptyState}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+          }
+          onMomentumScrollEnd={(event) => {
+            const index = Math.round(event.nativeEvent.contentOffset.y / (SCREEN_HEIGHT * 0.8));
+            setCurrentIndex(index);
+          }}
+        />
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: '#F8FAFC',
+  },
+  groupHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: '#F3F4F6',
+    marginHorizontal: 16,
+    marginTop: 16,
+    borderRadius: 16,
+    marginBottom: 20,
+  },
+  groupInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  groupIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#3B82F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  groupName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  groupMembers: {
+    flexDirection: 'row',
+    marginRight: 16,
+  },
+  memberPlaceholder: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#E5E7EB',
+    marginLeft: -8,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  activeMember: {
+    borderColor: '#3B82F6',
+  },
+  notificationButton: {
+    position: 'relative',
+    padding: 8,
+  },
+  notificationDot: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#3B82F6',
+  },
+  swipeContainer: {
+    flex: 1,
+    backgroundColor: '#F8FAFC',
   },
   cardContainer: {
     width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT,
-    backgroundColor: '#000',
+    height: SCREEN_HEIGHT * 0.8,
+    backgroundColor: '#FFFFFF',
+    marginHorizontal: 16,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
     justifyContent: 'space-between',
+    padding: 20,
   },
   topBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 50,
-    paddingBottom: 10,
-    zIndex: 10,
+    marginBottom: 16,
   },
   userInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 1,
   },
   avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#3B82F6',
-    justifyContent: 'center',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#F3F4F6',
     alignItems: 'center',
+    justifyContent: 'center',
     marginRight: 12,
   },
-  avatarText: {
-    color: '#FFF',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  userDetails: {
-    flex: 1,
-  },
   userName: {
-    color: '#FFF',
     fontSize: 16,
     fontWeight: '600',
+    color: '#1F2937',
   },
-  goalTitle: {
-    color: '#D1D5DB',
+  levelBadge: {
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+  },
+  levelText: {
     fontSize: 14,
-    marginTop: 2,
+    fontWeight: 'bold',
+    color: '#6B7280',
   },
-  skipButton: {
-    padding: 8,
-  },
-  mediaContainer: {
-    flex: 1,
-    justifyContent: 'center',
+  goalSection: {
+    flexDirection: 'row',
     alignItems: 'center',
+    marginBottom: 16,
+  },
+  goalText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginLeft: 8,
+  },
+  imageContainer: {
+    flex: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginBottom: 16,
+  },
+  mainImage: {
+    width: '100%',
+    height: '100%',
+  },
+  bottomSection: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  hashtagText: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  timestamp: {
+    fontSize: 14,
+    color: '#9CA3AF',
   },
   media: {
     width: SCREEN_WIDTH,
@@ -393,28 +509,41 @@ const styles = StyleSheet.create({
   },
   actionButtons: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingHorizontal: 40,
-    paddingVertical: 30,
-    paddingBottom: 50,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
   },
   actionButton: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#FFFFFF',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
+    shadowOpacity: 0.1,
     shadowRadius: 4,
-    elevation: 5,
+    elevation: 3,
   },
-  noButton: {
-    backgroundColor: '#FFF',
+  rejectButton: {
+    // 빨간색 X 버튼
   },
-  yesButton: {
-    backgroundColor: '#FFF',
+  skipButton: {
+    position: 'relative',
+    // 중앙 채팅 버튼
+  },
+  acceptButton: {
+    // 파란색 체크 버튼
+  },
+  chatDot: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#EF4444',
   },
   emptyContainer: {
     flex: 1,
