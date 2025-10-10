@@ -51,39 +51,8 @@ export function useAuth(): UseAuthReturn {
   const [authState, setAuthState] = useState<AuthState>(getAuthState());
   const [isLoading, setIsLoading] = useState(true);
 
-  // Restore auth on mount
+  // Subscribe to auth state changes
   useEffect(() => {
-    const restoreAuth = async () => {
-      try {
-        const storedToken = await getStoredToken();
-        if (storedToken) {
-          // Set token first
-          setAuth({ accessToken: storedToken });
-          
-          // Fetch user profile
-          try {
-            const userProfile = await getMe();
-            const userWithAlias: User = {
-              ...userProfile,
-              id: userProfile.userId, // Add id alias
-            };
-            setUserInStore(userProfile);
-          } catch (error) {
-            console.error('[useAuth] Failed to fetch user profile:', error);
-            // Clear invalid token
-            await clearAuth();
-          }
-        }
-      } catch (error) {
-        console.error('[useAuth] Error restoring auth:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    restoreAuth();
-
-    // Subscribe to auth state changes
     const unsubscribe = subscribe((newState) => {
       setAuthState(newState);
     });
@@ -92,6 +61,47 @@ export function useAuth(): UseAuthReturn {
       unsubscribe();
     };
   }, []);
+
+  // Restore auth on mount (only once)
+  useEffect(() => {
+    let mounted = true;
+
+    const restoreAuth = async () => {
+      try {
+        const storedToken = await getStoredToken();
+        if (storedToken && mounted) {
+          // Set token first
+          setAuth({ accessToken: storedToken });
+          
+          // Fetch user profile (only if mounted)
+          try {
+            const userProfile = await getMe();
+            if (mounted) {
+              setUserInStore(userProfile);
+            }
+          } catch (error) {
+            console.error('[useAuth] Failed to fetch user profile:', error);
+            // Clear invalid token
+            if (mounted) {
+              await clearAuth();
+            }
+          }
+        }
+      } catch (error) {
+        console.error('[useAuth] Error restoring auth:', error);
+      } finally {
+        if (mounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    restoreAuth();
+
+    return () => {
+      mounted = false;
+    };
+  }, []); // Empty deps - run only once on mount
 
   /**
    * Sign in with credentials
