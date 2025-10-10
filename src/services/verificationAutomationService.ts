@@ -149,7 +149,7 @@ export class VerificationAutomationService {
       await VerificationService.createVerification({
         goalId: goal.id,
         questId: 'auto-quest', // TODO: Get actual quest ID
-        url: screenshot || 'auto',
+        url: (screenshot as string) || 'auto',
         description: status,
         type: 'photo',
       });

@@ -830,7 +830,7 @@ export default function GoalDetailScreenV2({ route, navigation }: GoalDetailScre
           goalId={goalId}
           questId={currentQuest.id}
           userId={user?.id || ''}
-          userName={user?.displayName}
+          userName={user?.name}
           photoUrls={lastPhotoUri ? [lastPhotoUri] : []}
           hasLocation={false}
           hasTime={true}
