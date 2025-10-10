@@ -5,13 +5,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import * as goalsApi from '../api/goals';
 import {
-    CreateGoalRequest,
-    CreateGoalResponse,
-    GoalDetail,
-    GoalListResponse,
-    GoalState,
-    GoalVisibility,
-    PatchGoalRequest,
+  CreateGoalRequest,
+  CreateGoalResponse,
+  GoalDetail,
+  GoalListResponse,
+  GoalState,
+  GoalVisibility,
+  PatchGoalRequest,
 } from '../api/types';
 
 /**
@@ -29,6 +29,9 @@ export function useMyGoals(query?: {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
+  // Stringify query to avoid infinite loop from object reference changes
+  const queryStr = JSON.stringify(query || {});
+
   const fetchGoals = useCallback(async () => {
     setIsLoading(true);
     setError(null);
@@ -40,7 +43,7 @@ export function useMyGoals(query?: {
     } finally {
       setIsLoading(false);
     }
-  }, [query?.page, query?.pageSize, query?.state, query?.visibility]);
+  }, [queryStr]); // Use stringified query
 
   useEffect(() => {
     fetchGoals();
@@ -75,7 +78,7 @@ export function useGoal(goalId: string, expand?: string) {
     } finally {
       setIsLoading(false);
     }
-  }, [goalId, expand]);
+  }, [goalId, expand]); // These are primitives, safe for dependencies
 
   useEffect(() => {
     fetchGoal();

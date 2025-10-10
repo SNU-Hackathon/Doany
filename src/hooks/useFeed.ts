@@ -5,10 +5,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import * as feedApi from '../api/feed';
 import {
-    FeedGoalsResponse,
-    GoalState,
-    GoalVisibility,
-    MyLikesResponse,
+  FeedGoalsResponse,
+  GoalState,
+  GoalVisibility,
+  MyLikesResponse,
 } from '../api/types';
 
 /**
@@ -26,6 +26,9 @@ export function useFeedGoals(query?: {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
+  // Stringify query to avoid infinite loop from object reference changes
+  const queryStr = JSON.stringify(query || {});
+
   const fetchFeed = useCallback(async () => {
     setIsLoading(true);
     setError(null);
@@ -37,7 +40,7 @@ export function useFeedGoals(query?: {
     } finally {
       setIsLoading(false);
     }
-  }, [query?.page, query?.pageSize, query?.visibility, query?.state, query?.userId, query?.tags]);
+  }, [queryStr]); // Use stringified query
 
   useEffect(() => {
     fetchFeed();
@@ -62,6 +65,9 @@ export function useMyLikes(query?: {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
+  // Stringify query to avoid infinite loop
+  const queryStr = JSON.stringify(query || {});
+
   const fetchLikes = useCallback(async () => {
     setIsLoading(true);
     setError(null);
@@ -73,7 +79,7 @@ export function useMyLikes(query?: {
     } finally {
       setIsLoading(false);
     }
-  }, [query?.page, query?.pageSize]);
+  }, [queryStr]); // Use stringified query
 
   useEffect(() => {
     fetchLikes();

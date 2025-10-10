@@ -17,6 +17,9 @@ export function useSwipeProofs(query?: {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
+  // Stringify query to avoid infinite loop
+  const queryStr = JSON.stringify(query || {});
+
   const fetchProofs = useCallback(async () => {
     setIsLoading(true);
     setError(null);
@@ -28,7 +31,7 @@ export function useSwipeProofs(query?: {
     } finally {
       setIsLoading(false);
     }
-  }, [query?.page, query?.pageSize]);
+  }, [queryStr]); // Use stringified query
 
   useEffect(() => {
     fetchProofs();
