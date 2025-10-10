@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { QuestService } from '../compat/questService';
+import { QuestService } from '../services/questService';
 import { Quest } from '../types/quest';
 
 interface QuestPreviewProps {

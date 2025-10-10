@@ -4,7 +4,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import { Alert, Image, ScrollView, Share, Text, TouchableOpacity, View } from 'react-native';
-import { toggleLike, toggleSave, toggleTrust } from '../../compat/feedService';
+import { toggleLike, toggleSave, toggleTrust } from '../../services/feedService';
 import { FeedPost, FeedReaction } from '../../types/feed';
 
 interface FeedCardProps {

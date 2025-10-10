@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../hooks/useAuth';
-import { QuestService } from '../compat/questService';
+import { QuestService } from '../services/questService';
 import { Quest } from '../types/quest';
 import { toast } from '../utils/toast';
 

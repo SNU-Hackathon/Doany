@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { ScreenContainer } from '../components';
 import { useAuth } from '../hooks/useAuth';
-import { AuthError, sendReset } from '../compat/auth';
+import { AuthError, sendReset } from '../services/auth';
 
 export default function AuthScreen() {
   console.time('[AuthScreen] Component Mount');
