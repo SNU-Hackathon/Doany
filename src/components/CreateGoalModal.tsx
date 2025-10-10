@@ -26,7 +26,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useBurstyCallPrevention, useDuplicateRequestTelemetry } from '../hooks/useBurstyCallPrevention';
 import { AIService } from '../services/ai';
 import { CalendarEventService } from '../compat/calendarEventService';
-import { GoalService } from '../compat/goalService';
+import { GoalService } from '../api/goals';
 import { getPlaceDetails } from '../services/places';
 import { CreateGoalForm, GoalDuration, GoalFrequency, GoalSpec, TargetLocation, ValidationResult, VerificationType } from '../types';
 import { getLocaleConfig } from '../utils/languageDetection';
@@ -2272,7 +2272,8 @@ function CreateGoalModalContentLegacy({ visible, onClose, onGoalCreated }: Creat
         frequency: formData.frequency
       });
       
-      const goalId = await GoalService.createGoal(goalData);
+      const result = await createGoal(goalData);
+      const goalId = result.goalId;
       console.log('[CreateGoalModal] Goal created with ID:', goalId);
 
       // Use existing calendar events from formData

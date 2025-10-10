@@ -6,7 +6,7 @@ import { formatGoalTypeConfirmation, generateNextQuestionWithAI, useChatbotState
 import { useAuth } from '../../hooks/useAuth';
 import { GoalSpecV2, SlotId } from '../../schemas/goalSpecV2';
 import { AIService } from '../../services/ai';
-import { GoalService } from '../../compat/goalService';
+import { GoalService } from '../../api/goals';
 import { normalize } from '../../services/normalize';
 import { buildOccurrences, previewOccurrences } from '../../services/scheduleCompute';
 import { CreateGoalForm } from '../../types';
@@ -1211,7 +1211,8 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
       console.log('[SAVE.SUCCESS] Goal data prepared:', goalFormData);
 
       // Save to database
-      const goalId = await GoalService.createGoal(goalFormData);
+      const result = await createGoal(goalFormData);
+      const goalId = result.goalId;
       
       console.log('[SAVE.SUCCESS] Goal saved successfully with ID:', goalId);
       

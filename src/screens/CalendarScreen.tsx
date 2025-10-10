@@ -7,10 +7,9 @@ import {
   Text,
   View
 } from 'react-native';
+import { getGoal, getMyGoals } from '../api/goals';
 import { BaseScreen, LoadingState } from '../components';
 import { useAuth } from '../hooks/useAuth';
-import { GoalService } from '../compat/goalService';
-import { VerificationService } from '../compat/verificationService';
 import { Goal, Verification } from '../types';
 
 interface GoalProgress {
@@ -33,16 +32,39 @@ export default function CalendarScreen() {
     if (!user) return;
 
     try {
-      const goals = await GoalService.getActiveGoals(user.id);
+      // Get active goals (onTrack state)
+      const response = await getMyGoals({ 
+        state: 'onTrack', 
+        page: 1, 
+        pageSize: 100 
+      });
+      
       const progressData = await Promise.all(
-        goals.map(async (goal: any) => {
-          const todayVerifications = await VerificationService.getRecentGoalVerifications(goal.id, 1);
-          const weeklyProgress = await VerificationService.calculateGoalSuccessRate(goal.id, 7);
+        response.items.map(async (apiGoal) => {
+          // Get goal detail with quests for verification count
+          const goalDetail = await getGoal(apiGoal.goalId, { expand: 'quests' });
+          
+          const completedQuests = goalDetail.quests?.filter(q => q.state === 'complete').length || 0;
+          const totalQuests = goalDetail.quests?.length || 1;
+          
+          // Transform to Goal type
+          const goal: Goal = {
+            id: apiGoal.goalId,
+            userId: user.id,
+            title: apiGoal.title,
+            description: apiGoal.description || '',
+            category: apiGoal.tags?.[0] || '',
+            verificationMethods: [],
+            frequency: { count: 1, unit: 'per_day' },
+            duration: { type: 'days', value: 30 },
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          };
           
           return {
             goal,
-            todayVerifications,
-            weeklyProgress,
+            todayVerifications: completedQuests,
+            weeklyProgress: totalQuests > 0 ? completedQuests / totalQuests : 0,
           };
         })
       );
