@@ -6,6 +6,7 @@ import React, { useState } from 'react';
 import {
   Alert,
   Modal,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
@@ -77,105 +78,108 @@ export default function ProfileScreen() {
       }}
       contentPadding={false}
     >
-
-        {/* User Card */}
-        <View className="mx-4 mb-6 bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
-          {/* Top Section: Avatar + Info + Level */}
-          <View className="flex-row items-start mb-4">
+      <View style={styles.container}>
+        {/* User Card - 스크린샷과 정확히 일치 */}
+        <View style={styles.userCard}>
+          {/* Top Section: Avatar + Info + D+57 Badge */}
+          <View style={styles.topSection}>
             {/* Avatar */}
-            <View className="bg-gray-100 rounded-full w-16 h-16 items-center justify-center mr-4">
+            <View style={styles.avatarContainer}>
               <Ionicons name="person" size={32} color="#9CA3AF" />
             </View>
 
-            {/* Name + Greeting */}
-            <View className="flex-1">
-              <Text className="text-sm text-gray-600 mb-1">안녕하세요!</Text>
-              <View className="flex-row items-center">
-                <Text className="text-xl font-bold text-gray-900 mr-2">
+            {/* Name + Greeting + Settings */}
+            <View style={styles.nameSection}>
+              <Text style={styles.greeting}>안녕하세요!</Text>
+              <View style={styles.nameRow}>
+                <Text style={styles.userName}>
                   {user.name || 'Lee Seo June'} 님
                 </Text>
-                <TouchableOpacity>
+                <TouchableOpacity style={styles.settingsButton}>
                   <Ionicons name="settings-outline" size={18} color="#9CA3AF" />
                 </TouchableOpacity>
               </View>
             </View>
 
-            {/* Streak Badge */}
-            <View className="bg-yellow-100 rounded-full px-3 py-1">
-              <Text className="text-yellow-600 font-bold text-sm">D+{streakDays}</Text>
+            {/* D+57 Badge - 연한 녹색으로 표시 */}
+            <View style={styles.streakBadge}>
+              <Text style={styles.streakText}>D+{streakDays}</Text>
             </View>
           </View>
 
-          {/* Divider */}
-          <View className="border-t border-gray-100 my-4" />
+          {/* Divider Line */}
+          <View style={styles.divider} />
 
-          {/* Stats Section */}
-          <View className="flex-row items-center justify-between">
-            {/* Points */}
-            <View className="flex-row items-center">
-              <View className="bg-yellow-400 rounded-full w-10 h-10 items-center justify-center mr-2">
-                <Text className="font-bold text-white text-sm">P</Text>
+          {/* Bottom Section: Points + Level */}
+          <View style={styles.bottomSection}>
+            {/* Points with P icon */}
+            <View style={styles.pointsContainer}>
+              <View style={styles.pointsIcon}>
+                <Text style={styles.pointsIconText}>P</Text>
               </View>
-              <Text className="text-xl font-bold text-gray-900">{points.toLocaleString()}</Text>
+              <Text style={styles.pointsText}>{points.toLocaleString()}</Text>
             </View>
 
-            {/* Level */}
-            <View className="bg-yellow-100 rounded-full px-4 py-2">
-              <Text className="text-yellow-600 font-bold">Lv.{level}</Text>
+            {/* Level Badge */}
+            <View style={styles.levelBadge}>
+              <Text style={styles.levelText}>Lv.{level}</Text>
             </View>
           </View>
         </View>
 
-        {/* Menu Items */}
-        <View className="px-4">
-          {/* Friend Invite */}
+        {/* Menu Items - 스크린샷과 정확히 일치하는 순서와 아이콘 */}
+        <View style={styles.menuContainer}>
+          {/* Friend Invite - 첫 번째 구분선 위 */}
           <TouchableOpacity 
-            className="flex-row items-center py-4 border-b border-gray-100"
+            style={styles.menuItem}
             onPress={() => setFriendModalVisible(true)}
           >
             <Ionicons name="person-add-outline" size={20} color="#6B7280" />
-            <Text className="flex-1 ml-3 text-base text-gray-900 font-medium">친구 초대하기</Text>
+            <Text style={styles.menuText}>친구 초대하기</Text>
             <Ionicons name="chevron-forward" size={20} color="#D1D5DB" />
           </TouchableOpacity>
+
+          {/* Divider Line */}
+          <View style={styles.menuDivider} />
 
           {/* Notice */}
           <TouchableOpacity 
-            className="flex-row items-center py-4 border-b border-gray-100"
+            style={styles.menuItem}
             onPress={() => Alert.alert('준비중', '공지사항은 곧 추가됩니다!')}
           >
-            <Ionicons name="megaphone-outline" size={20} color="#6B7280" />
-            <Text className="flex-1 ml-3 text-base text-gray-900 font-medium">공지사항</Text>
+            <Ionicons name="document-text-outline" size={20} color="#6B7280" />
+            <Text style={styles.menuText}>공지사항</Text>
             <Ionicons name="chevron-forward" size={20} color="#D1D5DB" />
           </TouchableOpacity>
 
-          {/* Developer Info */}
+          {/* Privacy/Personal Info - 방패 아이콘 */}
           <TouchableOpacity 
-            className="flex-row items-center py-4 border-b border-gray-100"
+            style={styles.menuItem}
             onPress={() => Alert.alert('준비중', '개인정보는 곧 추가됩니다!')}
           >
-            <Ionicons name="call-outline" size={20} color="#6B7280" />
-            <Text className="flex-1 ml-3 text-base text-gray-900 font-medium">개인정보</Text>
+            <Ionicons name="shield-outline" size={20} color="#6B7280" />
+            <Text style={styles.menuText}>개인정보</Text>
             <Ionicons name="chevron-forward" size={20} color="#D1D5DB" />
           </TouchableOpacity>
 
           {/* Language */}
           <TouchableOpacity 
-            className="flex-row items-center py-4 border-b border-gray-100"
+            style={styles.menuItem}
             onPress={() => Alert.alert('준비중', '언어 설정은 곧 추가됩니다!')}
           >
             <Ionicons name="language-outline" size={20} color="#6B7280" />
-            <Text className="flex-1 ml-3 text-base text-gray-900 font-medium">Language</Text>
+            <Text style={styles.menuText}>Language</Text>
             <Ionicons name="chevron-forward" size={20} color="#D1D5DB" />
           </TouchableOpacity>
 
           {/* Logout */}
           <TouchableOpacity 
-            className="flex-row items-center py-4 border-b border-gray-100"
+            style={styles.menuItem}
             onPress={handleSignOut}
             disabled={signingOut}
           >
             <Ionicons name="log-out-outline" size={20} color="#6B7280" />
-            <Text className="flex-1 ml-3 text-base text-gray-900 font-medium">
+            <Text style={styles.menuText}>
               {signingOut ? '로그아웃 중...' : '로그아웃'}
             </Text>
             <Ionicons name="chevron-forward" size={20} color="#D1D5DB" />
@@ -183,14 +187,15 @@ export default function ProfileScreen() {
 
           {/* Customer Center */}
           <TouchableOpacity 
-            className="flex-row items-center py-4"
+            style={[styles.menuItem, styles.lastMenuItem]}
             onPress={() => Alert.alert('준비중', '고객센터는 곧 추가됩니다!')}
           >
-            <Ionicons name="help-circle-outline" size={20} color="#6B7280" />
-            <Text className="flex-1 ml-3 text-base text-gray-900 font-medium">고객센터</Text>
+            <Ionicons name="checkmark-circle-outline" size={20} color="#6B7280" />
+            <Text style={styles.menuText}>고객센터</Text>
             <Ionicons name="chevron-forward" size={20} color="#D1D5DB" />
           </TouchableOpacity>
         </View>
+      </View>
 
       {/* Friend Add Modal */}
       <Modal
@@ -279,3 +284,138 @@ export default function ProfileScreen() {
     </BaseScreen>
   );
 }
+
+// 스크린샷과 정확히 일치하는 스타일
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#F8FAFC',
+  },
+  userCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    marginHorizontal: 16,
+    marginBottom: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  topSection: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+  },
+  avatarContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 16,
+  },
+  nameSection: {
+    flex: 1,
+  },
+  greeting: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 4,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  userName: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#1F2937',
+    marginRight: 8,
+  },
+  settingsButton: {
+    padding: 4,
+  },
+  streakBadge: {
+    backgroundColor: '#D1FAE5', // 연한 녹색
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+  },
+  streakText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#059669', // 녹색 텍스트
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#E5E7EB',
+    marginVertical: 16,
+  },
+  bottomSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  pointsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  pointsIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#F59E0B', // 노란색
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  pointsIconText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  pointsText: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#1F2937',
+  },
+  levelBadge: {
+    backgroundColor: '#FEF3C7', // 연한 노란색
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  levelText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#D97706', // 노란색 텍스트
+  },
+  menuContainer: {
+    paddingHorizontal: 16,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  lastMenuItem: {
+    borderBottomWidth: 0,
+  },
+  menuText: {
+    flex: 1,
+    marginLeft: 12,
+    fontSize: 16,
+    color: '#374151',
+    fontWeight: '500',
+  },
+  menuDivider: {
+    height: 1,
+    backgroundColor: '#E5E7EB',
+    marginLeft: 32, // 아이콘 너비 + margin
+  },
+});
