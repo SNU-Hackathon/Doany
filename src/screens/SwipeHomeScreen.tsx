@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import React, { useCallback, useRef, useState } from 'react';
 import {
     Alert,
@@ -13,6 +14,7 @@ import {
     TouchableOpacity,
     View
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as SwipeAPI from '../api/swipe';
 import { SwipeProofItem } from '../api/types';
 import { useAuth } from '../hooks/useAuth';
@@ -25,9 +27,10 @@ interface SwipeCardProps {
   onVote: (proofId: string, vote: 'yes' | 'no') => void;
   onSkip: () => void;
   isLastAttempt: boolean;
+  cardHeight: number;
 }
 
-const SwipeCard = React.memo(({ item, onVote, onSkip, isLastAttempt }: SwipeCardProps) => {
+const SwipeCard = React.memo(({ item, onVote, onSkip, isLastAttempt, cardHeight }: SwipeCardProps) => {
   const handleVoteYes = useCallback(() => {
     onVote(item.proofId, 'yes');
   }, [item.proofId, onVote]);
@@ -36,8 +39,24 @@ const SwipeCard = React.memo(({ item, onVote, onSkip, isLastAttempt }: SwipeCard
     onVote(item.proofId, 'no');
   }, [item.proofId, onVote]);
 
+  // Format timestamp
+  const formatTimestamp = (timestamp: number | string) => {
+    try {
+      const date = new Date(typeof timestamp === 'number' ? timestamp : Number(timestamp));
+      if (isNaN(date.getTime())) return '2025-10-04 18:00';
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const hours = String(date.getHours()).padStart(2, '0');
+      const minutes = String(date.getMinutes()).padStart(2, '0');
+      return `${year}-${month}-${day} ${hours}:${minutes}`;
+    } catch {
+      return '2025-10-04 18:00';
+    }
+  };
+
   return (
-    <View style={styles.cardContainer}>
+    <View style={[styles.cardContainer, { height: cardHeight, width: SCREEN_WIDTH - 32 }]}>
       {/* Top Bar - User Info (스크린샷과 정확히 일치) */}
       <View style={styles.topBar}>
         <View style={styles.userInfo}>
@@ -54,7 +73,7 @@ const SwipeCard = React.memo(({ item, onVote, onSkip, isLastAttempt }: SwipeCard
       {/* Goal Description (스크린샷과 정확히 일치) */}
       <View style={styles.goalSection}>
         <Ionicons name="flag" size={20} color="#3B82F6" />
-        <Text style={styles.goalText}>하루 3km 러닝하기</Text>
+        <Text style={styles.goalText}>{item.goalTitle || '하루 3km 러닝하기'}</Text>
       </View>
 
       {/* Main Image (스크린샷과 정확히 일치) */}
@@ -69,7 +88,7 @@ const SwipeCard = React.memo(({ item, onVote, onSkip, isLastAttempt }: SwipeCard
       {/* Bottom Section (스크린샷과 정확히 일치) */}
       <View style={styles.bottomSection}>
         <Text style={styles.hashtagText}>#러닝 #달리기 #운동</Text>
-        <Text style={styles.timestamp}>2025-10-04 18:00</Text>
+        <Text style={styles.timestamp}>{item.createdAt ? formatTimestamp(item.createdAt) : '2025-10-04 18:00'}</Text>
       </View>
 
       {/* Action Buttons (스크린샷과 정확히 일치) */}
@@ -103,6 +122,18 @@ const SwipeCard = React.memo(({ item, onVote, onSkip, isLastAttempt }: SwipeCard
 export default function SwipeHomeScreen() {
   const { user } = useAuth();
   const flatListRef = useRef<FlatList>(null);
+  
+  // Safe area and layout hooks
+  const insets = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
+  const [groupHeaderH, setGroupHeaderH] = useState(0);
+  
+  // Calculate available card height dynamically
+  const CARD_OUTER_MARGIN = 16;
+  const availableCardHeight = Math.max(
+    320, // 최소 높이 보호
+    SCREEN_HEIGHT - insets.top - insets.bottom - tabBarHeight - groupHeaderH - CARD_OUTER_MARGIN - 12
+  );
   
   // API hooks
   const { 
@@ -197,14 +228,17 @@ export default function SwipeHomeScreen() {
     const isLastAttempt = attempts >= 2; // 0, 1, 2 = 3 attempts total
     
     return (
-      <SwipeCard
-        item={item}
-        onVote={handleVote}
-        onSkip={handleSkip}
-        isLastAttempt={isLastAttempt}
-      />
+      <View style={{ height: availableCardHeight }}>
+        <SwipeCard
+          item={item}
+          onVote={handleVote}
+          onSkip={handleSkip}
+          isLastAttempt={isLastAttempt}
+          cardHeight={availableCardHeight}
+        />
+      </View>
     );
-  }, [handleVote, handleSkip, voteAttempts]);
+  }, [handleVote, handleSkip, voteAttempts, availableCardHeight]);
 
   // Key extractor
   const keyExtractor = useCallback((item: SwipeProofItem) => item.proofId, []);
@@ -258,7 +292,10 @@ export default function SwipeHomeScreen() {
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
       
       {/* Group Header (스크린샷과 정확히 일치) */}
-      <View style={styles.groupHeader}>
+      <View 
+        style={styles.groupHeader}
+        onLayout={(e) => setGroupHeaderH(e.nativeEvent.layout.height + 20)}
+      >
         <View style={styles.groupInfo}>
           <View style={styles.groupIcon}>
             <Ionicons name="people" size={20} color="#FFFFFF" />
@@ -286,20 +323,21 @@ export default function SwipeHomeScreen() {
           pagingEnabled
           horizontal={false}
           showsVerticalScrollIndicator={false}
-          snapToInterval={SCREEN_HEIGHT * 0.75}
+          snapToInterval={availableCardHeight}
           snapToAlignment="center"
           decelerationRate="fast"
           getItemLayout={(data, index) => ({
-            length: SCREEN_HEIGHT * 0.75,
-            offset: SCREEN_HEIGHT * 0.75 * index,
+            length: availableCardHeight,
+            offset: availableCardHeight * index,
             index,
           })}
+          contentContainerStyle={{ paddingBottom: tabBarHeight + 12 }}
           ListEmptyComponent={renderEmptyState}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
           }
           onMomentumScrollEnd={(event) => {
-            const index = Math.round(event.nativeEvent.contentOffset.y / (SCREEN_HEIGHT * 0.75));
+            const index = Math.round(event.nativeEvent.contentOffset.y / availableCardHeight);
             setCurrentIndex(index);
           }}
         />
@@ -382,8 +420,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8FAFC',
   },
   cardContainer: {
-    width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT * 0.75,
+    // width and height are set dynamically via inline style
     backgroundColor: '#FFFFFF',
     marginHorizontal: 16,
     borderRadius: 20,
