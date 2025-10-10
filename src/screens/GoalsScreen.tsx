@@ -56,25 +56,19 @@ const GoalCard = React.memo(({
   };
 
   const getProgressText = (item: GoalWithProgress) => {
-    // Mock progress data based on goal state
-    if (item.state === 'complete') {
-      return '16/16 완료 ✓';
-    } else if (item.state === 'onTrack') {
-      if (item.title.includes('헬스장')) return '9/16 완료 ✓';
-      if (item.title.includes('영어')) return '15/27 완료 ✓';
-      return '진행중';
-    }
-    return '시작 전';
+    // Mock progress data based on title patterns
+    if (item.title.includes('헬스장')) return '9/16 완료 ✓';
+    if (item.title.includes('영어')) return '15/27 완료 ✓';
+    if (item.title.includes('독서')) return '16/16 완료 ✓';
+    return '진행중';
   };
 
   const getProgressPercentage = (item: GoalWithProgress) => {
     // Mock progress percentage
-    if (item.state === 'complete') return 100;
-    if (item.state === 'onTrack') {
-      if (item.title.includes('헬스장')) return 56; // 9/16
-      if (item.title.includes('영어')) return 56; // 15/27
-    }
-    return 0;
+    if (item.title.includes('독서')) return 100; // Complete
+    if (item.title.includes('헬스장')) return 56; // 9/16
+    if (item.title.includes('영어')) return 56; // 15/27
+    return 25; // Default progress
   };
 
   const getNextScheduleText = (item: GoalWithProgress) => {
@@ -137,8 +131,8 @@ const GoalCard = React.memo(({
         
         {/* Date Range */}
         <Text className="text-xs text-gray-500 mt-1">
-          {item.startAt && item.endAt ? 
-            `${new Date(item.startAt).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })}-${new Date(item.endAt).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })}` :
+          {item.startDate && item.endDate ? 
+            `${new Date(item.startDate).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })}-${new Date(item.endDate).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })}` :
             '10월 3일-10월 30일'
           }
         </Text>
@@ -156,7 +150,7 @@ const GoalCard = React.memo(({
           className="bg-yellow-400 px-3 py-1.5 rounded-full"
           onPress={() => onPress(item)}
         >
-          <Text className="text-xs font-medium text-gray-800">퀘스트 ></Text>
+          <Text className="text-xs font-medium text-gray-800">퀘스트 {'>'}</Text>
         </TouchableOpacity>
       </View>
     </TouchableOpacity>

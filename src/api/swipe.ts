@@ -9,6 +9,7 @@ import {
   Paged,
   SwipeProofItem,
   SwipeProofsResponse,
+  VoteRequest,
   VoteResponse
 } from './types';
 
@@ -71,27 +72,36 @@ export async function voteOnProof(opts: {
 }
 
 /**
- * Complete proof voting (finalize state)
+ * Complete proof voting (per API v1.3 spec)
  * 
  * @endpoint PATCH /swipe-complete/proofs/{proofId}
  * Sets state to 'complete' or 'fail' based on quorum
  * 
  * @param proofId Proof ID
+ * @param serveId Session identifier (optional)
  * @returns Final proof state
  * 
  * @example
  * ```typescript
- * // Call when voteAttempt reaches quorum
- * const result = await completeProofVoting('proof-456');
+ * const result = await completeProofVoting('proof-456', 'serve-session-789');
  * ```
  */
-export async function completeProofVoting(proofId: string): Promise<VoteResponse> {
+export async function completeProofVoting(
+  proofId: string,
+  serveId?: string
+): Promise<{ proofId: string; state: 'complete' | 'fail'; stats: { yes: number; no: number } }> {
   if (__DEV__) {
     console.log(`[completeProofVoting] proofId=${proofId}`);
   }
 
-  return httpClient.patch<VoteResponse>(`/swipe-complete/proofs/${proofId}`, {});
+  const payload = serveId ? { serveId } : {};
+  
+  return httpClient.patch<{ proofId: string; state: 'complete' | 'fail'; stats: { yes: number; no: number } }>(
+    `/swipe-complete/proofs/${proofId}`,
+    payload
+  );
 }
+
 
 /**
  * Normalize SwipeProofsResponse to array

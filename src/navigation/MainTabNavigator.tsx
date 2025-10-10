@@ -1,18 +1,17 @@
 // Main tab navigation component
-// Updated order: Home, Goals, Swipe, Feed, Profile
+// Updated order: Home (Swipe), Goals, Feed, Profile
 
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import { TouchableOpacity, View } from 'react-native';
 import {
-  EvoHomeScreen,
   FeedScreen,
   GoalsScreen,
   ProfileScreen,
-  SwipeScreen
+  SwipeHomeScreen
 } from '../screens';
 
-type TabType = 'Home' | 'Goals' | 'Swipe' | 'Feed' | 'Profile';
+type TabType = 'Home' | 'Goals' | 'Feed' | 'Profile';
 
 export default function MainTabNavigator() {
   const [activeTab, setActiveTab] = useState<TabType>('Home');
@@ -20,28 +19,24 @@ export default function MainTabNavigator() {
   const renderScreen = () => {
     switch (activeTab) {
       case 'Home':
-        return <EvoHomeScreen />;
+        return <SwipeHomeScreen />;
       case 'Goals':
         return <GoalsScreen />;
-      case 'Swipe':
-        return <SwipeScreen />;
       case 'Feed':
         return <FeedScreen />;
       case 'Profile':
         return <ProfileScreen />;
       default:
-        return <EvoHomeScreen />;
+        return <SwipeHomeScreen />;
     }
   };
 
   const getIconName = (tabName: TabType, focused: boolean): keyof typeof Ionicons.glyphMap => {
     switch (tabName) {
       case 'Home':
-        return focused ? 'home' : 'home-outline';
+        return focused ? 'heart' : 'heart-outline'; // Swipe/Heart icon for home
       case 'Goals':
         return focused ? 'disc' : 'disc-outline'; // Target/Goal icon
-      case 'Swipe':
-        return focused ? 'checkmark-done-circle' : 'checkmark-done-circle-outline'; // Check icon for verification
       case 'Feed':
         return focused ? 'people' : 'people-outline'; // People icon for community feed
       case 'Profile':
@@ -68,7 +63,7 @@ export default function MainTabNavigator() {
         paddingBottom: 10,
         paddingTop: 10,
       }}>
-        {(['Home', 'Goals', 'Swipe', 'Feed', 'Profile'] as TabType[]).map((tab) => {
+        {(['Home', 'Goals', 'Feed', 'Profile'] as TabType[]).map((tab) => {
           const isActive = activeTab === tab;
           return (
             <TouchableOpacity

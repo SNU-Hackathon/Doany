@@ -145,10 +145,17 @@ export async function resolveMock<T = any>(
     
     // PATCH /swipe-complete/proofs/{proofId} - Complete voting
     if (path.match(/^\/swipe-complete\/proofs\/[\w-]+$/) && method === 'PATCH') {
-      const voteResult = require('./swipe.vote.json');
+      const match = path.match(/\/swipe-complete\/proofs\/([\w-]+)/);
+      const proofId = match ? match[1] : 'proof-swipe-1';
+      
+      // Mock completion result
       return {
-        ...voteResult,
-        state: voteResult.stats.yes > voteResult.stats.no ? 'complete' : 'fail',
+        proofId,
+        state: Math.random() > 0.5 ? 'complete' : 'fail', // Random for demo
+        stats: {
+          yes: Math.floor(Math.random() * 20) + 5,
+          no: Math.floor(Math.random() * 5),
+        },
       } as T;
     }
     

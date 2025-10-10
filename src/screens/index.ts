@@ -6,9 +6,9 @@ export { default as AuthScreen } from './AuthScreen';
 export { default as ProfileScreen } from './ProfileScreen';
 
 // Main Navigation Screens
-export { default as EvoHomeScreen } from './EvoHomeScreen';
 export { default as FeedScreen } from './FeedScreen';
 export { default as GoalsScreen } from './GoalsScreen';
+export { default as SwipeHomeScreen } from './SwipeHomeScreen';
 export { default as SwipeScreen } from './SwipeScreen';
 
 // Detail Screens
