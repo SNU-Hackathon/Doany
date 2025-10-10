@@ -45,7 +45,7 @@ export const QuestMapView = React.memo(
       const upcomingQuests = sortedData.filter(q => {
         const questDate = new Date(q.targetDate || q.scheduledDate || '');
         questDate.setHours(0, 0, 0, 0);
-        return questDate.getTime() >= now.getTime() && q.status !== 'completed';
+        return questDate.getTime() >= now.getTime() && q.status !== 'complete';
       });
       return upcomingQuests[0]?.id || null;
     }, [sortedData, now]);
@@ -55,7 +55,7 @@ export const QuestMapView = React.memo(
       const questDate = new Date(quest.targetDate || quest.scheduledDate || '');
       questDate.setHours(0, 0, 0, 0);
       
-      const isCompleted = quest.status === 'completed';
+      const isCompleted = quest.state === 'complete';
       const isNextQuest = quest.id === nextQuestId; // ✅ 다음 퀘스트만 별 표시
       const isLocked = !isCompleted && !isNextQuest && questDate.getTime() >= now.getTime(); // ✅ 다음 퀘스트 외에는 잠금
       

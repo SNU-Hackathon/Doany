@@ -245,7 +245,7 @@ export default function ProfileScreen() {
             <View className="bg-blue-50 rounded-xl p-4 mb-6">
               <Text className="text-xs text-gray-600 mb-1">내 코드</Text>
               <View className="flex-row items-center justify-between">
-                <Text className="text-lg font-bold text-gray-900">{user.uid.substring(0, 8).toUpperCase()}</Text>
+                <Text className="text-lg font-bold text-gray-900">{user.id.substring(0, 8).toUpperCase()}</Text>
                 <TouchableOpacity 
                   className="bg-blue-600 rounded-lg px-4 py-2"
                   onPress={() => {

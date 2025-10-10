@@ -5,15 +5,42 @@
  * This allows existing components to keep their imports unchanged.
  */
 
-// Re-export all named exports from api/goals
-export {
-    createGoal, deleteGoal, getGoal, getMyGoals, patchGoal
-} from '../api/goals';
-
 // Import namespace for default export
 import * as GoalsAPI from '../api/goals';
-import { GoalListResponse } from '../api/types';
-import { Goal } from '../types';
+import { CreateGoalRequest, CreateGoalResponse, GoalListResponse } from '../api/types';
+import { CreateGoalForm, Goal } from '../types';
+
+// Re-export most functions directly
+export {
+    deleteGoal, getGoal, getMyGoals, patchGoal
+} from '../api/goals';
+
+/**
+ * Adapter: Create goal with form data transformation
+ * Converts CreateGoalForm to CreateGoalRequest
+ */
+export async function createGoal(
+  goalData: (CreateGoalForm & { userId: string }) | CreateGoalRequest
+): Promise<CreateGoalResponse> {
+  // If already in API format, use directly
+  if ('startAt' in goalData || !('duration' in goalData)) {
+    return GoalsAPI.createGoal(goalData as CreateGoalRequest);
+  }
+
+  // Transform CreateGoalForm to CreateGoalRequest
+  const formData = goalData as CreateGoalForm & { userId: string };
+  
+  const apiRequest: CreateGoalRequest = {
+    title: formData.title,
+    description: formData.description,
+    tags: formData.category ? [formData.category] : [],
+    visibility: 'public', // Default
+    startAt: formData.duration?.startDate || undefined,
+    endAt: formData.duration?.endDate || undefined,
+  };
+
+  return GoalsAPI.createGoal(apiRequest);
+}
 
 /**
  * Adapter: Get active goals (filters for onTrack state)
@@ -77,7 +104,7 @@ export async function getUserGoals(userId: string): Promise<Goal[]> {
  * GoalService namespace for legacy callers using GoalService.method() syntax
  */
 export const GoalService = {
-  createGoal: GoalsAPI.createGoal,
+  createGoal, // Use adapter
   getGoal: GoalsAPI.getGoal,
   getMyGoals: GoalsAPI.getMyGoals,
   patchGoal: GoalsAPI.patchGoal,

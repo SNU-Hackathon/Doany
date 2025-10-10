@@ -298,7 +298,7 @@ function DetailTab({ quests, goal, refreshing, onRefresh, onUpload, onComplete, 
   const renderQuestCard = ({ item }: { item: Quest }) => {
     const date = item.targetDate ? new Date(item.targetDate) : null;
     const state = getQuestState(item);
-    const isCompleted = item.status === 'completed';
+    const isCompleted = item.state === 'complete';
     const hasPhotos = item.verificationPhotos && item.verificationPhotos.length > 0;
 
     // Styling based on state
