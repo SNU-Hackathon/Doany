@@ -2,18 +2,18 @@ import { Ionicons } from '@expo/vector-icons';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import React, { useCallback, useRef, useState } from 'react';
 import {
-    Alert,
-    Dimensions,
-    FlatList,
-    Image,
-    Platform,
-    RefreshControl,
-    SafeAreaView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View
+  Alert,
+  Dimensions,
+  FlatList,
+  Image,
+  Platform,
+  RefreshControl,
+  SafeAreaView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as SwipeAPI from '../api/swipe';
@@ -141,9 +141,10 @@ export default function SwipeHomeScreen() {
   
   // Calculate available card height dynamically
   const CARD_OUTER_MARGIN = 16;
+  const BOTTOM_SPACING = 32; // 네비게이션 바와의 간격 추가
   const availableCardHeight = Math.max(
     320, // 최소 높이 보호
-    SCREEN_HEIGHT - insets.top - insets.bottom - tabBarHeight - groupHeaderH - CARD_OUTER_MARGIN - 12
+    SCREEN_HEIGHT - insets.top - insets.bottom - tabBarHeight - groupHeaderH - CARD_OUTER_MARGIN - BOTTOM_SPACING
   );
   
   // API hooks
@@ -342,7 +343,7 @@ export default function SwipeHomeScreen() {
             offset: availableCardHeight * index,
             index,
           })}
-          contentContainerStyle={{ paddingBottom: tabBarHeight + 12 }}
+          contentContainerStyle={{ paddingBottom: tabBarHeight + BOTTOM_SPACING }}
           ListEmptyComponent={renderEmptyState}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
