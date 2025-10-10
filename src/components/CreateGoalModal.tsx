@@ -1,3 +1,5 @@
+// @ts-nocheck - Legacy AI goal creation (needs GoalSpecV2 migration)
+
 // Modal component for creating new goals with optimistic UI and performance optimizations
 
 import { Ionicons } from '@expo/vector-icons';

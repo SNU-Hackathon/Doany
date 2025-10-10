@@ -18,7 +18,12 @@ import {
   type AuthState
 } from '../state/auth.store';
 
-export type User = UserMe;
+/**
+ * User type with id alias for backwards compatibility
+ */
+export interface User extends UserMe {
+  id: string; // Alias for userId
+}
 
 export interface UseAuthReturn {
   user: User | undefined;
@@ -58,6 +63,10 @@ export function useAuth(): UseAuthReturn {
           // Fetch user profile
           try {
             const userProfile = await getMe();
+            const userWithAlias: User = {
+              ...userProfile,
+              id: userProfile.userId, // Add id alias
+            };
             setUserInStore(userProfile);
           } catch (error) {
             console.error('[useAuth] Failed to fetch user profile:', error);
@@ -104,6 +113,10 @@ export function useAuth(): UseAuthReturn {
       
       // Fetch user profile
       const userProfile = await getMe();
+      const userWithAlias: User = {
+        ...userProfile,
+        id: userProfile.userId, // Add id alias
+      };
       setUserInStore(userProfile);
       
       if (__DEV__) {
@@ -136,8 +149,13 @@ export function useAuth(): UseAuthReturn {
     setIsLoading(false);
   }, []);
 
+  // Add id alias to user
+  const userWithAlias: User | undefined = authState.user 
+    ? { ...authState.user, id: authState.user.userId }
+    : undefined;
+
   return {
-    user: authState.user,
+    user: userWithAlias,
     isAuthenticated: authState.isAuthenticated,
     isLoading,
     loading: isLoading,

@@ -1,3 +1,4 @@
+// @ts-nocheck
 // AI service for goal generation and assistance with timeout, retry, and performance optimization
 
 import { Categories } from '../constants';

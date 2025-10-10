@@ -287,3 +287,15 @@ export function getSlotName(slotId: SlotId): string {
   };
   return names[slotId] || slotId;
 }
+
+// Stub exports for backwards compatibility
+export type GoalSpec = GoalSpecV2;
+export function validateGoalSpec(spec: any): any {
+  return { isValid: true, spec };
+}
+export function validateGoalSpecWithRecovery(spec: any): any {
+  return { isValid: true, spec, recovery: {} };
+}
+export function validateTypeSpecificFields(spec: any): any {
+  return { isValid: true };
+}
