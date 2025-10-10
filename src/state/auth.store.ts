@@ -1,30 +1,26 @@
 /**
  * DoAny Auth Store
  * 
- * Simple auth state management (scaffolding only - not wired to UI yet)
- * 
- * @todo Replace with Zustand or integrate with existing auth system
- * @todo Wire to login/logout flows in UI
- * @todo Persist tokens to AsyncStorage
+ * Manages authentication state and token persistence
  */
+
+import { UserMe } from '../api/types';
 
 export interface AuthState {
   accessToken: string | undefined;
-  refreshToken: string | undefined;
-  user:
-    | {
-        id: string;
-        name: string;
-        email?: string;
-      }
-    | undefined;
+  tokenType: 'Bearer' | undefined;
+  expiresIn: number | undefined;
+  userId: string | undefined;
+  user: UserMe | undefined;
   isAuthenticated: boolean;
 }
 
-// Simple in-memory store (will be replaced with proper state management)
+// In-memory auth state
 let authState: AuthState = {
   accessToken: undefined,
-  refreshToken: undefined,
+  tokenType: undefined,
+  expiresIn: undefined,
+  userId: undefined,
   user: undefined,
   isAuthenticated: false,
 };
@@ -68,43 +64,96 @@ export function getAccessToken(): string | undefined {
 }
 
 /**
- * Set auth tokens and user data
+ * Set token only (for quick updates)
+ */
+export async function setToken(token: string | null): Promise<void> {
+  if (token) {
+    authState.accessToken = token;
+    authState.isAuthenticated = true;
+    await AsyncStorage.setItem('auth_token', token);
+  } else {
+    authState.accessToken = undefined;
+    authState.isAuthenticated = false;
+    await AsyncStorage.removeItem('auth_token');
+  }
+  notify();
+}
+
+/**
+ * Get token from storage
+ */
+export async function getStoredToken(): Promise<string | null> {
+  try {
+    return await AsyncStorage.getItem('auth_token');
+  } catch (error) {
+    console.error('[auth.store] Error getting token:', error);
+    return null;
+  }
+}
+
+/**
+ * Set auth data from login response
  */
 export function setAuth(data: {
   accessToken: string;
-  refreshToken?: string;
-  user: { id: string; name: string; email?: string };
+  tokenType?: 'Bearer';
+  expiresIn?: number;
+  userId?: string;
+  user?: UserMe;
 }): void {
   authState = {
     accessToken: data.accessToken,
-    refreshToken: data.refreshToken,
+    tokenType: data.tokenType || 'Bearer',
+    expiresIn: data.expiresIn,
+    userId: data.userId,
     user: data.user,
     isAuthenticated: true,
   };
   notify();
 
-  // TODO: Persist to AsyncStorage
+  // Persist token
+  AsyncStorage.setItem('auth_token', data.accessToken).catch(err => {
+    console.error('[auth.store] Failed to persist token:', err);
+  });
+
   if (__DEV__) {
     console.log('[auth.store] Auth state updated:', {
-      userId: data.user.id,
-      userName: data.user.name,
+      userId: data.userId || data.user?.userId,
+      userName: data.user?.name,
     });
   }
 }
 
 /**
+ * Set user profile
+ */
+export function setUser(user: UserMe | null): void {
+  authState.user = user || undefined;
+  authState.userId = user?.userId;
+  notify();
+}
+
+/**
  * Clear auth state (logout)
  */
-export function clearAuth(): void {
+export async function clearAuth(): Promise<void> {
   authState = {
     accessToken: undefined,
-    refreshToken: undefined,
+    tokenType: undefined,
+    expiresIn: undefined,
+    userId: undefined,
     user: undefined,
     isAuthenticated: false,
   };
   notify();
 
-  // TODO: Clear from AsyncStorage
+  // Clear from AsyncStorage
+  try {
+    await AsyncStorage.removeItem('auth_token');
+  } catch (error) {
+    console.error('[auth.store] Error clearing token:', error);
+  }
+
   if (__DEV__) {
     console.log('[auth.store] Auth state cleared');
   }

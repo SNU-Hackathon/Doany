@@ -100,14 +100,12 @@ export async function resolveMock<T = any>(
 
     // Auth endpoints
     if (path === '/auth/login' && method === 'POST') {
-      // Will be added later
+      // Return mock login response per v1.3 spec
       return {
-        accessToken: 'mock-access-token',
-        refreshToken: 'mock-refresh-token',
-        user: {
-          id: 'mock-user-id',
-          name: 'Mock User',
-        },
+        accessToken: 'mock-jwt-token-' + Date.now(),
+        tokenType: 'Bearer',
+        expiresIn: 3600,
+        userId: 'user_123',
       } as T;
     }
 

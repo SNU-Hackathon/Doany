@@ -64,6 +64,22 @@ const createAxiosInstance = (): AxiosInstance => {
         });
       }
 
+      // Handle 401 Unauthorized - clear auth and sign out
+      if (error.response?.status === 401) {
+        // Import clearAuth dynamically to avoid circular dependency
+        const { clearAuth } = await import('../state/auth.store');
+        
+        if (__DEV__) {
+          console.warn('[HTTP] 401 Unauthorized - Signing out');
+        }
+
+        // Clear auth state (sign out)
+        await clearAuth();
+
+        // Don't retry the request
+        return Promise.reject(error);
+      }
+
       // Handle 429 Rate Limit with Retry-After
       if (error.response?.status === 429) {
         const retryAfter = error.response.headers['retry-after'];
@@ -75,14 +91,6 @@ const createAxiosInstance = (): AxiosInstance => {
 
         await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
         return instance.request(error.config!);
-      }
-
-      // Log hint for 401 in development
-      if (error.response?.status === 401 && __DEV__) {
-        console.warn(
-          '[HTTP] 401 Unauthorized - No token available. ' +
-          'Either enable USE_API_MOCKS or wire authentication.'
-        );
       }
 
       return Promise.reject(error);

@@ -5,14 +5,16 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { loginPassword } from '../api/auth';
-import { clearAuth, getAuthState, setAuth, subscribe, type AuthState } from '../state/auth.store';
+import type { UserMe } from '../api/types';
+import {
+  clearAuth,
+  getAuthState,
+  setAuth,
+  subscribe,
+  type AuthState
+} from '../state/auth.store';
 
-export interface User {
-  id: string;
-  name: string;
-  email?: string;
-}
+export type User = UserMe;
 
 export interface UseAuthReturn {
   user: User | undefined;
@@ -29,7 +31,7 @@ export interface UseAuthReturn {
  * 
  * @example
  * ```typescript
- * const { user, isAuthenticated, isLoading } = useAuth();
+ * const { user, isAuthenticated, isLoading, signIn, signOut } = useAuth();
  * 
  * if (isLoading) return <Loading />;
  * if (!isAuthenticated) return <Login />;
@@ -38,9 +40,36 @@ export interface UseAuthReturn {
  */
 export function useAuth(): UseAuthReturn {
   const [authState, setAuthState] = useState<AuthState>(getAuthState());
-  const [isLoading] = useState(false); // No async loading needed for in-memory store
+  const [isLoading, setIsLoading] = useState(true);
 
+  // Restore auth on mount
   useEffect(() => {
+    const restoreAuth = async () => {
+      try {
+        const storedToken = await getStoredToken();
+        if (storedToken) {
+          // Set token first
+          setAuth({ accessToken: storedToken });
+          
+          // Fetch user profile
+          try {
+            const userProfile = await getMe();
+            setUserInStore(userProfile);
+          } catch (error) {
+            console.error('[useAuth] Failed to fetch user profile:', error);
+            // Clear invalid token
+            await clearAuth();
+          }
+        }
+      } catch (error) {
+        console.error('[useAuth] Error restoring auth:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    restoreAuth();
+
     // Subscribe to auth state changes
     const unsubscribe = subscribe((newState) => {
       setAuthState(newState);
@@ -51,34 +80,63 @@ export function useAuth(): UseAuthReturn {
     };
   }, []);
 
-  const signIn = async (email: string, password: string) => {
+  /**
+   * Sign in with credentials
+   */
+  const signIn = useCallback(async (email: string, password: string) => {
     try {
-      const authResponse = await loginPassword({ email, password });
+      setIsLoading(true);
+      
+      // Call login API
+      const loginResponse: LoginResponse = await apiLoginPassword({ email, password });
+      
+      // Store auth data
       setAuth({
-        accessToken: authResponse.accessToken,
-        refreshToken: authResponse.refreshToken,
-        user: authResponse.user,
+        accessToken: loginResponse.accessToken,
+        tokenType: loginResponse.tokenType,
+        expiresIn: loginResponse.expiresIn,
+        userId: loginResponse.userId,
       });
+      
+      // Fetch user profile
+      const userProfile = await getMe();
+      setUserInStore(userProfile);
+      
+      if (__DEV__) {
+        console.log('[useAuth.signIn] Login successful:', {
+          userId: loginResponse.userId,
+          userName: userProfile.name,
+        });
+      }
     } catch (error) {
       console.error('[useAuth.signIn] Error:', error);
       throw error;
+    } finally {
+      setIsLoading(false);
     }
-  };
+  }, []);
 
-  const signUp = async (email: string, password: string, userData?: any) => {
+  /**
+   * Sign up (placeholder)
+   */
+  const signUp = useCallback(async (email: string, password: string, userData?: any) => {
     console.warn('[useAuth.signUp] Not yet implemented - use src/api/users.join');
     throw new Error('signUp not yet implemented');
-  };
+  }, []);
 
-  const signOut = async () => {
-    clearAuth();
-  };
+  /**
+   * Sign out
+   */
+  const signOut = useCallback(async () => {
+    await apiLogout();
+    setIsLoading(false);
+  }, []);
 
   return {
     user: authState.user,
     isAuthenticated: authState.isAuthenticated,
     isLoading,
-    loading: isLoading, // Alias for compatibility
+    loading: isLoading,
     signIn,
     signUp,
     signOut,

@@ -1,70 +1,85 @@
 /**
  * DoAny API v1.3 - Auth Module
  * 
- * Authentication endpoints (scaffolding only - UI not wired yet)
+ * Authentication endpoints
  */
 
 import { httpClient } from '../lib/http';
-import { AuthResponse } from './types';
+import { LoginRequest, LoginResponse } from './types';
 
 /**
- * Login with email and password
+ * Login (unified endpoint)
  * 
  * @endpoint POST /auth/login
- * @param credentials Email and password
- * @returns Auth tokens and user data
+ * @param body Login request (password or OAuth)
+ * @returns Login response with access token
  * 
- * @example
+ * @example Password
  * ```typescript
- * const auth = await loginPassword({
+ * const result = await login({
+ *   provider: 'password',
  *   email: 'user@example.com',
  *   password: 'secure-password'
  * });
  * ```
  * 
- * @todo Wire to UI and auth store
+ * @example OAuth
+ * ```typescript
+ * const result = await login({
+ *   provider: 'google',
+ *   code: 'oauth-code',
+ *   redirectUri: 'https://app.example.com/cb'
+ * });
+ * ```
+ */
+export async function login(body: LoginRequest): Promise<LoginResponse> {
+  return httpClient.post<LoginResponse>('/auth/login', body);
+}
+
+/**
+ * Login with email and password (convenience wrapper)
+ * 
+ * @param credentials Email and password
+ * @returns Login response
  */
 export async function loginPassword(credentials: {
   email: string;
   password: string;
-}): Promise<AuthResponse> {
-  return httpClient.post<AuthResponse>('/auth/login', credentials);
+}): Promise<LoginResponse> {
+  return login({
+    provider: 'password',
+    email: credentials.email,
+    password: credentials.password,
+  });
 }
 
 /**
- * Login with Google OAuth
+ * Login with Google OAuth (convenience wrapper)
  * 
- * @endpoint POST /auth/login
- * @param googleToken Google OAuth token
- * @returns Auth tokens and user data
- * 
- * @example
- * ```typescript
- * const auth = await loginGoogle({
- *   provider: 'google',
- *   token: 'google-oauth-token'
- * });
- * ```
- * 
- * @todo Wire to Google Sign-In and auth store
+ * @param oauth OAuth data
+ * @returns Login response
  */
-export async function loginGoogle(googleToken: {
-  provider: 'google';
-  token: string;
-}): Promise<AuthResponse> {
-  return httpClient.post<AuthResponse>('/auth/login', googleToken);
+export async function loginGoogle(oauth: {
+  code: string;
+  redirectUri: string;
+}): Promise<LoginResponse> {
+  return login({
+    provider: 'google',
+    code: oauth.code,
+    redirectUri: oauth.redirectUri,
+  });
 }
 
 /**
- * Logout (client-side only for now)
- * 
- * @todo Add server-side logout endpoint if spec provides one
+ * Logout (client-side)
+ * Note: No server-side logout endpoint in v1.3 spec
  */
 export async function logout(): Promise<void> {
-  // TODO: Clear auth store
-  // TODO: Call server logout endpoint if available
+  const { clearAuth } = await import('../state/auth.store');
+  await clearAuth();
+  
   if (__DEV__) {
-    console.log('[auth] logout - clearing local auth state');
+    console.log('[auth] logout - cleared auth state');
   }
 }
 

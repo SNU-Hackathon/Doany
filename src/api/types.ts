@@ -54,10 +54,55 @@ export type VoteValue = 'yes' | 'no';
 // Auth Types
 // ============================================================================
 
+/**
+ * Auth provider types
+ */
+export type AuthProvider = 'password' | 'google';
+
+/**
+ * Login with password
+ */
+export interface LoginPasswordRequest {
+  provider: 'password';
+  email: string;
+  password: string;
+}
+
+/**
+ * Login with OAuth (Google)
+ */
+export interface LoginOAuthRequest {
+  provider: 'google';
+  code: string;
+  redirectUri: string;
+}
+
+/**
+ * Login request (union type)
+ */
+export type LoginRequest = LoginPasswordRequest | LoginOAuthRequest;
+
+/**
+ * Login response (per API v1.3 spec)
+ */
+export interface LoginResponse {
+  accessToken: string;
+  tokenType: 'Bearer';
+  expiresIn: number;
+  userId: string;
+}
+
+/**
+ * Legacy auth response (for backwards compatibility)
+ * @deprecated Use LoginResponse instead
+ */
 export interface AuthResponse {
   accessToken: string;
   refreshToken?: string;
-  user: {
+  tokenType?: 'Bearer';
+  expiresIn?: number;
+  userId?: string;
+  user?: {
     id: string;
     name: string;
     email?: string;
