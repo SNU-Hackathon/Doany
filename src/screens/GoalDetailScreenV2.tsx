@@ -13,7 +13,6 @@ import {
   Image,
   Modal,
   RefreshControl,
-  ScrollView,
   Text,
   TouchableOpacity,
   View
@@ -488,22 +487,22 @@ function PhotoViewer({ visible, photos, onClose }: PhotoViewerProps) {
         >
           <Ionicons name="close" size={32} color="white" />
         </TouchableOpacity>
-        <ScrollView 
-          horizontal 
-          pagingEnabled 
+        <FlatList
+          data={photos}
+          horizontal
+          pagingEnabled
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ alignItems: 'center' }}
-        >
-          {photos.map((photo, index) => (
-            <View key={index} style={{ width: 390, height: '100%', justifyContent: 'center', alignItems: 'center' }}>
+          keyExtractor={(item, index) => index.toString()}
+          renderItem={({ item }) => (
+            <View style={{ width: 390, height: '100%', justifyContent: 'center', alignItems: 'center' }}>
               <Image 
-                source={{ uri: photo }} 
+                source={{ uri: item }} 
                 style={{ width: '90%', height: '70%' }}
                 resizeMode="contain"
               />
             </View>
-          ))}
-        </ScrollView>
+          )}
+        />
         <View style={{ position: 'absolute', bottom: 40, alignSelf: 'center' }}>
           <Text style={{ color: 'white', fontSize: 14 }}>
             {photos.length > 1 ? `${photos.length}장의 사진` : '1장의 사진'}

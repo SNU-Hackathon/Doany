@@ -2,9 +2,9 @@ import { Ionicons } from '@expo/vector-icons';
 import React, { useCallback, useState } from 'react';
 import {
   Dimensions,
+  FlatList,
   Image,
   RefreshControl,
-  ScrollView,
   Text,
   TouchableOpacity,
   View
@@ -142,6 +142,14 @@ export default function SwipeScreen() {
     }
   }, [vote, refetch]);
 
+  // Render item for FlatList
+  const renderItem = useCallback(({ item }: { item: SwipeProofItem }) => (
+    <SwipeCard proof={item} onVote={handleVote} />
+  ), [handleVote]);
+
+  // Key extractor for FlatList
+  const keyExtractor = useCallback((item: SwipeProofItem) => item.proofId, []);
+
   if (loading) {
     return (
       <BaseScreen title="Swipe">
@@ -198,21 +206,22 @@ export default function SwipeScreen() {
 
   return (
     <BaseScreen title="Swipe">
-      <ScrollView
-        className="flex-1"
-        contentContainerStyle={{ padding: 16 }}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
-        }
-      >
-        <Text className="text-lg font-bold text-gray-900 mb-4">
+      <View className="flex-1 px-4">
+        <Text className="text-lg font-bold text-gray-900 mb-4 mt-2">
           다른 사용자들의 목표 달성 인증
         </Text>
         
-        {swipeProofs.map((proof, index) => (
-          <SwipeCard key={`${proof.proofId}-${index}`} proof={proof} onVote={handleVote} />
-        ))}
-      </ScrollView>
+        <FlatList
+          data={swipeProofs}
+          renderItem={renderItem}
+          keyExtractor={keyExtractor}
+          contentContainerStyle={{ paddingBottom: 16 }}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+          }
+          showsVerticalScrollIndicator={false}
+        />
+      </View>
     </BaseScreen>
   );
 }
