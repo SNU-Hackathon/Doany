@@ -9,10 +9,14 @@ import * as ImagePicker from 'expo-image-picker';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  Animated,
+  Dimensions,
   FlatList,
   Image,
   Modal,
+  PanResponder,
   RefreshControl,
+  StyleSheet,
   Text,
   TouchableOpacity,
   View
@@ -533,6 +537,47 @@ export default function GoalDetailScreenV2({ route, navigation }: GoalDetailScre
   const [photoViewerVisible, setPhotoViewerVisible] = useState(false);
   const [viewingPhotos, setViewingPhotos] = useState<string[]>([]);
 
+  // Gesture navigation
+  const pan = useMemo(() => new Animated.Value(0), []);
+  const { height: screenHeight } = Dimensions.get('window');
+
+  // PanResponder for swipe down to dismiss
+  const panResponder = useMemo(() => PanResponder.create({
+    onMoveShouldSetPanResponder: (_, gestureState) => {
+      // Only respond to vertical swipes
+      return Math.abs(gestureState.dy) > Math.abs(gestureState.dx) && Math.abs(gestureState.dy) > 10;
+    },
+    onPanResponderGrant: () => {
+      pan.setOffset((pan as any)._value);
+    },
+    onPanResponderMove: (_, gestureState) => {
+      // Only allow downward movement
+      if (gestureState.dy > 0) {
+        pan.setValue(gestureState.dy);
+      }
+    },
+    onPanResponderRelease: (_, gestureState) => {
+      pan.flattenOffset();
+      
+      // If swipe down is significant, dismiss the screen
+      if (gestureState.dy > 100 || gestureState.vy > 0.5) {
+        Animated.timing(pan, {
+          toValue: screenHeight,
+          duration: 300,
+          useNativeDriver: true,
+        }).start(() => {
+          navigation.goBack();
+        });
+      } else {
+        // Snap back to original position
+        Animated.spring(pan, {
+          toValue: 0,
+          useNativeDriver: true,
+        }).start();
+      }
+    },
+  }), [pan, screenHeight, navigation]);
+
   // Extract primitives to prevent infinite loop
   const userId = user?.id;
 
@@ -750,17 +795,31 @@ export default function GoalDetailScreenV2({ route, navigation }: GoalDetailScre
   }
 
   return (
-    <ScreenContainer backgroundColor="white">
-      <ScreenHeader
-        title="퀘스트"
-        showBackButton
-        onBackPress={handleBack}
-        rightAction={{
-          icon: 'notifications-outline',
-          onPress: () => {},
-        }}
-        borderBottom
-      />
+    <Animated.View 
+      style={[
+        styles.container,
+        {
+          transform: [{ translateY: pan }],
+          opacity: pan.interpolate({
+            inputRange: [0, screenHeight],
+            outputRange: [1, 0],
+            extrapolate: 'clamp',
+          }),
+        },
+      ]}
+      {...panResponder.panHandlers}
+    >
+      <ScreenContainer backgroundColor="white">
+        <ScreenHeader
+          title="퀘스트"
+          showBackButton
+          onBackPress={handleBack}
+          rightAction={{
+            icon: 'notifications-outline',
+            onPress: () => {},
+          }}
+          borderBottom
+        />
 
       {/* Tabs */}
       <View style={{ flexDirection: 'row', paddingHorizontal: 16, backgroundColor: 'white' }}>
@@ -854,6 +913,13 @@ export default function GoalDetailScreenV2({ route, navigation }: GoalDetailScre
           setViewingPhotos([]);
         }}
       />
-    </ScreenContainer>
+      </ScreenContainer>
+    </Animated.View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+});
