@@ -14,7 +14,7 @@ import { Goal, Verification } from '../types';
 
 interface GoalProgress {
   goal: Goal;
-  todayVerifications: number;
+  todayVerifications: Verification[];
   weeklyProgress: number;
 }
 
@@ -63,7 +63,7 @@ export default function CalendarScreen() {
           
           return {
             goal,
-            todayVerifications: completedQuests,
+            todayVerifications: [], // TODO: Fetch actual verifications when endpoint available
             weeklyProgress: totalQuests > 0 ? completedQuests / totalQuests : 0,
           };
         })

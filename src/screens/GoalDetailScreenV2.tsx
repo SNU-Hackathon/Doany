@@ -518,7 +518,7 @@ export default function GoalDetailScreenV2({ route, navigation }: GoalDetailScre
   const { goalId } = route.params;
   const { user } = useAuth();
 
-  const [goal, setGoal] = useState<Goal | null>(null);
+  const [goal, setGoal] = useState<any | null>(null);
   const [quests, setQuests] = useState<Quest[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -636,13 +636,13 @@ export default function GoalDetailScreenV2({ route, navigation }: GoalDetailScre
         const blob = await response.blob();
 
         // Create verification with photo
-        const verificationId = await VerificationService.createVerification(
-          goal.id,
-          user.id,
-          'success',
-          undefined,
-          blob
-        );
+        const verificationId = await VerificationService.createVerification({
+          goalId: goal.id,
+          questId: quest.id,
+          url: 'https://placeholder.com/photo.jpg', // TODO: Upload photo first
+          description: 'Photo verification',
+          type: 'photo',
+        });
 
         console.log('[Upload] Verification created:', verificationId);
 
@@ -676,11 +676,13 @@ export default function GoalDetailScreenV2({ route, navigation }: GoalDetailScre
           onPress: async () => {
             try {
               // Create manual verification
-              await VerificationService.createVerification(
-                goal.id,
-                user.id,
-                'success'
-              );
+              await VerificationService.createVerification({
+                goalId: goal.id,
+                questId: quest.id,
+                url: 'manual', // Manual verification
+                description: 'Manual verification',
+                type: 'photo',
+              });
 
               // Update quest status
               await QuestService.updateQuestStatus(quest.id, 'completed', user.id);

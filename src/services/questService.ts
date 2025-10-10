@@ -37,19 +37,28 @@ export async function getQuestsForGoal(goalId: string, userId: string): Promise<
     }
 
     // Transform to Quest type
-    return goal.quests.map(apiQuest => ({
-      id: apiQuest.questId,
-      goalId: apiQuest.goalId,
-      userId: userId,
-      date: apiQuest.date,
-      time: apiQuest.time,
-      description: apiQuest.description,
-      state: apiQuest.state,
-      completedAt: apiQuest.completedAt,
-      method: apiQuest.method,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    } as any as Quest));
+    return goal.quests.map(apiQuest => {
+      // Normalize API state to Quest status
+      let status: 'pending' | 'completed' | 'failed' | 'skipped' = 'pending';
+      if (apiQuest.state === 'complete') status = 'completed';
+      else if (apiQuest.state === 'fail') status = 'failed';
+      else if (apiQuest.state === 'onTrack') status = 'pending';
+
+      return {
+        id: apiQuest.questId,
+        goalId: apiQuest.goalId,
+        userId: userId,
+        title: apiQuest.description || '',
+        description: apiQuest.description,
+        status,
+        targetDate: apiQuest.date,
+        completedAt: typeof apiQuest.completedAt === 'number' 
+          ? new Date(apiQuest.completedAt).toISOString() 
+          : apiQuest.completedAt,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as Quest;
+    });
   } catch (error) {
     console.error('[QuestService.getQuestsForGoal] Error:', error);
     return [];
@@ -59,10 +68,12 @@ export async function getQuestsForGoal(goalId: string, userId: string): Promise<
 /**
  * Adapter: Update quest status
  * Maps to PATCH /quests/{questId}
+ * 
+ * Normalizes Quest.status ('completed') to API state ('complete')
  */
 export async function updateQuestStatus(
   questId: string,
-  status: 'completed' | 'failed' | 'skipped' | 'onTrack' | 'ontrack' | 'complete' | 'fail',
+  status: 'pending' | 'completed' | 'failed' | 'skipped' | 'onTrack' | 'ontrack' | 'complete' | 'fail',
   userId: string,
   extra?: {
     completedAt?: number | string | Date;
@@ -70,11 +81,11 @@ export async function updateQuestStatus(
     description?: string;
   }
 ): Promise<void> {
-  // Normalize status
+  // Normalize Quest.status to API state
   let state: 'complete' | 'fail' | 'onTrack';
   if (status === 'completed' || status === 'complete') {
     state = 'complete';
-  } else if (status === 'ontrack' || status === 'onTrack') {
+  } else if (status === 'ontrack' || status === 'onTrack' || status === 'pending') {
     state = 'onTrack';
   } else if (status === 'failed' || status === 'fail' || status === 'skipped') {
     state = 'fail';
