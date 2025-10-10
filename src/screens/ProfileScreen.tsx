@@ -6,13 +6,14 @@ import React, { useState } from 'react';
 import {
   Alert,
   Modal,
+  SafeAreaView,
+  StatusBar,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View
 } from 'react-native';
-import { BaseScreen } from '../components';
 import { useAuth } from '../hooks/useAuth';
 
 export default function ProfileScreen() {
@@ -70,14 +71,18 @@ export default function ProfileScreen() {
   const points = 3900; // TODO: Add points to User type when backend supports it
 
   return (
-    <BaseScreen
-      title="마이페이지"
-      rightAction={{
-        icon: 'notifications-outline',
-        onPress: () => {},
-      }}
-      contentPadding={false}
-    >
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      
+      {/* Custom Header - 스크린샷과 정확히 일치 */}
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>마이페이지</Text>
+        <TouchableOpacity style={styles.notificationButton}>
+          <Ionicons name="notifications-outline" size={24} color="#1F2937" />
+          <View style={styles.notificationDot} />
+        </TouchableOpacity>
+      </View>
+
       <View style={styles.container}>
         {/* User Card - 스크린샷과 정확히 일치 */}
         <View style={styles.userCard}>
@@ -281,12 +286,45 @@ export default function ProfileScreen() {
           </View>
         </View>
       </Modal>
-    </BaseScreen>
+    </SafeAreaView>
   );
 }
 
 // 스크린샷과 정확히 일치하는 스타일
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 15,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#1F2937',
+  },
+  notificationButton: {
+    position: 'relative',
+    padding: 6,
+  },
+  notificationDot: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#3B82F6',
+  },
   container: {
     flex: 1,
     backgroundColor: '#F8FAFC',
