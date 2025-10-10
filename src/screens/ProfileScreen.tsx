@@ -147,7 +147,7 @@ export default function ProfileScreen() {
             style={styles.menuItem}
             onPress={() => Alert.alert('준비중', '공지사항은 곧 추가됩니다!')}
           >
-            <Ionicons name="document-text-outline" size={20} color="#6B7280" />
+            <Ionicons name="newspaper-outline" size={20} color="#6B7280" />
             <Text style={styles.menuText}>공지사항</Text>
             <Ionicons name="chevron-forward" size={20} color="#D1D5DB" />
           </TouchableOpacity>
@@ -190,7 +190,7 @@ export default function ProfileScreen() {
             style={[styles.menuItem, styles.lastMenuItem]}
             onPress={() => Alert.alert('준비중', '고객센터는 곧 추가됩니다!')}
           >
-            <Ionicons name="checkmark-circle-outline" size={20} color="#6B7280" />
+            <Ionicons name="help-circle-outline" size={20} color="#6B7280" />
             <Text style={styles.menuText}>고객센터</Text>
             <Ionicons name="chevron-forward" size={20} color="#D1D5DB" />
           </TouchableOpacity>
@@ -293,15 +293,15 @@ const styles = StyleSheet.create({
   },
   userCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 20,
+    borderRadius: 20,
+    padding: 24,
     marginHorizontal: 16,
     marginBottom: 24,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
   },
   topSection: {
     flexDirection: 'row',
@@ -339,7 +339,7 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   streakBadge: {
-    backgroundColor: '#D1FAE5', // 연한 녹색
+    backgroundColor: '#ECFDF5', // 더 밝은 연한 녹색
     borderRadius: 16,
     paddingHorizontal: 12,
     paddingVertical: 4,
@@ -347,7 +347,7 @@ const styles = StyleSheet.create({
   streakText: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#059669', // 녹색 텍스트
+    color: '#10B981', // 더 밝은 녹색 텍스트
   },
   divider: {
     height: 1,
