@@ -544,27 +544,39 @@ export default function GoalDetailScreenV2({ route, navigation, onClose }: GoalD
 
   // PanResponder for swipe down to dismiss
   const panResponder = useMemo(() => PanResponder.create({
-    onMoveShouldSetPanResponder: (_, gestureState) => {
-      // Only respond to vertical swipes
-      return Math.abs(gestureState.dy) > Math.abs(gestureState.dx) && Math.abs(gestureState.dy) > 10;
+    onStartShouldSetPanResponder: (evt, gestureState) => {
+      // Always capture touches that start at the top of the screen
+      return evt.nativeEvent.pageY < 100;
     },
-    onPanResponderGrant: () => {
+    onMoveShouldSetPanResponder: (evt, gestureState) => {
+      // Respond to vertical swipes, especially downward
+      const isVerticalSwipe = Math.abs(gestureState.dy) > Math.abs(gestureState.dx);
+      const isSignificantMovement = Math.abs(gestureState.dy) > 5;
+      const isDownwardSwipe = gestureState.dy > 0;
+      
+      return isVerticalSwipe && isSignificantMovement && isDownwardSwipe;
+    },
+    onPanResponderGrant: (evt, gestureState) => {
       pan.setOffset((pan as any)._value);
+      pan.setValue(0);
     },
-    onPanResponderMove: (_, gestureState) => {
+    onPanResponderMove: (evt, gestureState) => {
       // Only allow downward movement
       if (gestureState.dy > 0) {
         pan.setValue(gestureState.dy);
       }
     },
-    onPanResponderRelease: (_, gestureState) => {
+    onPanResponderRelease: (evt, gestureState) => {
       pan.flattenOffset();
       
+      console.log('Gesture release:', { dy: gestureState.dy, vy: gestureState.vy });
+      
       // If swipe down is significant, dismiss the screen
-      if (gestureState.dy > 100 || gestureState.vy > 0.5) {
+      if (gestureState.dy > 80 || gestureState.vy > 0.3) {
+        console.log('Dismissing modal...');
         Animated.timing(pan, {
           toValue: screenHeight,
-          duration: 300,
+          duration: 250,
           useNativeDriver: true,
         }).start(() => {
           if (onClose) {
@@ -577,11 +589,23 @@ export default function GoalDetailScreenV2({ route, navigation, onClose }: GoalD
         // Snap back to original position
         Animated.spring(pan, {
           toValue: 0,
+          tension: 100,
+          friction: 8,
           useNativeDriver: true,
         }).start();
       }
     },
-  }), [pan, screenHeight, navigation]);
+    onPanResponderTerminate: () => {
+      // Handle interruption
+      pan.flattenOffset();
+      Animated.spring(pan, {
+        toValue: 0,
+        tension: 100,
+        friction: 8,
+        useNativeDriver: true,
+      }).start();
+    },
+  }), [pan, screenHeight, navigation, onClose]);
 
   // Extract primitives to prevent infinite loop
   const userId = user?.id;
@@ -818,6 +842,9 @@ export default function GoalDetailScreenV2({ route, navigation, onClose }: GoalD
       {...panResponder.panHandlers}
     >
       <ScreenContainer backgroundColor="white">
+        {/* Drag indicator */}
+        <View style={styles.dragIndicator} />
+        
         <ScreenHeader
           title="퀘스트"
           showBackButton
@@ -929,5 +956,14 @@ export default function GoalDetailScreenV2({ route, navigation, onClose }: GoalD
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  dragIndicator: {
+    width: 36,
+    height: 5,
+    backgroundColor: '#D1D5DB',
+    borderRadius: 3,
+    alignSelf: 'center',
+    marginTop: 8,
+    marginBottom: 8,
   },
 });

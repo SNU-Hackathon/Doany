@@ -346,7 +346,11 @@ export default function GoalsScreen() {
       <Modal
         visible={showGoalDetail}
         animationType="slide"
-        presentationStyle="pageSheet"
+        presentationStyle="fullScreen"
+        onRequestClose={() => {
+          setShowGoalDetail(false);
+          setSelectedGoal(null);
+        }}
       >
         {selectedGoal && (
           <GoalDetailScreenV2
