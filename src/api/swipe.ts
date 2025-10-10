@@ -4,14 +4,12 @@
  * Swipe voting and proof verification endpoints
  */
 
-import { apiConfig } from '../config/api';
 import { httpClient } from '../lib/http';
 import {
-    Paged,
-    SwipeProofItem,
-    SwipeProofsResponse,
-    VoteRequest,
-    VoteResponse,
+  Paged,
+  SwipeProofItem,
+  SwipeProofsResponse,
+  VoteResponse
 } from './types';
 
 /**
@@ -39,97 +37,57 @@ export async function getSwipeProofs(query?: {
 }
 
 /**
- * Vote on a proof
+ * Vote on a proof (per API v1.3 spec)
  * 
- * @endpoint POST /swipe/proofs/{goalId}/votes (new, preferred)
- * @endpoint POST /swipe/proofs/{proofId}/votes (old, fallback)
+ * @endpoint PATCH /swipe/proofs/{proofId}
+ * Updates voteCount (+1 for yes, -1 for no) and increments voteAttempt
  * 
- * @param opts Voting options
- * @param opts.goalId Goal ID (for new path)
- * @param opts.proofId Proof ID (for old path)
- * @param opts.body Vote data (vote: yes/no, serveId)
- * @returns Vote result with updated stats
- * 
- * Behavior based on VOTE_PATH_MODE:
- * - 'goal': Use /swipe/proofs/{goalId}/votes
- * - 'proof': Use /swipe/proofs/{proofId}/votes
- * - 'auto': Try goal-path first, fallback to proof-path on 404
+ * @param proofId Proof ID
+ * @param vote 'yes' or 'no'
+ * @param serveId Session identifier
+ * @returns Updated proof with vote stats
  * 
  * @example
  * ```typescript
- * const result = await voteOnProof({
- *   goalId: 'goal-123',
- *   proofId: 'proof-456',
- *   body: {
- *     vote: 'yes',
- *     serveId: 'serve-session-789'
- *   }
- * });
+ * const result = await voteOnProof('proof-456', 'yes', 'serve-session-789');
  * ```
  */
-export async function voteOnProof(opts: {
-  goalId?: string;
-  proofId?: string;
-  body: VoteRequest;
-}): Promise<VoteResponse> {
-  const { goalId, proofId, body } = opts;
-  const mode = apiConfig.votePathMode;
-
+export async function voteOnProof(
+  proofId: string,
+  vote: VoteValue,
+  serveId: string
+): Promise<VoteResponse> {
   if (__DEV__) {
-    console.log(`[voteOnProof] mode=${mode}, goalId=${goalId}, proofId=${proofId}`);
+    console.log(`[voteOnProof] proofId=${proofId}, vote=${vote}`);
   }
 
-  // Mode: goal - always use goal path
-  if (mode === 'goal') {
-    if (!goalId) {
-      throw new Error('goalId is required for vote path mode "goal"');
-    }
-    return httpClient.post<VoteResponse>(`/swipe/proofs/${goalId}/votes`, body);
+  return httpClient.patch<VoteResponse>(`/swipe/proofs/${proofId}`, {
+    vote,
+    serveId,
+  });
+}
+
+/**
+ * Complete proof voting (finalize state)
+ * 
+ * @endpoint PATCH /swipe-complete/proofs/{proofId}
+ * Sets state to 'complete' or 'fail' based on quorum
+ * 
+ * @param proofId Proof ID
+ * @returns Final proof state
+ * 
+ * @example
+ * ```typescript
+ * // Call when voteAttempt reaches quorum
+ * const result = await completeProofVoting('proof-456');
+ * ```
+ */
+export async function completeProofVoting(proofId: string): Promise<VoteResponse> {
+  if (__DEV__) {
+    console.log(`[completeProofVoting] proofId=${proofId}`);
   }
 
-  // Mode: proof - always use proof path
-  if (mode === 'proof') {
-    if (!proofId) {
-      throw new Error('proofId is required for vote path mode "proof"');
-    }
-    return httpClient.post<VoteResponse>(`/swipe/proofs/${proofId}/votes`, body);
-  }
-
-  // Mode: auto - try goal path first, fallback to proof path on 404
-  if (mode === 'auto') {
-    // Try goal path first if goalId is available
-    if (goalId) {
-      try {
-        return await httpClient.post<VoteResponse>(
-          `/swipe/proofs/${goalId}/votes`,
-          body
-        );
-      } catch (error: any) {
-        // On 404, try proof path if proofId is available
-        if (error?.response?.status === 404 && proofId) {
-          if (__DEV__) {
-            console.log(
-              '[voteOnProof] Goal path returned 404, trying proof path...'
-            );
-          }
-          return httpClient.post<VoteResponse>(
-            `/swipe/proofs/${proofId}/votes`,
-            body
-          );
-        }
-        throw error;
-      }
-    }
-
-    // If no goalId, try proof path
-    if (proofId) {
-      return httpClient.post<VoteResponse>(`/swipe/proofs/${proofId}/votes`, body);
-    }
-
-    throw new Error('Either goalId or proofId must be provided for voting');
-  }
-
-  throw new Error(`Unknown vote path mode: ${mode}`);
+  return httpClient.patch<VoteResponse>(`/swipe-complete/proofs/${proofId}`, {});
 }
 
 /**

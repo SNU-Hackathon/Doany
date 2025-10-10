@@ -4,6 +4,8 @@
     "yes": 9,
     "no": 1
   },
+  "voteAttempt": 10,
+  "state": "onTrack",
   "didCountTowardQuorum": true
 }
 

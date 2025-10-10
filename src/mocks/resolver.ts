@@ -40,7 +40,19 @@ export async function resolveMock<T = any>(
       return require('./goals.list.json') as T;
     }
     if (path.match(/^\/me\/goals\/[\w-]+$/) && method === 'GET') {
-      return require('./goals.detail.json') as T;
+      // Return detail for any goalId (always return the same mock for now)
+      // TODO: Support multiple goal details
+      const detail = require('./goals.detail.json');
+      
+      // Extract goalId from path
+      const match = path.match(/\/me\/goals\/([\w-]+)/);
+      const requestedGoalId = match ? match[1] : 'goal-123';
+      
+      // Return detail with correct goalId
+      return {
+        ...detail,
+        goalId: requestedGoalId,
+      } as T;
     }
     if (path === '/goals' && method === 'POST') {
       return require('./goals.create.json') as T;
@@ -94,6 +106,26 @@ export async function resolveMock<T = any>(
       }
       return mockData as T;
     }
+    
+    // PATCH /swipe/proofs/{proofId} - Vote on proof
+    if (path.match(/^\/swipe\/proofs\/[\w-]+$/) && method === 'PATCH') {
+      const voteResult = require('./swipe.vote.json');
+      return {
+        ...voteResult,
+        voteAttempt: (voteResult.voteAttempt || 0) + 1,
+      } as T;
+    }
+    
+    // PATCH /swipe-complete/proofs/{proofId} - Complete voting
+    if (path.match(/^\/swipe-complete\/proofs\/[\w-]+$/) && method === 'PATCH') {
+      const voteResult = require('./swipe.vote.json');
+      return {
+        ...voteResult,
+        state: voteResult.stats.yes > voteResult.stats.no ? 'complete' : 'fail',
+      } as T;
+    }
+    
+    // Legacy POST endpoint (backwards compatibility)
     if (path.match(/^\/swipe\/proofs\/[\w-]+\/votes$/) && method === 'POST') {
       return require('./swipe.vote.json') as T;
     }
