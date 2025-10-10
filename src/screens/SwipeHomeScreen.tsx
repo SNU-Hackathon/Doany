@@ -44,7 +44,7 @@ const SwipeCard = React.memo(({ item, onVote, onSkip, isLastAttempt }: SwipeCard
           <View style={styles.avatar}>
             <Ionicons name="person" size={20} color="#9CA3AF" />
           </View>
-          <Text style={styles.userName}>User ID</Text>
+          <Text style={styles.userName}>{item.userName || '익명 사용자'}</Text>
         </View>
         <View style={styles.levelBadge}>
           <Text style={styles.levelText}>Lv.6</Text>
@@ -286,12 +286,12 @@ export default function SwipeHomeScreen() {
           pagingEnabled
           horizontal={false}
           showsVerticalScrollIndicator={false}
-          snapToInterval={SCREEN_HEIGHT * 0.8}
+          snapToInterval={SCREEN_HEIGHT * 0.75}
           snapToAlignment="center"
           decelerationRate="fast"
           getItemLayout={(data, index) => ({
-            length: SCREEN_HEIGHT * 0.8,
-            offset: SCREEN_HEIGHT * 0.8 * index,
+            length: SCREEN_HEIGHT * 0.75,
+            offset: SCREEN_HEIGHT * 0.75 * index,
             index,
           })}
           ListEmptyComponent={renderEmptyState}
@@ -299,7 +299,7 @@ export default function SwipeHomeScreen() {
             <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
           }
           onMomentumScrollEnd={(event) => {
-            const index = Math.round(event.nativeEvent.contentOffset.y / (SCREEN_HEIGHT * 0.8));
+            const index = Math.round(event.nativeEvent.contentOffset.y / (SCREEN_HEIGHT * 0.75));
             setCurrentIndex(index);
           }}
         />
@@ -383,7 +383,7 @@ const styles = StyleSheet.create({
   },
   cardContainer: {
     width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT * 0.8,
+    height: SCREEN_HEIGHT * 0.75,
     backgroundColor: '#FFFFFF',
     marginHorizontal: 16,
     borderRadius: 20,
