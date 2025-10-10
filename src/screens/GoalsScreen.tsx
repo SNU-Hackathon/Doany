@@ -6,7 +6,6 @@ import {
   Dimensions,
   FlatList,
   Modal,
-  Platform,
   RefreshControl,
   StatusBar,
   StyleSheet,
@@ -259,7 +258,7 @@ export default function GoalsScreen() {
         <View style={styles.headerTop}>
           <Text style={styles.headerTitle}>나의 목표</Text>
           <TouchableOpacity style={styles.notificationButton}>
-            <Ionicons name="notifications-outline" size={24} color="#1F2937" />
+            <Ionicons name="notifications-outline" size={22} color="#1F2937" />
             <View style={styles.notificationDot} />
           </TouchableOpacity>
         </View>
@@ -267,7 +266,7 @@ export default function GoalsScreen() {
         {/* Search Bar */}
         <View style={styles.searchContainer}>
           <View style={styles.searchBar}>
-            <Ionicons name="search" size={20} color="#9CA3AF" style={styles.searchIcon} />
+            <Ionicons name="search" size={18} color="#9CA3AF" style={styles.searchIcon} />
             <TextInput
               style={styles.searchInput}
               placeholder="search your goal !"
@@ -276,11 +275,11 @@ export default function GoalsScreen() {
               onChangeText={setSearchQuery}
             />
             <TouchableOpacity style={styles.filterButton}>
-              <Ionicons name="options-outline" size={20} color="#9CA3AF" />
+              <Ionicons name="options-outline" size={18} color="#9CA3AF" />
             </TouchableOpacity>
           </View>
           <TouchableOpacity style={styles.addButton} onPress={handleCreateGoal}>
-            <Ionicons name="add" size={24} color="#FFFFFF" />
+            <Ionicons name="add" size={20} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
 
@@ -380,8 +379,8 @@ const styles = StyleSheet.create({
   },
   header: {
     backgroundColor: '#FFFFFF',
-    paddingTop: Platform.OS === 'ios' ? 50 : 30,
-    paddingBottom: 20,
+    paddingTop: 5,
+    paddingBottom: 12,
     paddingHorizontal: 20,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
@@ -390,10 +389,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 12,
   },
   headerTitle: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: 'bold',
     color: '#1F2937',
   },
@@ -413,57 +412,57 @@ const styles = StyleSheet.create({
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 10,
   },
   searchBar: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#F3F4F6',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    marginRight: 12,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginRight: 10,
   },
   searchIcon: {
-    marginRight: 12,
+    marginRight: 8,
   },
   searchInput: {
     flex: 1,
-    fontSize: 16,
+    fontSize: 14,
     color: '#1F2937',
   },
   filterButton: {
     padding: 4,
   },
   addButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: '#3B82F6',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#3B82F6',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 6,
   },
   tabsContainer: {
     flexDirection: 'row',
-    marginBottom: 16,
+    marginBottom: 10,
   },
   tab: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    marginRight: 24,
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    marginRight: 20,
   },
   activeTab: {
     borderBottomWidth: 2,
     borderBottomColor: '#3B82F6',
   },
   tabText: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#6B7280',
     fontWeight: '500',
   },
@@ -472,23 +471,23 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   categoriesContainer: {
-    marginBottom: 8,
+    marginBottom: 4,
   },
   categoriesList: {
     paddingRight: 20,
   },
   categoryChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
     backgroundColor: '#F3F4F6',
-    marginRight: 8,
+    marginRight: 6,
   },
   selectedCategoryChip: {
     backgroundColor: '#E5E7EB',
   },
   categoryChipText: {
-    fontSize: 14,
+    fontSize: 12,
     color: '#9CA3AF',
     fontWeight: '500',
   },
@@ -501,9 +500,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   resultsText: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#9CA3AF',
-    marginVertical: 16,
+    marginVertical: 12,
   },
   goalsList: {
     paddingBottom: 20,
