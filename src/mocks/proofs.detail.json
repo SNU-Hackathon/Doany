@@ -1,16 +1,62 @@
 {
-  "proofId": "proof-789",
-  "questId": "quest-456",
-  "goalId": "goal-123",
-  "userId": "user-123",
-  "url": "https://cdn.example.com/proof-789.jpg",
-  "description": "Completed task with evidence",
-  "type": "photo",
-  "votes": {
-    "yes": 18,
-    "no": 2
+  "proof-123-001": {
+    "proofId": "proof-123-001",
+    "questId": "quest-123-001",
+    "goalId": "goal-123",
+    "userId": "user-123",
+    "url": "https://cdn.example.com/proof-123-001.jpg",
+    "description": "Completed chapter 1",
+    "type": "photo",
+    "votes": {
+      "yes": 12,
+      "no": 1
+    },
+    "createdAt": 1609840800000,
+    "updatedAt": 1609840800000
   },
-  "createdAt": 1609840800000,
-  "updatedAt": 1609840800000
+  "proof-456-001": {
+    "proofId": "proof-456-001",
+    "questId": "quest-456-001",
+    "goalId": "goal-456",
+    "userId": "user-123",
+    "url": "https://cdn.example.com/proof-456-001.jpg",
+    "description": "Sweaty selfie after session",
+    "type": "photo",
+    "votes": {
+      "yes": 6,
+      "no": 0
+    },
+    "createdAt": 1609561200000,
+    "updatedAt": 1609561200000
+  },
+  "proof-789-011": {
+    "proofId": "proof-789-011",
+    "questId": "quest-789-011",
+    "goalId": "goal-789",
+    "userId": "user-123",
+    "url": "https://cdn.example.com/proof-789-011.jpg",
+    "description": "Notes & highlights",
+    "type": "photo",
+    "votes": {
+      "yes": 18,
+      "no": 2
+    },
+    "createdAt": 1608498000000,
+    "updatedAt": 1608498000000
+  },
+  "proof-789-012": {
+    "proofId": "proof-789-012",
+    "questId": "quest-789-012",
+    "goalId": "goal-789",
+    "userId": "user-123",
+    "url": "https://cdn.example.com/proof-789-012.jpg",
+    "description": "Final completion photo",
+    "type": "photo",
+    "votes": {
+      "yes": 24,
+      "no": 1
+    },
+    "createdAt": 1609458000000,
+    "updatedAt": 1609458000000
+  }
 }
-

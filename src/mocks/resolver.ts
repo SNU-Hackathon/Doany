@@ -40,19 +40,22 @@ export async function resolveMock<T = any>(
       return require('./goals.list.json') as T;
     }
     if (path.match(/^\/me\/goals\/[\w-]+$/) && method === 'GET') {
-      // Return detail for any goalId (always return the same mock for now)
-      // TODO: Support multiple goal details
-      const detail = require('./goals.detail.json');
-      
       // Extract goalId from path
       const match = path.match(/\/me\/goals\/([\w-]+)/);
       const requestedGoalId = match ? match[1] : 'goal-123';
       
-      // Return detail with correct goalId
-      return {
-        ...detail,
-        goalId: requestedGoalId,
-      } as T;
+      // Load all goal details
+      const allDetails = require('./goals.detail.json');
+      
+      // Find specific goal by goalId
+      const goalDetail = allDetails.find((g: any) => g.goalId === requestedGoalId);
+      
+      if (!goalDetail) {
+        console.warn(`[MOCK] Goal not found: ${requestedGoalId}, returning first goal`);
+        return allDetails[0] as T;
+      }
+      
+      return goalDetail as T;
     }
     if (path === '/goals' && method === 'POST') {
       return require('./goals.create.json') as T;
@@ -74,7 +77,31 @@ export async function resolveMock<T = any>(
       return require('./proofs.create.json') as T;
     }
     if (path.match(/^\/me\/proofs\/[\w-]+$/) && method === 'GET') {
-      return require('./proofs.detail.json') as T;
+      // Extract proofId from path
+      const match = path.match(/\/me\/proofs\/([\w-]+)/);
+      const requestedProofId = match ? match[1] : 'proof-123-001';
+      
+      // Load proof map
+      const proofsMap = require('./proofs.detail.json');
+      
+      // Find specific proof by proofId
+      const proof = proofsMap[requestedProofId];
+      
+      if (!proof) {
+        console.warn(`[MOCK] Proof not found: ${requestedProofId}, returning fallback`);
+        return {
+          proofId: requestedProofId,
+          userId: 'user-123',
+          url: 'https://cdn.example.com/fallback.jpg',
+          description: 'Fallback proof',
+          type: 'photo',
+          votes: { yes: 0, no: 0 },
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        } as T;
+      }
+      
+      return proof as T;
     }
     if (path.match(/^\/proofs\/[\w-]+$/) && method === 'DELETE') {
       return { success: true } as T;

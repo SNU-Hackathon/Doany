@@ -1,50 +1,150 @@
-{
-  "goalId": "goal-123",
-  "userId": "user-123",
-  "title": "Learn TypeScript",
-  "description": "Master TypeScript in 30 days",
-  "tags": ["learning", "programming"],
-  "method": "schedule",
-  "visibility": "public",
-  "state": "onTrack",
-  "likes": 15,
-  "didILike": false,
-  "startAt": 1609459200000,
-  "endAt": 1612051200000,
-  "createdAt": 1609459200000,
-  "updatedAt": 1609545600000,
-  "quests": [
-    {
-      "questId": "quest-001",
-      "goalId": "goal-123",
-      "date": "2021-01-05",
-      "time": "09:00",
-      "description": "Study TypeScript basics",
-      "state": "complete",
-      "completedAt": 1609840800000,
-      "method": "camera",
-      "proof": {
-        "proofId": "proof-001",
-        "url": "https://cdn.example.com/proof-001.jpg",
-        "description": "Completed chapter 1",
-        "type": "photo",
-        "votes": {
-          "yes": 12,
-          "no": 1
-        },
-        "createdAt": 1609840800000,
-        "updatedAt": 1609840800000
+[
+  {
+    "goalId": "goal-123",
+    "userId": "user-123",
+    "title": "Learn TypeScript",
+    "description": "Master TypeScript in 30 days",
+    "tags": ["learning", "programming"],
+    "method": "schedule",
+    "visibility": "public",
+    "state": "onTrack",
+    "likes": 15,
+    "didILike": false,
+    "startAt": 1609459200000,
+    "endAt": 1612051200000,
+    "createdAt": 1609459200000,
+    "updatedAt": 1609545600000,
+    "quests": [
+      {
+        "questId": "quest-123-001",
+        "goalId": "goal-123",
+        "date": "2021-01-05",
+        "time": "09:00",
+        "description": "Study TypeScript basics",
+        "state": "complete",
+        "completedAt": 1609840800000,
+        "method": "camera",
+        "proof": {
+          "proofId": "proof-123-001",
+          "url": "https://cdn.example.com/proof-123-001.jpg",
+          "description": "Completed chapter 1",
+          "type": "photo",
+          "votes": { "yes": 12, "no": 1 },
+          "createdAt": 1609840800000,
+          "updatedAt": 1609840800000
+        }
+      },
+      {
+        "questId": "quest-123-002",
+        "goalId": "goal-123",
+        "date": "2021-01-06",
+        "time": "09:00",
+        "description": "Practice TypeScript exercises",
+        "state": "onTrack",
+        "method": "camera"
       }
-    },
-    {
-      "questId": "quest-002",
-      "goalId": "goal-123",
-      "date": "2021-01-06",
-      "time": "09:00",
-      "description": "Practice TypeScript exercises",
-      "state": "onTrack",
-      "method": "camera"
-    }
-  ]
-}
-
+    ]
+  },
+  {
+    "goalId": "goal-456",
+    "userId": "user-123",
+    "title": "Morning Workout",
+    "description": "Exercise every morning for 21 days",
+    "tags": ["health", "fitness"],
+    "method": "frequency",
+    "visibility": "friends",
+    "state": "onTrack",
+    "likes": 8,
+    "didILike": false,
+    "startAt": 1609459200000,
+    "endAt": 1611273600000,
+    "createdAt": 1609459200000,
+    "updatedAt": 1609459200000,
+    "quests": [
+      {
+        "questId": "quest-456-001",
+        "goalId": "goal-456",
+        "date": "2021-01-02",
+        "time": "07:00",
+        "description": "Morning workout - Day 1",
+        "state": "complete",
+        "completedAt": 1609561200000,
+        "method": "camera",
+        "proof": {
+          "proofId": "proof-456-001",
+          "url": "https://cdn.example.com/proof-456-001.jpg",
+          "description": "Sweaty selfie after session",
+          "type": "photo",
+          "votes": { "yes": 6, "no": 0 },
+          "createdAt": 1609561200000,
+          "updatedAt": 1609561200000
+        }
+      },
+      {
+        "questId": "quest-456-002",
+        "goalId": "goal-456",
+        "date": "2021-01-03",
+        "time": "07:00",
+        "description": "Morning workout - Day 2",
+        "state": "onTrack",
+        "method": "camera"
+      }
+    ]
+  },
+  {
+    "goalId": "goal-789",
+    "userId": "user-123",
+    "title": "Read 12 Books",
+    "description": "Read one book per month",
+    "tags": ["reading", "self-improvement"],
+    "method": "schedule",
+    "visibility": "public",
+    "state": "complete",
+    "likes": 42,
+    "didILike": false,
+    "startAt": 1577836800000,
+    "endAt": 1609459200000,
+    "createdAt": 1577836800000,
+    "updatedAt": 1609459200000,
+    "quests": [
+      {
+        "questId": "quest-789-011",
+        "goalId": "goal-789",
+        "date": "2020-12-20",
+        "time": "21:00",
+        "description": "Finish book 11",
+        "state": "complete",
+        "completedAt": 1608498000000,
+        "method": "camera",
+        "proof": {
+          "proofId": "proof-789-011",
+          "url": "https://cdn.example.com/proof-789-011.jpg",
+          "description": "Notes & highlights",
+          "type": "photo",
+          "votes": { "yes": 18, "no": 2 },
+          "createdAt": 1608498000000,
+          "updatedAt": 1608498000000
+        }
+      },
+      {
+        "questId": "quest-789-012",
+        "goalId": "goal-789",
+        "date": "2020-12-31",
+        "time": "21:00",
+        "description": "Finish book 12",
+        "state": "complete",
+        "completedAt": 1609458000000,
+        "method": "camera",
+        "proof": {
+          "proofId": "proof-789-012",
+          "url": "https://cdn.example.com/proof-789-012.jpg",
+          "description": "Final completion photo",
+          "type": "photo",
+          "votes": { "yes": 24, "no": 1 },
+          "createdAt": 1609458000000,
+          "updatedAt": 1609458000000
+        }
+      }
+    ]
+  }
+]

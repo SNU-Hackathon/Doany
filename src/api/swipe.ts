@@ -9,7 +9,8 @@ import {
   Paged,
   SwipeProofItem,
   SwipeProofsResponse,
-  VoteResponse
+  VoteResponse,
+  VoteValue
 } from './types';
 
 /**
