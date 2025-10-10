@@ -7,12 +7,12 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import * as ImagePicker from 'expo-image-picker';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-    Alert,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View
+  Alert,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../hooks/useAuth';
@@ -38,14 +38,17 @@ export default function QuestDetailScreen({ route, navigation }: QuestDetailScre
   const [error, setError] = useState<string | null>(null);
   const [verifying, setVerifying] = useState(false);
 
+  // Extract primitive to prevent infinite loop
+  const userId = user?.id;
+
   const loadQuest = useCallback(async () => {
-    if (!questId || !user) return;
+    if (!questId || !userId) return;
     
     try {
       setError(null);
       setLoading(true);
       
-      const questData = await QuestService.getQuestById(questId, user.id);
+      const questData = await QuestService.getQuestById(questId, userId);
       
       if (!questData) {
         setError('퀀스트를 찾을 수 없습니다');
@@ -60,14 +63,14 @@ export default function QuestDetailScreen({ route, navigation }: QuestDetailScre
     } finally {
       setLoading(false);
     }
-  }, [questId, user]);
+  }, [questId, userId]); // Use primitive userId
 
   useEffect(() => {
     loadQuest();
   }, [loadQuest]);
 
   const handlePhotoVerification = useCallback(async () => {
-    if (!user || !quest) return;
+    if (!userId || !quest) return;
     
     try {
       setVerifying(true);
@@ -90,7 +93,7 @@ export default function QuestDetailScreen({ route, navigation }: QuestDetailScre
       if (!result.canceled && result.assets[0]) {
         // TODO: Implement photo verification logic
         // For now, just mark as completed
-        await QuestService.updateQuestStatus(questId, 'completed', user.id, {
+        await QuestService.updateQuestStatus(questId, 'completed', userId, {
           completedAt: new Date().toISOString(),
           note: '사진으로 인증 완료'
         });
@@ -123,7 +126,7 @@ export default function QuestDetailScreen({ route, navigation }: QuestDetailScre
           {
             text: '완료',
             onPress: async () => {
-              await QuestService.updateQuestStatus(questId, 'completed', user.id, {
+              await QuestService.updateQuestStatus(questId, 'completed', userId, {
                 completedAt: new Date().toISOString(),
                 note: '수동 인증 완료'
               });
