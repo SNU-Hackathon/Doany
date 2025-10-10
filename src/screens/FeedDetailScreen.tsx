@@ -107,7 +107,7 @@ export default function FeedDetailScreen({ postId, onBack }: FeedDetailScreenPro
 
   if (loading) {
     return (
-      <BaseScreen title="게시물" onBack={onBack}>
+      <BaseScreen title="게시물" onBackPress={onBack}>
         <LoadingState />
       </BaseScreen>
     );
@@ -115,17 +115,17 @@ export default function FeedDetailScreen({ postId, onBack }: FeedDetailScreenPro
 
   if (error || !post) {
     return (
-      <BaseScreen title="게시물" onBack={onBack}>
+      <BaseScreen title="게시물" onBackPress={onBack}>
         <ErrorState
           message={error || '게시물을 찾을 수 없습니다.'}
-          onRetry={loadPost}
+          onAction={loadPost}
         />
       </BaseScreen>
     );
   }
 
   return (
-    <BaseScreen title="게시물" onBack={onBack} contentPadding={false}>
+    <BaseScreen title="게시물" onBackPress={onBack} contentPadding={false}>
       <ScrollView
         className="flex-1"
         refreshControl={
@@ -136,10 +136,7 @@ export default function FeedDetailScreen({ postId, onBack }: FeedDetailScreenPro
         <View className="px-4 py-4">
           <FeedCard 
             post={post} 
-            onLike={handleLike}
-            onComment={() => {
-              // Focus comment input
-            }}
+            onReactionChange={handleLike}
           />
         </View>
 

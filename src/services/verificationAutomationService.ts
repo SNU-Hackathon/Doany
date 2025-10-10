@@ -6,7 +6,6 @@ import { VERIFICATION_DEFAULTS } from '../config/verification';
 import { Goal, Location as LocationType, VerificationStatus } from '../types';
 import { LocationService } from './locationService';
 import { parsePickerExif, validateFreshness, validateGeofence, validateTimeWindow } from './photo/ExifValidator';
-import { VerificationService, verifyLocation, verifyPhoto } from './verificationService';
 
 export class VerificationAutomationService {
   private static activeTracking: Map<string, any> = new Map();
@@ -146,13 +145,13 @@ export class VerificationAutomationService {
       const status: VerificationStatus = success ? 'success' : 'fail';
       const currentLocation = await LocationService.getCurrentLocation();
       
-      await VerificationService.createVerification(
-        goal.id,
-        goal.userId,
-        status,
-        currentLocation || undefined,
-        screenshot
-      );
+      await VerificationService.createVerification({
+        goalId: goal.id,
+        questId: 'auto-quest', // TODO: Get actual quest ID
+        url: screenshot || 'auto',
+        description: status,
+        type: 'photo',
+      });
 
       Alert.alert(
         success ? 'Success Recorded!' : 'Attempt Recorded',

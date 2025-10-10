@@ -129,6 +129,9 @@ export const VerificationService = {
   getVerifications: async () => [],
   updateVerification: async () => {},
   deleteVerification: GoalsAPI.deleteProof,
+  processQueuedVerification: async () => {
+    console.warn('[VerificationService.processQueuedVerification] Not implemented');
+  },
 };
 
 // Default export

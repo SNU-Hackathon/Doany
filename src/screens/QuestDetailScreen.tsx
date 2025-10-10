@@ -45,7 +45,7 @@ export default function QuestDetailScreen({ route, navigation }: QuestDetailScre
       setError(null);
       setLoading(true);
       
-      const questData = await QuestService.getQuestById(questId, user.uid);
+      const questData = await QuestService.getQuestById(questId, user.id);
       
       if (!questData) {
         setError('퀀스트를 찾을 수 없습니다');
@@ -90,9 +90,9 @@ export default function QuestDetailScreen({ route, navigation }: QuestDetailScre
       if (!result.canceled && result.assets[0]) {
         // TODO: Implement photo verification logic
         // For now, just mark as completed
-        await QuestService.updateQuestStatus(questId, 'completed', user.uid, {
+        await QuestService.updateQuestStatus(questId, 'completed', user.id, {
           completedAt: new Date().toISOString(),
-          notes: '사진으로 인증 완료'
+          note: '사진으로 인증 완료'
         });
         
         toast.success('퀀스트가 완료되었습니다!');
@@ -123,9 +123,9 @@ export default function QuestDetailScreen({ route, navigation }: QuestDetailScre
           {
             text: '완료',
             onPress: async () => {
-              await QuestService.updateQuestStatus(questId, 'completed', user.uid, {
+              await QuestService.updateQuestStatus(questId, 'completed', user.id, {
                 completedAt: new Date().toISOString(),
-                notes: '수동 인증 완료'
+                note: '수동 인증 완료'
               });
               
               toast.success('퀀스트가 완료되었습니다!');
@@ -151,9 +151,9 @@ export default function QuestDetailScreen({ route, navigation }: QuestDetailScre
       
       // TODO: Implement location verification logic
       // For now, just mark as completed
-      await QuestService.updateQuestStatus(questId, 'completed', user.uid, {
+      await QuestService.updateQuestStatus(questId, 'completed', user.id, {
         completedAt: new Date().toISOString(),
-        notes: '위치 인증 완료'
+        note: '위치 인증 완료'
       });
       
       toast.success('퀀스트가 완료되었습니다!');

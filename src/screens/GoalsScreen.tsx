@@ -300,8 +300,8 @@ const GoalsScreen = () => {
           onRequestClose={handleGoalDetailClose}
         >
           <GoalDetailScreenV2
-            goalId={selectedGoal.id}
-            onClose={handleGoalDetailClose}
+            route={{ params: { goalId: selectedGoal.id }, key: 'goal-detail', name: 'GoalDetail' } as any}
+            navigation={navigation as any}
           />
         </Modal>
       )}
@@ -310,6 +310,10 @@ const GoalsScreen = () => {
       <CreateGoalModal
         visible={showCreateModal}
         onClose={handleCreateGoalClose}
+        onGoalCreated={() => {
+          refetch();
+          setShowCreateModal(false);
+        }}
       />
     </BaseScreen>
   );

@@ -66,7 +66,7 @@ export default function ProfileScreen() {
   // Calculate streak days (dummy data for now)
   const streakDays = 57;
   const level = 3;
-  const points = user.points || 3900;
+  const points = 3900; // TODO: Add points to User type when backend supports it
 
   return (
     <BaseScreen
@@ -92,7 +92,7 @@ export default function ProfileScreen() {
               <Text className="text-sm text-gray-600 mb-1">안녕하세요!</Text>
               <View className="flex-row items-center">
                 <Text className="text-xl font-bold text-gray-900 mr-2">
-                  {user.displayName || 'Lee Seo June'} 님
+                  {user.name || 'Lee Seo June'} 님
                 </Text>
                 <TouchableOpacity>
                   <Ionicons name="settings-outline" size={18} color="#9CA3AF" />
