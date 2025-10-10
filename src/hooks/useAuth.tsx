@@ -14,7 +14,6 @@ import {
   getStoredToken,
   setAuth,
   setUser as setUserInStore,
-  subscribe,
   type AuthState
 } from '../state/auth.store';
 
@@ -51,18 +50,7 @@ export function useAuth(): UseAuthReturn {
   const [authState, setAuthState] = useState<AuthState>(getAuthState());
   const [isLoading, setIsLoading] = useState(true);
 
-  // Subscribe to auth state changes
-  useEffect(() => {
-    const unsubscribe = subscribe((newState) => {
-      setAuthState(newState);
-    });
-
-    return () => {
-      unsubscribe();
-    };
-  }, []);
-
-  // Restore auth on mount (only once)
+  // Restore auth on mount (only once) - NO SUBSCRIPTION
   useEffect(() => {
     let mounted = true;
 
@@ -78,14 +66,20 @@ export function useAuth(): UseAuthReturn {
             const userProfile = await getMe();
             if (mounted) {
               setUserInStore(userProfile);
+              // Manually update local state (no subscription loop)
+              setAuthState(getAuthState());
             }
           } catch (error) {
             console.error('[useAuth] Failed to fetch user profile:', error);
             // Clear invalid token
             if (mounted) {
               await clearAuth();
+              setAuthState(getAuthState());
             }
           }
+        } else if (mounted) {
+          // No token - set initial state
+          setAuthState(getAuthState());
         }
       } catch (error) {
         console.error('[useAuth] Error restoring auth:', error);
@@ -123,11 +117,10 @@ export function useAuth(): UseAuthReturn {
       
       // Fetch user profile
       const userProfile = await getMe();
-      const userWithAlias: User = {
-        ...userProfile,
-        id: userProfile.userId, // Add id alias
-      };
       setUserInStore(userProfile);
+      
+      // Manually update local state
+      setAuthState(getAuthState());
       
       if (__DEV__) {
         console.log('[useAuth.signIn] Login successful:', {
@@ -156,6 +149,7 @@ export function useAuth(): UseAuthReturn {
    */
   const signOut = useCallback(async () => {
     await apiLogout();
+    setAuthState(getAuthState()); // Update local state
     setIsLoading(false);
   }, []);
 
