@@ -6,6 +6,7 @@ import {
     Dimensions,
     FlatList,
     Image,
+    Platform,
     RefreshControl,
     SafeAreaView,
     StatusBar,
@@ -21,6 +22,16 @@ import { useAuth } from '../hooks/useAuth';
 import { useSwipeProofs, useVoteMutation } from '../hooks/useSwipe';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+// Safe wrapper for useBottomTabBarHeight
+function useSafeBottomTabBarHeight(): number {
+  try {
+    return useBottomTabBarHeight();
+  } catch (error) {
+    // Fallback to platform-specific default heights
+    return Platform.OS === 'ios' ? 83 : 56;
+  }
+}
 
 interface SwipeCardProps {
   item: SwipeProofItem;
@@ -87,7 +98,7 @@ const SwipeCard = React.memo(({ item, onVote, onSkip, isLastAttempt, cardHeight 
 
       {/* Bottom Section (스크린샷과 정확히 일치) */}
       <View style={styles.bottomSection}>
-        <Text style={styles.hashtagText}>#러닝 #달리기 #운동</Text>
+        <Text style={styles.hashtagText}>{item.description || 'No description'}</Text>
         <Text style={styles.timestamp}>{item.createdAt ? formatTimestamp(item.createdAt) : '2025-10-04 18:00'}</Text>
       </View>
 
@@ -125,7 +136,7 @@ export default function SwipeHomeScreen() {
   
   // Safe area and layout hooks
   const insets = useSafeAreaInsets();
-  const tabBarHeight = useBottomTabBarHeight();
+  const tabBarHeight = useSafeBottomTabBarHeight();
   const [groupHeaderH, setGroupHeaderH] = useState(0);
   
   // Calculate available card height dynamically
