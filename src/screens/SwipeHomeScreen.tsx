@@ -6,6 +6,8 @@ import {
     FlatList,
     Image,
     RefreshControl,
+    SafeAreaView,
+    StatusBar,
     StyleSheet,
     Text,
     TouchableOpacity,
@@ -308,6 +310,10 @@ export default function SwipeHomeScreen() {
 
 const styles = StyleSheet.create({
   safeArea: {
+    flex: 1,
+    backgroundColor: '#F8FAFC',
+  },
+  container: {
     flex: 1,
     backgroundColor: '#F8FAFC',
   },
