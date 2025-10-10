@@ -1,13 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import {
-    KeyboardAvoidingView,
-    Platform,
-    SafeAreaView,
-    ScrollView,
-    Text,
-    TouchableOpacity,
-    View,
+  KeyboardAvoidingView,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 
 interface BaseScreenProps {
@@ -40,35 +40,53 @@ export default function BaseScreen({
   headerPadding = true,
 }: BaseScreenProps) {
   const Header = () => (
-    <View className={`px-4 ${headerPadding ? 'pt-14 pb-4' : 'pt-4 pb-2'}`}>
-      <View className="flex-row items-center justify-between">
+    <View 
+      style={{
+        paddingHorizontal: 20,
+        paddingTop: headerPadding ? 10 : 4,
+        paddingBottom: headerPadding ? 15 : 8,
+        backgroundColor: '#FFFFFF',
+        borderBottomWidth: 1,
+        borderBottomColor: '#E5E7EB',
+      }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
         {/* Left side - Back button or empty space */}
-        <View className="w-8">
+        <View style={{ width: 32 }}>
           {showBackButton && (
             <TouchableOpacity
               onPress={onBackPress}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <Ionicons name="arrow-back" size={24} color="#0F172A" />
+              <Ionicons name="arrow-back" size={24} color="#1F2937" />
             </TouchableOpacity>
           )}
         </View>
 
         {/* Center - Title */}
         {title && (
-          <Text className="text-2xl font-bold text-gray-900 flex-1 text-center">
+          <Text style={{ 
+            fontSize: 24, 
+            fontWeight: 'bold', 
+            color: '#1F2937',
+            flex: 1,
+            textAlign: 'center'
+          }}>
             {title}
           </Text>
         )}
 
         {/* Right side - Action button or empty space */}
-        <View className="w-8 items-end">
+        <View style={{ width: 32, alignItems: 'flex-end' }}>
           {rightAction && (
-            <TouchableOpacity onPress={rightAction.onPress}>
+            <TouchableOpacity 
+              onPress={rightAction.onPress}
+              style={{ padding: 6, position: 'relative' }}
+            >
               <Ionicons
                 name={rightAction.icon as any}
-                size={28}
-                color={rightAction.color || '#3B82F6'}
+                size={24}
+                color={rightAction.color || '#1F2937'}
               />
             </TouchableOpacity>
           )}

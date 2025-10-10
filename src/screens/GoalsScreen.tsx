@@ -390,8 +390,8 @@ const styles = StyleSheet.create({
   },
   header: {
     backgroundColor: '#FFFFFF',
-    paddingTop: 5,
-    paddingBottom: 12,
+    paddingTop: 10,
+    paddingBottom: 15,
     paddingHorizontal: 20,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
@@ -409,7 +409,7 @@ const styles = StyleSheet.create({
   },
   notificationButton: {
     position: 'relative',
-    padding: 4,
+    padding: 6,
   },
   notificationDot: {
     position: 'absolute',
@@ -461,12 +461,12 @@ const styles = StyleSheet.create({
   },
   tabsContainer: {
     flexDirection: 'row',
-    marginBottom: 10,
+    marginBottom: 15,
   },
   tab: {
-    paddingVertical: 6,
-    paddingHorizontal: 14,
-    marginRight: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 60,
+    marginRight: 25,
   },
   activeTab: {
     borderBottomWidth: 2,
@@ -498,7 +498,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#E5E7EB',
   },
   categoryChipText: {
-    fontSize: 12,
+    fontSize: 14,
     color: '#9CA3AF',
     fontWeight: '500',
   },
