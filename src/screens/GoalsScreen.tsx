@@ -3,16 +3,21 @@ import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import React, { useCallback, useState } from 'react';
 import {
-  Alert,
+  Dimensions,
   FlatList,
   Modal,
+  Platform,
   RefreshControl,
+  StatusBar,
+  StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View
 } from 'react-native';
 import { GoalDetailScreenV2 } from '.';
-import { BaseScreen, LoadingState } from '../components';
+import { GoalCategory, GoalListItem } from '../api/types';
+import { LoadingState } from '../components';
 import CreateGoalModal from '../components/CreateGoalModal';
 import { useAuth } from '../hooks/useAuth';
 import { useMyGoals } from '../hooks/useGoals';
@@ -36,183 +41,173 @@ interface TodayQuest extends Quest {
   scheduledTime?: Date;
 }
 
-// 스크린샷 스타일의 간결한 Goal Card
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+// Liquid Glass Goal Card Component
 const GoalCard = React.memo(({ 
   item, 
   onPress 
 }: { 
-  item: GoalWithProgress; 
-  onPress: (goal: GoalWithProgress) => void;
+  item: GoalListItem; 
+  onPress: (goal: GoalListItem) => void;
 }) => {
-  const getCategoryEmoji = (category?: string) => {
-    if (!category) return '🎯';
-    if (category.includes('운동') || category.includes('건강')) return '💪';
-    if (category.includes('공부') || category.includes('성장')) return '📚';
-    return '🎯';
-  };
-
-  const getCategoryLabel = (item: GoalWithProgress) => {
-    return item.categoryLabel || '운동 & 건강';
-  };
-
-  const getProgressText = (item: GoalWithProgress) => {
-    // Mock progress data based on title patterns
-    if (item.title.includes('헬스장')) return '9/16 완료 ✓';
-    if (item.title.includes('영어')) return '15/27 완료 ✓';
-    if (item.title.includes('독서')) return '16/16 완료 ✓';
-    return '진행중';
-  };
-
-  const getProgressPercentage = (item: GoalWithProgress) => {
-    // Mock progress percentage
-    if (item.title.includes('독서')) return 100; // Complete
-    if (item.title.includes('헬스장')) return 56; // 9/16
-    if (item.title.includes('영어')) return 56; // 15/27
-    return 25; // Default progress
-  };
-
-  const getNextScheduleText = (item: GoalWithProgress) => {
-    if (item.nextSession) return item.nextSession;
-    
-    // Calculate next session from weeklyWeekdays
-    if (item.weeklyWeekdays && item.weeklyWeekdays.length > 0) {
-      const now = new Date();
-      const today = now.getDay();
-      const nextDay = item.weeklyWeekdays.find(d => d > today) || item.weeklyWeekdays[0];
-      const daysUntil = nextDay > today ? nextDay - today : 7 - today + nextDay;
-      const nextDate = new Date(now);
-      nextDate.setDate(now.getDate() + daysUntil);
-      
-      // Get time from schedule
-      const timeStr = item.weeklySchedule?.[nextDay.toString()]?.[0] || '9:00';
-      const [hours, minutes] = timeStr.split(':').map(Number);
-      nextDate.setHours(hours || 9, minutes || 0);
-      
-      return `${nextDate.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })} ${timeStr}에 수행하세요`;
+  const getCategoryColor = (category?: GoalCategory) => {
+    switch (category) {
+      case '운동 & 건강': return '#10B981'; // Green
+      case '공부 & 성장': return '#3B82F6'; // Blue
+      case '수면': return '#8B5CF6'; // Purple
+      default: return '#6B7280'; // Gray
     }
-    
-    return '진행 중';
+  };
+
+  const getProgressPercentage = () => {
+    if (item.progressCurrent && item.progressTotal) {
+      return (item.progressCurrent / item.progressTotal) * 100;
+    }
+    return 0;
+  };
+
+  const getProgressText = () => {
+    if (item.progressCurrent && item.progressTotal) {
+      return `${item.progressCurrent}/${item.progressTotal} 완료 ✓`;
+    }
+    return '시작 전';
+  };
+
+  const formatDateRange = () => {
+    if (item.startAt && item.endAt) {
+      const start = new Date(item.startAt);
+      const end = new Date(item.endAt);
+      return `${start.getMonth() + 1}월 ${start.getDate()}일-${end.getMonth() + 1}월 ${end.getDate()}일`;
+    }
+    return '10월 3일-10월 30일';
   };
 
   return (
-    <TouchableOpacity
-      onPress={() => onPress(item)}
-      className="bg-white rounded-2xl p-4 mb-3 border border-gray-100"
-      activeOpacity={0.7}
-    >
-      {/* Top: Emoji + Title */}
-      <View className="flex-row items-start mb-2">
-        <Text className="text-2xl mr-2">{getCategoryEmoji(item.categoryLabel)}</Text>
-        <View className="flex-1">
-          <Text className="text-base font-bold text-gray-900 leading-tight" numberOfLines={1}>
-            {item.title}
-          </Text>
-          <Text className="text-xs text-gray-500 mt-0.5">{getCategoryLabel(item)}</Text>
-        </View>
-      </View>
-
-      {/* Middle: Progress Bar */}
-      <View className="mb-2">
-        <View className="flex-row items-center justify-between mb-1">
-          <Text className="text-sm text-gray-600">{getProgressText(item)}</Text>
-          <View className="flex-row items-center">
-            <Text className="text-xs text-blue-600 mr-1">진행중</Text>
-            <Ionicons name="refresh-outline" size={12} color="#2563EB" />
+    <TouchableOpacity onPress={() => onPress(item)} activeOpacity={0.8}>
+      <View style={styles.goalCard}>
+        {/* Header */}
+        <View style={styles.cardHeader}>
+          <View style={styles.iconContainer}>
+            <Ionicons name="disc-outline" size={24} color="#6B7280" />
+          </View>
+          <View style={styles.headerContent}>
+            <View style={styles.titleRow}>
+              <Text style={styles.goalTitle} numberOfLines={2}>
+                {item.title}
+              </Text>
+              {item.isEditable && (
+                <TouchableOpacity style={styles.editButton}>
+                  <Ionicons name="pencil" size={16} color="#9CA3AF" />
+                </TouchableOpacity>
+              )}
+            </View>
+            <Text style={[styles.categoryText, { color: getCategoryColor(item.category) }]}>
+              {item.category || '기타'}
+            </Text>
+            <Text style={styles.tagsText}>
+              {item.tags?.map(tag => `#${tag}`).join(' ') || ''}
+            </Text>
           </View>
         </View>
-        
-        {/* Progress Bar */}
-        <View className="h-2 bg-gray-200 rounded-full overflow-hidden">
-          <View 
-            className="h-full bg-blue-500 rounded-full"
-            style={{ width: `${getProgressPercentage(item)}%` }}
-          />
-        </View>
-        
-        {/* Date Range */}
-        <Text className="text-xs text-gray-500 mt-1">
-          {item.startDate && item.endDate ? 
-            `${new Date(item.startDate).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })}-${new Date(item.endDate).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })}` :
-            '10월 3일-10월 30일'
-          }
-        </Text>
-      </View>
 
-      {/* Bottom: Quest Button */}
-      <View className="flex-row items-center justify-between">
-        <View className="flex-row items-center">
-          <Ionicons name="time-outline" size={14} color="#9CA3AF" />
-          <Text className="text-xs text-gray-500 ml-1">{getNextScheduleText(item)}</Text>
+        {/* Progress Section */}
+        <View style={styles.progressSection}>
+          <View style={styles.progressBarContainer}>
+            <View style={styles.progressBar}>
+              <View 
+                style={[
+                  styles.progressFill, 
+                  { 
+                    width: `${getProgressPercentage()}%`,
+                    backgroundColor: getCategoryColor(item.category)
+                  }
+                ]} 
+              />
+            </View>
+            <Text style={styles.progressText}>{getProgressText()}</Text>
+          </View>
+          
+          <View style={styles.statusRow}>
+            <View style={styles.statusContainer}>
+              <View style={[styles.statusDot, { backgroundColor: '#10B981' }]} />
+              <Text style={styles.statusText}>진행중</Text>
+            </View>
+            <Text style={styles.dateText}>{formatDateRange()}</Text>
+          </View>
         </View>
-        
+
         {/* Quest Button */}
-        <TouchableOpacity 
-          className="bg-yellow-400 px-3 py-1.5 rounded-full"
-          onPress={() => onPress(item)}
-        >
-          <Text className="text-xs font-medium text-gray-800">퀘스트 {'>'}</Text>
-        </TouchableOpacity>
+        <View style={styles.actionSection}>
+          <TouchableOpacity 
+            style={[styles.questButton, { backgroundColor: getCategoryColor(item.category) }]}
+            onPress={() => onPress(item)}
+          >
+            <Text style={styles.questButtonText}>퀘스트 {'>'}</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </TouchableOpacity>
   );
 });
 
-const GoalsScreen = () => {
+export default function GoalsScreen() {
   const navigation = useNavigation<GoalsScreenNavigationProp>();
-  const { user, isLoading: authLoading, isAuthenticated } = useAuth();
+  const { user } = useAuth();
+  
+  // State
+  const [selectedGoal, setSelectedGoal] = useState<GoalListItem | null>(null);
+  const [showGoalDetail, setShowGoalDetail] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<GoalCategory | 'All'>('All');
 
-  // REST API data fetching
+  // API hooks
   const { 
     data: goalsData, 
-    isLoading: goalsLoading, 
-    error: goalsError,
+    isLoading: loading, 
+    error, 
     refetch 
   } = useMyGoals({ 
     page: 1, 
     pageSize: 100 
   });
 
-  const [selectedGoal, setSelectedGoal] = useState<GoalWithProgress | null>(null);
-  const [showGoalDetail, setShowGoalDetail] = useState(false);
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-
   // Extract user ID as primitive to avoid infinite loop
   const userId = user?.id || '';
 
-  // Transform API goals to GoalWithProgress format
-  const goals: GoalWithProgress[] = React.useMemo(() => {
+  // Transform and filter goals
+  const filteredGoals: GoalListItem[] = React.useMemo(() => {
     if (!goalsData?.items) return [];
 
-    return goalsData.items.map((apiGoal): GoalWithProgress => ({
-      // Map API fields to local Goal type
-      id: apiGoal.goalId,
-      userId,
-      title: apiGoal.title,
-      description: apiGoal.description || '',
-      category: apiGoal.tags?.[0] || '기타',
-      verificationMethods: [],
-      frequency: { count: 1, unit: 'per_day' },
-      duration: { type: 'days', value: 30 },
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      
-      // Progress fields (mock for now)
-      successRate: 0,
-      recentVerifications: 0,
-      completedSessions: 0,
-      totalSessions: 0,
-      categoryLabel: apiGoal.tags?.[0] || '기타',
-    } as GoalWithProgress));
-  }, [goalsData, userId]); // Use primitive userId instead of user object
+    let filtered = goalsData.items;
 
+    // Filter by search query
+    if (searchQuery.trim()) {
+      filtered = filtered.filter(goal => 
+        goal.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        goal.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        goal.tags?.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()))
+      );
+    }
+
+    // Filter by category
+    if (selectedCategory !== 'All') {
+      filtered = filtered.filter(goal => goal.category === selectedCategory);
+    }
+
+    return filtered;
+  }, [goalsData, searchQuery, selectedCategory]);
+
+  // Event handlers
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     await refetch();
     setRefreshing(false);
   }, [refetch]);
 
-  const handleGoalPress = useCallback((goal: GoalWithProgress) => {
+  const handleGoalPress = useCallback((goal: GoalListItem) => {
     setSelectedGoal(goal);
     setShowGoalDetail(true);
   }, []);
@@ -220,8 +215,7 @@ const GoalsScreen = () => {
   const handleGoalDetailClose = useCallback(() => {
     setShowGoalDetail(false);
     setSelectedGoal(null);
-    refetch(); // Refresh goals after closing detail
-  }, [refetch]);
+  }, []);
 
   const handleCreateGoal = useCallback(() => {
     setShowCreateModal(true);
@@ -229,138 +223,400 @@ const GoalsScreen = () => {
 
   const handleCreateGoalClose = useCallback(() => {
     setShowCreateModal(false);
-    refetch(); // Refresh goals after creating
+  }, []);
+
+  const handleGoalCreated = useCallback(() => {
+    setShowCreateModal(false);
+    refetch();
   }, [refetch]);
 
-  // Show loading state
-  if (authLoading || goalsLoading) {
+  // Category options
+  const categories: (GoalCategory | 'All')[] = ['All', '운동 & 건강', '공부 & 성장', '수면'];
+
+  // Render item
+  const renderItem = useCallback(({ item }: { item: GoalListItem }) => (
+    <GoalCard item={item} onPress={handleGoalPress} />
+  ), [handleGoalPress]);
+
+  // Key extractor
+  const keyExtractor = useCallback((item: GoalListItem) => item.goalId, []);
+
+  if (loading) {
     return (
-      <BaseScreen
-        title="목표"
-        rightAction={{
-          icon: 'add',
-          onPress: handleCreateGoal,
-        }}
-      >
+      <View style={styles.container}>
+        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
         <LoadingState />
-      </BaseScreen>
-    );
-  }
-
-  // Show error state
-  if (goalsError) {
-    return (
-      <BaseScreen
-        title="목표"
-        rightAction={{
-          icon: 'add',
-          onPress: handleCreateGoal,
-        }}
-      >
-        <View className="flex-1 items-center justify-center p-4">
-          <Text className="text-red-600 text-center mb-4">
-            목표를 불러오는 중 오류가 발생했습니다
-          </Text>
-          <TouchableOpacity
-            className="bg-blue-600 px-6 py-3 rounded-lg"
-            onPress={() => refetch()}
-          >
-            <Text className="text-white font-semibold">다시 시도</Text>
-          </TouchableOpacity>
-        </View>
-      </BaseScreen>
-    );
-  }
-
-  // Show not authenticated state
-  if (!isAuthenticated) {
-    return (
-      <BaseScreen
-        title="목표"
-        rightAction={{
-          icon: 'add',
-          onPress: handleCreateGoal,
-        }}
-      >
-        <View className="flex-1 items-center justify-center p-4">
-          <Text className="text-gray-600 text-center mb-4">
-            로그인이 필요합니다
-          </Text>
-          <TouchableOpacity
-            className="bg-blue-600 px-6 py-3 rounded-lg"
-            onPress={() => {
-              // TODO: Navigate to auth screen
-              Alert.alert('알림', '로그인 화면으로 이동합니다');
-            }}
-          >
-            <Text className="text-white font-semibold">로그인</Text>
-          </TouchableOpacity>
-        </View>
-      </BaseScreen>
+      </View>
     );
   }
 
   return (
-    <BaseScreen
-      title="목표"
-      rightAction={{
-        icon: 'add',
-        onPress: handleCreateGoal,
-      }}
-      contentPadding={false}
-    >
-      {/* Goals List */}
-      <FlatList
-        data={goals}
-        renderItem={({ item }) => (
-          <GoalCard item={item} onPress={handleGoalPress} />
-        )}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={{ padding: 16 }}
-        ListEmptyComponent={
-          <View className="items-center justify-center py-20">
-            <Text className="text-gray-400 text-center mb-4">
-              아직 목표가 없습니다
-            </Text>
-            <TouchableOpacity
-              className="bg-blue-600 px-6 py-3 rounded-lg"
-              onPress={handleCreateGoal}
-            >
-              <Text className="text-white font-semibold">첫 목표 만들기</Text>
+    <View style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      
+      {/* Header */}
+      <View style={styles.header}>
+        <View style={styles.headerTop}>
+          <Text style={styles.headerTitle}>나의 목표</Text>
+          <TouchableOpacity style={styles.notificationButton}>
+            <Ionicons name="notifications-outline" size={24} color="#1F2937" />
+            <View style={styles.notificationDot} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Search Bar */}
+        <View style={styles.searchContainer}>
+          <View style={styles.searchBar}>
+            <Ionicons name="search" size={20} color="#9CA3AF" style={styles.searchIcon} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="search your goal !"
+              placeholderTextColor="#9CA3AF"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+            />
+            <TouchableOpacity style={styles.filterButton}>
+              <Ionicons name="options-outline" size={20} color="#9CA3AF" />
             </TouchableOpacity>
           </View>
-        }
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
-        }
-      />
+          <TouchableOpacity style={styles.addButton} onPress={handleCreateGoal}>
+            <Ionicons name="add" size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
 
-      {/* Goal Detail Modal */}
-      {selectedGoal && (
-        <Modal
-          visible={showGoalDetail}
-          animationType="slide"
-          presentationStyle="pageSheet"
-          onRequestClose={handleGoalDetailClose}
-        >
+        {/* Tabs */}
+        <View style={styles.tabsContainer}>
+          <TouchableOpacity style={[styles.tab, styles.activeTab]}>
+            <Text style={[styles.tabText, styles.activeTabText]}>설정 목표</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.tab}>
+            <Text style={styles.tabText}>투데이</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Category Filters */}
+        <View style={styles.categoriesContainer}>
+          <FlatList
+            data={categories}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.categoriesList}
+            keyExtractor={(item) => item}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={[
+                  styles.categoryChip,
+                  selectedCategory === item && styles.selectedCategoryChip
+                ]}
+                onPress={() => setSelectedCategory(item)}
+              >
+                <Text
+                  style={[
+                    styles.categoryChipText,
+                    selectedCategory === item && styles.selectedCategoryChipText
+                  ]}
+                >
+                  {item}
+                </Text>
+              </TouchableOpacity>
+            )}
+          />
+        </View>
+      </View>
+
+      {/* Content */}
+      <View style={styles.content}>
+        <Text style={styles.resultsText}>
+          {filteredGoals.length}건의 검색 결과
+        </Text>
+        
+        <FlatList
+          data={filteredGoals}
+          renderItem={renderItem}
+          keyExtractor={keyExtractor}
+          contentContainerStyle={styles.goalsList}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+          }
+        />
+      </View>
+
+      {/* Modals */}
+      <Modal
+        visible={showGoalDetail}
+        animationType="slide"
+        presentationStyle="pageSheet"
+      >
+        {selectedGoal && (
           <GoalDetailScreenV2
-            route={{ params: { goalId: selectedGoal.id }, key: 'goal-detail', name: 'GoalDetail' } as any}
+            route={{ params: { goalId: selectedGoal.goalId } } as any}
             navigation={navigation as any}
           />
-        </Modal>
-      )}
+        )}
+      </Modal>
 
-      {/* Create Goal Modal */}
       <CreateGoalModal
         visible={showCreateModal}
         onClose={handleCreateGoalClose}
-        onGoalCreated={() => {
-          refetch();
-          setShowCreateModal(false);
-        }}
+        onGoalCreated={handleGoalCreated}
       />
-    </BaseScreen>
+    </View>
   );
-};
+}
 
-export default GoalsScreen;
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#F8FAFC',
+  },
+  header: {
+    backgroundColor: '#FFFFFF',
+    paddingTop: Platform.OS === 'ios' ? 50 : 30,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#1F2937',
+  },
+  notificationButton: {
+    position: 'relative',
+    padding: 4,
+  },
+  notificationDot: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#3B82F6',
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  searchBar: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginRight: 12,
+  },
+  searchIcon: {
+    marginRight: 12,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#1F2937',
+  },
+  filterButton: {
+    padding: 4,
+  },
+  addButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#3B82F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#3B82F6',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  tabsContainer: {
+    flexDirection: 'row',
+    marginBottom: 16,
+  },
+  tab: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    marginRight: 24,
+  },
+  activeTab: {
+    borderBottomWidth: 2,
+    borderBottomColor: '#3B82F6',
+  },
+  tabText: {
+    fontSize: 16,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  activeTabText: {
+    color: '#3B82F6',
+    fontWeight: '600',
+  },
+  categoriesContainer: {
+    marginBottom: 8,
+  },
+  categoriesList: {
+    paddingRight: 20,
+  },
+  categoryChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#F3F4F6',
+    marginRight: 8,
+  },
+  selectedCategoryChip: {
+    backgroundColor: '#E5E7EB',
+  },
+  categoryChipText: {
+    fontSize: 14,
+    color: '#9CA3AF',
+    fontWeight: '500',
+  },
+  selectedCategoryChipText: {
+    color: '#1F2937',
+    fontWeight: '600',
+  },
+  content: {
+    flex: 1,
+    paddingHorizontal: 20,
+  },
+  resultsText: {
+    fontSize: 14,
+    color: '#9CA3AF',
+    marginVertical: 16,
+  },
+  goalsList: {
+    paddingBottom: 20,
+  },
+  goalCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    marginBottom: 16,
+  },
+  iconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  headerContent: {
+    flex: 1,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  goalTitle: {
+    flex: 1,
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#1F2937',
+    lineHeight: 24,
+  },
+  editButton: {
+    padding: 4,
+    marginLeft: 8,
+  },
+  categoryText: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  tagsText: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    lineHeight: 16,
+  },
+  progressSection: {
+    marginBottom: 16,
+  },
+  progressBarContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  progressBar: {
+    flex: 1,
+    height: 8,
+    backgroundColor: '#E5E7EB',
+    borderRadius: 4,
+    marginRight: 12,
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 4,
+  },
+  progressText: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    fontWeight: '500',
+  },
+  statusRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  statusContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 6,
+  },
+  statusText: {
+    fontSize: 12,
+    color: '#9CA3AF',
+  },
+  dateText: {
+    fontSize: 12,
+    color: '#9CA3AF',
+  },
+  actionSection: {
+    alignItems: 'flex-end',
+  },
+  questButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  questButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+});

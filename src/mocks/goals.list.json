@@ -1,48 +1,45 @@
 {
   "page": 1,
   "pageSize": 20,
-  "total": 3,
+  "total": 2,
   "items": [
     {
       "goalId": "goal-123",
-      "title": "Learn TypeScript",
-      "description": "Master TypeScript in 30 days",
-      "tags": ["learning", "programming"],
+      "title": "월화수토 아침 7시에 헬스장 가기",
+      "description": "주 4회 헬스장에서 운동하기",
+      "tags": ["헬스", "운동", "루틴"],
+      "category": "운동 & 건강",
       "method": "schedule",
       "visibility": "public",
       "state": "onTrack",
       "likes": 15,
-      "startAt": 1609459200000,
-      "endAt": 1612051200000,
-      "createdAt": 1609459200000,
-      "updatedAt": 1609545600000
+      "isEditable": true,
+      "iconType": "fitness",
+      "progressCurrent": 9,
+      "progressTotal": 16,
+      "startAt": 1696320000000,
+      "endAt": 1698796800000,
+      "createdAt": 1696320000000,
+      "updatedAt": 1699545600000
     },
     {
       "goalId": "goal-456",
-      "title": "Morning Workout",
-      "description": "Exercise every morning for 21 days",
-      "tags": ["health", "fitness"],
+      "title": "매일 영어 공부 1시간 하기",
+      "description": "영어 회화 실력 향상을 위한 매일 학습",
+      "tags": ["공부", "영어", "습관"],
+      "category": "공부 & 성장",
       "method": "frequency",
       "visibility": "friends",
       "state": "onTrack",
       "likes": 8,
-      "startAt": 1609459200000,
-      "endAt": 1611273600000,
-      "createdAt": 1609459200000
-    },
-    {
-      "goalId": "goal-789",
-      "title": "Read 12 Books",
-      "description": "Read one book per month",
-      "tags": ["reading", "self-improvement"],
-      "method": "schedule",
-      "visibility": "public",
-      "state": "complete",
-      "likes": 42,
-      "startAt": 1577836800000,
-      "endAt": 1609459200000,
-      "createdAt": 1577836800000,
-      "updatedAt": 1609459200000
+      "isEditable": true,
+      "iconType": "study",
+      "progressCurrent": 15,
+      "progressTotal": 27,
+      "startAt": 1696320000000,
+      "endAt": 1698796800000,
+      "createdAt": 1696320000000,
+      "updatedAt": 1699545600000
     }
   ]
 }

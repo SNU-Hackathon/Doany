@@ -132,6 +132,11 @@ export interface UserMe {
 // ============================================================================
 
 /**
+ * Goal category types (for UI display)
+ */
+export type GoalCategory = '운동 & 건강' | '공부 & 성장' | '수면' | '기타';
+
+/**
  * Goal list item (summary view)
  */
 export interface GoalListItem {
@@ -139,10 +144,15 @@ export interface GoalListItem {
   title: string;
   description?: string;
   tags?: string[];
+  category?: GoalCategory; // New: explicit category for UI
   method?: ScheduleMethod;
   visibility?: GoalVisibility;
   state?: GoalState;
   likes?: number;
+  isEditable?: boolean; // New: edit permission flag
+  iconType?: string; // New: icon identifier
+  progressCurrent?: number; // New: completed quests count
+  progressTotal?: number; // New: total quests count
   startAt?: number | string;
   endAt?: number | string;
   createdAt: number | string;
