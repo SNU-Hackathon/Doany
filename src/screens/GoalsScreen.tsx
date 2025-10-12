@@ -52,9 +52,9 @@ const GoalCard = React.memo(({
 }) => {
   const getCategoryColor = (category?: GoalCategory) => {
     switch (category) {
-      case '운동 & 건강': return '#10B981'; // Green
-      case '공부 & 성장': return '#3B82F6'; // Blue
-      case '수면': return '#8B5CF6'; // Purple
+      case 'health fitness': return '#10B981'; // Green
+      case 'study': return '#3B82F6'; // Blue
+      case 'sleep': return '#8B5CF6'; // Purple
       default: return '#6B7280'; // Gray
     }
   };
@@ -116,7 +116,7 @@ const GoalCard = React.memo(({
               {item.category || '기타'}
             </Text>
             <Text style={styles.tagsText}>
-              {item.tags?.map(tag => `#${tag}`).join(' ') || ''}
+              {item.tag ? item.tag.split('&').map(tag => `#${tag.trim()}`).join(' ') : ''}
             </Text>
           </View>
         </View>
@@ -173,19 +173,19 @@ export default function GoalsScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<GoalCategory | 'All'>('All');
 
+  // Extract user ID as primitive to avoid infinite loop
+  const userId = user?.id || '';
+
   // API hooks
   const { 
     data: goalsData, 
     isLoading: loading, 
     error, 
     refetch 
-  } = useMyGoals({ 
+  } = useMyGoals(userId, { 
     page: 1, 
     pageSize: 100 
   });
-
-  // Extract user ID as primitive to avoid infinite loop
-  const userId = user?.id || '';
 
   // Transform and filter goals
   const filteredGoals: GoalListItem[] = React.useMemo(() => {
@@ -198,7 +198,7 @@ export default function GoalsScreen() {
       filtered = filtered.filter(goal => 
         goal.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         goal.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        goal.tags?.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()))
+        goal.tag?.toLowerCase().includes(searchQuery.toLowerCase())
       );
     }
 
@@ -241,7 +241,7 @@ export default function GoalsScreen() {
   }, [refetch]);
 
   // Category options
-  const categories: (GoalCategory | 'All')[] = ['All', '운동 & 건강', '공부 & 성장', '수면'];
+  const categories: (GoalCategory | 'All')[] = ['All', 'health fitness', 'study', 'sleep'];
 
   // Render item
   const renderItem = useCallback(({ item }: { item: GoalListItem }) => (
@@ -249,7 +249,7 @@ export default function GoalsScreen() {
   ), [handleGoalPress]);
 
   // Key extractor
-  const keyExtractor = useCallback((item: GoalListItem) => item.goalId, []);
+  const keyExtractor = useCallback((item: GoalListItem) => String(item.goalId), []);
 
   if (loading) {
     return (

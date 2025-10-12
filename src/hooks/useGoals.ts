@@ -9,22 +9,24 @@ import {
   CreateGoalResponse,
   GoalDetail,
   GoalListResponse,
-  GoalState,
-  GoalVisibility,
-  PatchGoalRequest,
+  PatchGoalRequest
 } from '../api/types';
 
 /**
  * Hook to fetch my goals list
+ * 명세서: GET /goals/me/{userId}
  */
-export function useMyGoals(query?: {
-  page?: number;
-  pageSize?: number;
-  state?: GoalState;
-  visibility?: GoalVisibility;
-  startAfter?: number | string;
-  endBefore?: number | string;
-}) {
+export function useMyGoals(
+  userId: string = '1',
+  query?: {
+    page?: number;
+    pageSize?: number;
+    state?: 'fail' | 'onTrack' | 'complete' | 'all';
+    category?: string;
+    sort?: 'updatedAt_desc' | 'successRate_desc' | 'title_asc';
+    visibility?: 'public' | 'friends' | 'private';
+  }
+) {
   const [data, setData] = useState<GoalListResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -33,17 +35,22 @@ export function useMyGoals(query?: {
   const queryStr = JSON.stringify(query || {});
 
   const fetchGoals = useCallback(async () => {
+    if (!userId) {
+      setError(new Error('userId is required'));
+      return;
+    }
+    
     setIsLoading(true);
     setError(null);
     try {
-      const result = await goalsApi.getMyGoals(query);
+      const result = await goalsApi.getMyGoals(userId, query);
       setData(result);
     } catch (err) {
       setError(err as Error);
     } finally {
       setIsLoading(false);
     }
-  }, [queryStr]); // Use stringified query
+  }, [userId, queryStr]); // Use stringified query
 
   useEffect(() => {
     fetchGoals();
@@ -100,11 +107,18 @@ export function useGoalMutations() {
   const [error, setError] = useState<Error | null>(null);
 
   const createGoal = useCallback(
-    async (body: CreateGoalRequest): Promise<CreateGoalResponse | null> => {
+    async (
+      query: {
+        userId: string;
+        visibility: 'public' | 'friends' | 'private';
+        goalType: 'schedule' | 'frequency' | 'milestone';
+      },
+      body: CreateGoalRequest
+    ): Promise<CreateGoalResponse | null> => {
       setIsLoading(true);
       setError(null);
       try {
-        const result = await goalsApi.createGoal(body);
+        const result = await goalsApi.createGoal(query, body);
         return result;
       } catch (err) {
         setError(err as Error);
