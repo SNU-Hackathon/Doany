@@ -9,7 +9,6 @@ import { AIService } from '../../services/ai';
 import { createGoal } from '../../services/goalService';
 import { normalize } from '../../services/normalize';
 import { buildOccurrences, previewOccurrences } from '../../services/scheduleCompute';
-import { CreateGoalForm } from '../../types';
 import { EmbeddedWidget, SlotValue } from '../../types/chatbot';
 import OccurrenceListComponent, { OccurrenceItem } from '../OccurrenceList';
 import {
@@ -1125,92 +1124,87 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
     
     try {
       console.log('[SAVE.SUCCESS] Starting goal save process...');
+      console.log('[SAVE.DEBUG] currentGoalType:', state.currentGoalType);
+      console.log('[SAVE.DEBUG] questPreview:', state.questPreview);
+      console.log('[SAVE.DEBUG] collectedSlots:', state.collectedSlots);
       
-      // Convert collected slots to CreateGoalForm format
-      const goalFormData: CreateGoalForm & { userId: string } = {
-        userId: user.userId || '1',
-        title: String(state.collectedSlots.title || ''),
-        description: `${state.currentGoalType} 목표`,
-        category: 'personal', // Default category
-        type: state.currentGoalType,
-        verificationMethods: (state.collectedSlots.verification as any[]) || ['manual'],
+      // Get period data
+      const period = state.collectedSlots.period as { startDate: string; endDate: string };
+      const startAt = period?.startDate;
+      const endAt = period?.endDate;
+      
+      // Prepare goal data based on goalType
+      let goalData: any;
+      const userId = user.userId || '1';
+      const title = String(state.collectedSlots.title || '');
+      const description = `${state.currentGoalType} 목표`;
+      const tags = ['personal'];
+      
+      if (state.currentGoalType === 'schedule') {
+        // Schedule type: quests with date, time, description, verificationMethod
+        const quests = (state.questPreview || []).map((quest: any) => ({
+          date: quest.date || quest.scheduledDate || new Date().toISOString().split('T')[0],
+          time: quest.time || '09:00',
+          description: quest.description || quest.title || '퀘스트 완료',
+          verificationMethod: 'camera' as const
+        }));
         
-        // Add success rate
-        successRate: Number(state.collectedSlots.successRate) || 80,
+        goalData = {
+          goalType: 'schedule' as const,
+          title,
+          description,
+          tags,
+          startAt,
+          endAt,
+          quests
+        };
+      } else if (state.currentGoalType === 'frequency') {
+        // Frequency type: period, numbers, quests with unit
+        const perWeek = Number(state.collectedSlots.perWeek) || 3;
+        const quests = (state.questPreview || []).map((quest: any, index: number) => ({
+          unit: index + 1,
+          description: quest.description || quest.title || '퀘스트 완료',
+          verificationMethod: 'camera' as const
+        }));
         
-        // Handle period data
-        duration: (() => {
-          const period = state.collectedSlots.period as { startDate: string; endDate: string };
-          if (period) {
-            return {
-              type: 'range' as const,
-              startDate: period.startDate,
-              endDate: period.endDate
-            };
-          }
-          return {
-            type: 'weeks' as const,
-            value: 2
-          };
-        })(),
+        goalData = {
+          goalType: 'frequency' as const,
+          title,
+          description,
+          tags,
+          startAt,
+          endAt,
+          period: 'week' as const,
+          numbers: perWeek,
+          quests
+        };
+      } else {
+        // Milestone type: quests with title, targetValue, description
+        const milestones = state.collectedSlots.milestones as string[] || ['kickoff', 'mid', 'finish'];
+        const quests = milestones.map((key: string, index: number) => ({
+          title: key === 'kickoff' ? '시작 단계' : key === 'mid' ? '중간 단계' : '완료 단계',
+          targetValue: (index + 1) * 300,
+          description: `${index + 1}번째 마일스톤`
+        }));
         
-        // Handle frequency data
-        frequency: (() => {
-          if (state.currentGoalType === 'frequency') {
-            return {
-              count: Number(state.collectedSlots.perWeek) || 3,
-              unit: 'per_week' as const,
-              targetPerWeek: Number(state.collectedSlots.perWeek) || 3
-            };
-          }
-          return {
-            count: 1,
-            unit: 'per_day' as const
-          };
-        })(),
-        
-        // Handle schedule data differently based on goal type
-        weeklyWeekdays: (() => {
-          if (state.currentGoalType === 'schedule') {
-            // Get weekdays from period data if it includes schedule info
-            const period = state.collectedSlots.period as any;
-            if (period && period.weekdays) {
-              return period.weekdays;
-            }
-            return (state.collectedSlots.weekdays as number[]) || [];
-          }
-          return [];
-        })(),
-        
-        // Handle weekly schedule for schedule goals
-        weeklySchedule: (() => {
-          if (state.currentGoalType === 'schedule') {
-            const period = state.collectedSlots.period as any;
-            if (period && period.weeklySchedule) {
-              return period.weeklySchedule;
-            }
-            return (state.collectedSlots.weeklySchedule as any) || {};
-          }
-          return {};
-        })(),
-          
-        // Handle milestones
-        milestones: state.currentGoalType === 'milestone' 
-          ? {
-              milestones: (state.collectedSlots.milestones as string[] || ['kickoff', 'mid', 'finish']).map((key, index) => ({
-                key,
-                label: key === 'kickoff' ? '시작' : key === 'mid' ? '중간 점검' : '완료',
-                targetDate: undefined
-              })),
-              totalDuration: 8
-            }
-          : undefined
-      };
+        goalData = {
+          goalType: 'milestone' as const,
+          title,
+          description,
+          tags,
+          startAt,
+          endAt,
+          quests,
+          totalSteps: milestones.length,
+          currentStepIndex: 0,
+          overallTarget: milestones.length * 300
+        };
+      }
 
-      console.log('[SAVE.SUCCESS] Goal data prepared:', goalFormData);
+      console.log('[SAVE.SUCCESS] Goal data prepared:', JSON.stringify(goalData, null, 2));
 
-      // Save to database
-      const result = await createGoal(goalFormData);
+      // Save to database - pass goalData with userId separately
+      const result = await createGoal({ ...goalData, userId });
       const goalId = result.goalId;
       
       console.log('[SAVE.SUCCESS] Goal saved successfully with ID:', goalId);
@@ -1230,7 +1224,7 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
       // Notify parent component with goal data
       const savedGoalData = {
         id: goalId,
-        ...goalFormData,
+        ...goalData,
         quests: state.questPreview
       };
       
