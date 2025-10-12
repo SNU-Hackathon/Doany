@@ -469,7 +469,7 @@ export interface CreateGoalResponse {
   createdAt: number;
 }
 
-/**
+/** 
  * Patch goal request
  */
 export interface PatchGoalRequest {
