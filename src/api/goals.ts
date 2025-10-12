@@ -47,7 +47,7 @@ export async function getMyGoals(
   query?: {
     page?: number; // 기본 1
     pageSize?: number; // 기본 20, 최대 20
-    state?: 'fail' | 'onTrack' | 'complete' | 'all'; // 기본 'complete'
+    state?: 'fail' | 'onTrack' | 'complete' | 'all'; // 기본 'onTrack'
     category?: string; // 쉼표 구분 (예: "study,exercise,health,all")
     sort?: 'updatedAt_desc' | 'successRate_desc' | 'title_asc'; // 기본 'updatedAt_desc'
     visibility?: 'public' | 'friends' | 'private';

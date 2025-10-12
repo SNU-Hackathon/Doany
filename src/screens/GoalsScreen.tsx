@@ -162,6 +162,7 @@ const GoalCard = React.memo(({
 });
 
 export default function GoalsScreen() {
+  console.error('[GOALS_SCREEN] 📝 GoalsScreen');
   const navigation = useNavigation<GoalsScreenNavigationProp>();
   const { user } = useAuth();
   
@@ -182,9 +183,13 @@ export default function GoalsScreen() {
     isLoading: loading, 
     error, 
     refetch 
-  } = useMyGoals(userId, { 
-    page: 1, 
-    pageSize: 100 
+  } = useMyGoals(userId, {
+    page: 1,
+    pageSize: 20, // 최대 20
+    state: 'onTrack', // 기본값
+    ...(selectedCategory !== 'All' && { category: selectedCategory }), // category가 'All'이 아닐 때만 포함
+    sort: 'updatedAt_desc', // 기본값
+    visibility: 'public' // 기본값
   });
 
   // Transform and filter goals
