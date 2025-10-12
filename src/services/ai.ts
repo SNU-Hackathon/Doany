@@ -1249,14 +1249,17 @@ Goal Types and Required Information:
    - period (date range), weekdays (array of 0-6), time (HH:mm), verification methods, success rate
    - Example: "월수금 아침 7시에 헬스장 가기"
    - IMPORTANT: Ask for period, weekdays, and time as SEPARATE questions
+   - Generated quests must have: date, time, description, verificationMethod
 
 2. "frequency": Goals with frequency targets  
    - period (date range), perWeek (frequency), verification methods, success rate
    - Example: "주 3회 운동하기"
+   - Generated quests must have: unit (number), description, verificationMethod
 
 3. "milestone": Project-based goals requiring state assessment
    - period (date range), milestones (stages), current state, verification methods, success rate
    - Example: "유학 준비하기", "프로젝트 완성하기"
+   - Generated quests must have: title, targetValue, description
 
 Special Instructions for Milestone Goals:
 - Always assess the user's current state/level
@@ -1346,6 +1349,7 @@ Respond with JSON:
 }
 
 When ALL required slots are filled, respond with [QUESTS.FINAL]:
+For Schedule type:
 {
   "conversationComplete": true,
   "quests": [
@@ -1353,11 +1357,40 @@ When ALL required slots are filled, respond with [QUESTS.FINAL]:
       "id": "quest-1",
       "title": "1주차 월요일 07:00 헬스장 가기",
       "description": "헬스장에서 운동하기",
-      "targetDate": "2025-10-06",
-      "verification": ["time", "location"],
+      "date": "2025-10-06",
+      "scheduledDate": "2025-10-06",
+      "time": "07:00",
+      "verification": ["camera"],
       "difficulty": "medium",
       "estimatedTime": "60분",
       "tips": ["미리 운동복 준비하기", "물병 챙기기"]
+    }
+  ]
+}
+
+For Frequency type:
+{
+  "conversationComplete": true,
+  "quests": [
+    {
+      "id": "quest-1",
+      "title": "운동 세션 1",
+      "description": "헬스장에서 운동하기",
+      "unit": 1,
+      "verification": ["camera"]
+    }
+  ]
+}
+
+For Milestone type:
+{
+  "conversationComplete": true,
+  "quests": [
+    {
+      "id": "quest-1",
+      "title": "기초 단계",
+      "targetValue": 300,
+      "description": "기본기 다지기"
     }
   ]
 }
