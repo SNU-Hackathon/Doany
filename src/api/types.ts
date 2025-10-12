@@ -402,8 +402,8 @@ export interface CreateGoalRequestBase {
   title: string;
   description: string;
   tags: string[];
-  startAt: string; // "2025-10-12"
-  endAt: string; // "2025-10-29"
+  startAt: string; // "2025-10-12T09:00"
+  endAt: string; // "2025-10-29T18:00"
 }
 
 /**

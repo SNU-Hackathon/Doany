@@ -1128,10 +1128,16 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
       console.log('[SAVE.DEBUG] questPreview:', state.questPreview);
       console.log('[SAVE.DEBUG] collectedSlots:', state.collectedSlots);
       
-      // Get period data
+      // Get period data and convert to ISO format with time
       const period = state.collectedSlots.period as { startDate: string; endDate: string };
-      const startAt = period?.startDate;
-      const endAt = period?.endDate;
+      const startAt = period?.startDate ? `${period.startDate}T09:00` : undefined;
+      const endAt = period?.endDate ? `${period.endDate}T18:00` : undefined;
+      
+      if (!startAt || !endAt) {
+        console.error('[SAVE.FAIL] Missing start or end date');
+        actions.addMessage('❌ 시작일과 종료일을 선택해주세요.', 'assistant');
+        return;
+      }
       
       // Prepare goal data based on goalType
       let goalData: any;
@@ -1143,7 +1149,7 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
       if (state.currentGoalType === 'schedule') {
         // Schedule type: quests with date, time, description, verificationMethod
         const quests = (state.questPreview || []).map((quest: any) => ({
-          date: quest.date || quest.scheduledDate || new Date().toISOString().split('T')[0],
+          date: quest.date || quest.scheduledDate || startAt?.split('T')[0],
           time: quest.time || '09:00',
           description: quest.description || quest.title || '퀘스트 완료',
           verificationMethod: 'camera' as const
