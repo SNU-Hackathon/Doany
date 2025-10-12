@@ -57,12 +57,24 @@ export async function getMyGoals(
     'X-Accept-Time-Format'?: string;
   }
 ): Promise<GoalListResponse> {
-  const response = await httpClient.get<GoalListResponse>(`/goals/me/${userId}`, { 
-    params: query,
-    headers: headers 
-  });
-  console.log('[GOALS] 📝 Response:', response);
-  return response;
+  try {
+    console.log('[GOALS] 📝 Sending request to /goals/me/${userId}', {
+      userId,
+      query,
+      headers
+    });
+    
+    const response = await httpClient.get<GoalListResponse>(`/goals/me/${userId}`, { 
+      params: query,
+      headers
+    });
+    
+    console.log('[GOALS] ✅ Response received:', response);
+    return response;
+  } catch (error) {
+    console.error('[GOALS] ❌ Error:', error);
+    throw error;
+  }
 }
 
 /**
