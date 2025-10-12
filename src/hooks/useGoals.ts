@@ -40,12 +40,15 @@ export function useMyGoals(
       return;
     }
     
+    console.log('[USE_GOALS] 📝 Fetching goals for userId:', userId, 'with query:', query);
     setIsLoading(true);
     setError(null);
     try {
       const result = await goalsApi.getMyGoals(userId, query);
+      console.log('[USE_GOALS] ✅ Fetched goals:', result);
       setData(result);
     } catch (err) {
+      console.error('[USE_GOALS] ❌ Error fetching goals:', err);
       setError(err as Error);
     } finally {
       setIsLoading(false);
