@@ -400,55 +400,96 @@ export interface GoalDetail {
  */
 export interface CreateGoalRequestBase {
   title: string;
-  description?: string;
-  tags?: string[];
-  startAt?: string; // "2025-10-12"
-  endAt?: string; // "2025-10-29"
+  description: string;
+  tags: string[];
+  startAt: string; // "2025-10-12"
+  endAt: string; // "2025-10-29"
 }
 
 /**
  * Schedule 타입 목표 생성 요청
+ * Example:
+ * {
+ *   "title": "매일 아침 7시 조깅하기",
+ *   "description": "건강을 위해 매일 아침 30분 조깅",
+ *   "tags": ["운동", "조깅", "건강"],
+ *   "startAt": "2025-10-12",
+ *   "endAt": "2025-11-12",
+ *   "quests": [
+ *     { "date": "2025-10-12", "time": "07:00", "description": "조깅 30분", "verificationMethod": "camera" }
+ *   ]
+ * }
  */
 export interface CreateScheduleGoalRequest extends CreateGoalRequestBase {
-  goalType: 'schedule';
   quests: Array<{
-    date: string; // "2025-10-12"
-    time?: string; // "07:00"
-    description?: string;
-    verificationMethod?: VerificationMethod;
+    date: string;
+    time: string;
+    description: string;
+    verificationMethod: 'camera' | 'location' | 'manual';
   }>;
 }
 
 /**
  * Frequency 타입 목표 생성 요청
+ * Example:
+ * {
+ *   "title": "Read 30 mins",
+ *   "description": "Read book before bed",
+ *   "tags": ["영어", "TOEIC", "자격증"],
+ *   "startAt": "2025-10-12",
+ *   "endAt": "2025-10-29",
+ *   "period": "week",
+ *   "numbers": 4,
+ *   "quests": [
+ *     { "unit": 1, "description": "책 30분 읽기", "verificationMethod": "camera" }
+ *   ]
+ * }
  */
 export interface CreateFrequencyGoalRequest extends CreateGoalRequestBase {
-  goalType: 'frequency';
-  period: 'day' | 'week' | 'month' | 'year'; // "week"
-  numbers: number; // 주 4회
+  period: 'week';
+  numbers: number;
   quests: Array<{
-    unit: number; // 1, 2, 3...
-    description?: string;
-    verificationMethod?: VerificationMethod;
+    unit: number;
+    description: string;
+    verificationMethod: 'camera' | 'location' | 'manual';
   }>;
 }
 
 /**
  * Milestone 타입 목표 생성 요청
+ * Example:
+ * {
+ *   "title": "TOEIC 900점 달성하기",
+ *   "description": "3단계로 나눠서 TOEIC 목표 점수 달성",
+ *   "scheduleMethod": "milestone",
+ *   "tags": ["영어", "TOEIC", "자격증"],
+ *   "startAt": "2025-10-12",
+ *   "endAt": "2026-01-31",
+ *   "quests": [
+ *     { "title": "기초 완성 (700점)", "targetValue": 700, "description": "기본 문법과 어휘 다지기" }
+ *   ],
+ *   "totalSteps": 3,
+ *   "currentStepIndex": 0,
+ *   "overallTarget": 900,
+ *   "config": {
+ *     "rewardPerStep": 100,
+ *     "maxFails": 1
+ *   }
+ * }
  */
 export interface CreateMilestoneGoalRequest extends CreateGoalRequestBase {
-  goalType: 'milestone';
+  scheduleMethod: 'milestone';
   quests: Array<{
     title: string;
-    targetValue?: number | string;
-    description?: string;
+    targetValue: number;
+    description: string;
   }>;
-  totalSteps?: number;
-  currentStepIndex?: number;
-  overallTarget?: number | string;
-  config?: {
-    rewardPerStep?: number;
-    maxFails?: number;
+  totalSteps: number;
+  currentStepIndex: number;
+  overallTarget: number;
+  config: {
+    rewardPerStep: number;
+    maxFails: number;
   };
 }
 
@@ -456,9 +497,9 @@ export interface CreateMilestoneGoalRequest extends CreateGoalRequestBase {
  * Create goal request (union type)
  */
 export type CreateGoalRequest = 
-  | CreateScheduleGoalRequest 
-  | CreateFrequencyGoalRequest 
-  | CreateMilestoneGoalRequest;
+  | (CreateScheduleGoalRequest & { goalType: 'schedule' })
+  | (CreateFrequencyGoalRequest & { goalType: 'frequency' })
+  | (CreateMilestoneGoalRequest & { goalType: 'milestone' });
 
 /**
  * Create goal response
@@ -469,7 +510,7 @@ export interface CreateGoalResponse {
   createdAt: number;
 }
 
-/** 
+/**
  * Patch goal request
  */
 export interface PatchGoalRequest {

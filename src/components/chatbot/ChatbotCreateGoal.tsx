@@ -1153,7 +1153,7 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
           goalType: 'schedule' as const,
           title,
           description,
-          tags,
+          tags: tags || ['운동', '건강'],
           startAt,
           endAt,
           quests
@@ -1171,7 +1171,7 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
           goalType: 'frequency' as const,
           title,
           description,
-          tags,
+          tags: tags || ['학습', '자기계발'],
           startAt,
           endAt,
           period: 'week' as const,
@@ -1182,22 +1182,29 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
         // Milestone type: quests with title, targetValue, description
         const milestones = state.collectedSlots.milestones as string[] || ['kickoff', 'mid', 'finish'];
         const quests = milestones.map((key: string, index: number) => ({
-          title: key === 'kickoff' ? '시작 단계' : key === 'mid' ? '중간 단계' : '완료 단계',
-          targetValue: (index + 1) * 300,
-          description: `${index + 1}번째 마일스톤`
+          title: key === 'kickoff' ? '기초 완성 (700점)' : key === 'mid' ? '중급 달성 (800점)' : '목표 달성 (900점)',
+          targetValue: key === 'kickoff' ? 700 : key === 'mid' ? 800 : 900,
+          description: key === 'kickoff' ? '기본 문법과 어휘 다지기' : 
+                      key === 'mid' ? '실전 문제풀이와 듣기 집중' : 
+                      '고난도 문제 정복 및 실전 모의고사'
         }));
         
         goalData = {
           goalType: 'milestone' as const,
           title,
           description,
-          tags,
+          tags: tags || ['영어', 'TOEIC', '자격증'],
           startAt,
           endAt,
+          scheduleMethod: 'milestone' as const,
           quests,
           totalSteps: milestones.length,
           currentStepIndex: 0,
-          overallTarget: milestones.length * 300
+          overallTarget: 900,
+          config: {
+            rewardPerStep: 100,
+            maxFails: 1
+          }
         };
       }
 
