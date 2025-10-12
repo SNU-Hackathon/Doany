@@ -6,12 +6,11 @@ import { formatGoalTypeConfirmation, generateNextQuestionWithAI, useChatbotState
 import { useAuth } from '../../hooks/useAuth';
 import { GoalSpecV2, SlotId } from '../../schemas/goalSpecV2';
 import { AIService } from '../../services/ai';
-import { GoalService, createGoal } from '../../services/goalService';
+import { createGoal } from '../../services/goalService';
 import { normalize } from '../../services/normalize';
 import { buildOccurrences, previewOccurrences } from '../../services/scheduleCompute';
 import { CreateGoalForm } from '../../types';
 import { EmbeddedWidget, SlotValue } from '../../types/chatbot';
-import { QuestStatus } from '../../types/quest';
 import OccurrenceListComponent, { OccurrenceItem } from '../OccurrenceList';
 import {
   CalendarWidget,
@@ -1216,35 +1215,13 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
       
       console.log('[SAVE.SUCCESS] Goal saved successfully with ID:', goalId);
       
-      // === SAVE QUESTS TO FIRESTORE ===
+      // === QUESTS INFO ===
+      // Note: In API v1.3, quests are created together with the goal in POST /goals
+      // Separate quest creation is not supported
       if (state.questPreview && state.questPreview.length > 0) {
-        console.log('[SAVE.QUESTS] Saving', state.questPreview.length, 'quests to Firestore...');
-        
-        try {
-          // Import QuestService
-          const { QuestService } = await import('../../services/questService');
-          
-          // Prepare quests with goalId
-          const questsToSave = state.questPreview.map(quest => ({
-            ...quest,
-            goalId,
-            userId: user.id,
-            status: 'pending' as QuestStatus,
-            createdAt: new Date(),
-            updatedAt: new Date()
-          }));
-          
-          console.log('[SAVE.QUESTS] Quests to save:', questsToSave.length);
-          console.log('[SAVE.QUESTS] First quest:', questsToSave[0]);
-          
-          // Save quests to Firestore
-          const savedQuests = await QuestService.saveQuests(questsToSave, user.id);
-          
-          console.log('[SAVE.QUESTS] ✅ Successfully saved', savedQuests.length, 'quests to Firestore');
-        } catch (error) {
-          console.error('[SAVE.QUESTS] ❌ Error saving quests:', error);
-          // Don't fail the whole save if quest save fails
-        }
+        console.log('[SAVE.QUESTS] ℹ️ ', state.questPreview.length, 'quests were included in goal creation');
+        console.log('[SAVE.QUESTS] ℹ️ API v1.3: Quests are saved automatically with POST /goals');
+        // No separate quest save needed - they are included in the goal creation request
       }
       
       // Show success message

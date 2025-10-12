@@ -12,7 +12,7 @@ import { CreateGoalForm, Goal } from '../types';
 
 // Re-export most functions directly
 export {
-    deleteGoal, getGoal, getMyGoals, patchGoal
+  deleteGoal, getGoal, getMyGoals, patchGoal
 } from '../api/goals';
 
 /**
@@ -22,32 +22,79 @@ export {
 export async function createGoal(
   goalData: (CreateGoalForm & { userId: string }) | CreateGoalRequest
 ): Promise<CreateGoalResponse> {
+  // Extract userId
+  const userId = 'userId' in goalData ? goalData.userId : '1';
+  
   // If already in API format, use directly
-  if ('startAt' in goalData || !('duration' in goalData)) {
-    return GoalsAPI.createGoal(goalData as CreateGoalRequest);
+  if ('goalType' in goalData) {
+    const query = {
+      userId,
+      visibility: 'public' as const,
+      goalType: goalData.goalType,
+    };
+    return GoalsAPI.createGoal(query, goalData as CreateGoalRequest);
   }
 
   // Transform CreateGoalForm to CreateGoalRequest
   const formData = goalData as CreateGoalForm & { userId: string };
   
-  const apiRequest: CreateGoalRequest = {
-    title: formData.title,
-    description: formData.description,
-    tags: formData.category ? [formData.category] : [],
-    visibility: 'public', // Default
-    startAt: formData.duration?.startDate || undefined,
-    endAt: formData.duration?.endDate || undefined,
+  // Determine goal type from form data
+  const goalType: 'schedule' | 'frequency' | 'milestone' = 
+    formData.type === 'schedule' ? 'schedule' :
+    formData.type === 'frequency' ? 'frequency' : 'frequency';
+
+  // Build API request based on goal type
+  let apiRequest: CreateGoalRequest;
+  
+  if (goalType === 'schedule') {
+    apiRequest = {
+      goalType: 'schedule',
+      title: formData.title,
+      description: formData.description,
+      tags: formData.category ? [formData.category] : [],
+      startAt: formData.duration?.startDate || undefined,
+      endAt: formData.duration?.endDate || undefined,
+      quests: [], // Empty for now, should be filled by caller
+    };
+  } else if (goalType === 'frequency') {
+    apiRequest = {
+      goalType: 'frequency',
+      title: formData.title,
+      description: formData.description,
+      tags: formData.category ? [formData.category] : [],
+      startAt: formData.duration?.startDate || undefined,
+      endAt: formData.duration?.endDate || undefined,
+      period: 'week',
+      numbers: formData.frequency?.count || 3,
+      quests: [], // Empty for now, should be filled by caller
+    };
+  } else {
+    apiRequest = {
+      goalType: 'milestone',
+      title: formData.title,
+      description: formData.description,
+      tags: formData.category ? [formData.category] : [],
+      startAt: formData.duration?.startDate || undefined,
+      endAt: formData.duration?.endDate || undefined,
+      quests: [], // Empty for now, should be filled by caller
+    };
+  }
+
+  const query = {
+    userId,
+    visibility: 'public' as const,
+    goalType,
   };
 
-  return GoalsAPI.createGoal(apiRequest);
+  return GoalsAPI.createGoal(query, apiRequest);
 }
 
 /**
  * Adapter: Get active goals (filters for onTrack state)
  * Maps legacy getUserGoals to REST API getMyGoals
  */
-export async function getActiveGoals(userId: string): Promise<Goal[]> {
-  const response: GoalListResponse = await GoalsAPI.getMyGoals({
+export async function getActiveGoals(userId: string = '1'): Promise<Goal[]> {
+  const response: GoalListResponse = await GoalsAPI.getMyGoals(userId, {
     page: 1,
     pageSize: 100,
     state: 'onTrack',
@@ -55,11 +102,11 @@ export async function getActiveGoals(userId: string): Promise<Goal[]> {
 
   // Transform to legacy Goal type
   return response.items.map(apiGoal => ({
-    id: apiGoal.goalId,
+    id: String(apiGoal.goalId),
     userId: userId,
     title: apiGoal.title,
     description: apiGoal.description || '',
-    category: apiGoal.tags?.[0] || '',
+    category: apiGoal.tag || '',
     verificationMethods: [],
     frequency: { count: 1, unit: 'per_day' as const },
     duration: { type: 'days' as const, value: 30 },
@@ -76,18 +123,18 @@ export async function getActiveGoals(userId: string): Promise<Goal[]> {
  * Adapter: Get user's goals
  * Maps to REST API getMyGoals
  */
-export async function getUserGoals(userId: string): Promise<Goal[]> {
-  const response: GoalListResponse = await GoalsAPI.getMyGoals({
+export async function getUserGoals(userId: string = '1'): Promise<Goal[]> {
+  const response: GoalListResponse = await GoalsAPI.getMyGoals(userId, {
     page: 1,
     pageSize: 100,
   });
 
   return response.items.map(apiGoal => ({
-    id: apiGoal.goalId,
+    id: String(apiGoal.goalId),
     userId: userId,
     title: apiGoal.title,
     description: apiGoal.description || '',
-    category: apiGoal.tags?.[0] || '',
+    category: apiGoal.tag || '',
     verificationMethods: [],
     frequency: { count: 1, unit: 'per_day' as const },
     duration: { type: 'days' as const, value: 30 },
