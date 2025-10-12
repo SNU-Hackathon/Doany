@@ -63,7 +63,7 @@ export async function resolveMock<T = any>(
         console.warn(`[MOCK] Proof not found: ${requestedProofId}, returning fallback`);
         return {
           proofId: requestedProofId,
-          userId: 'user-123',
+          userId: '1',
           url: 'https://cdn.example.com/fallback.jpg',
           description: 'Fallback proof',
           type: 'photo',
