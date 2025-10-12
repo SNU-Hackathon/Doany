@@ -14,7 +14,6 @@ export { default as SwipeScreen } from './SwipeScreen';
 // Detail Screens
 export { default as FeedDetailScreen } from './FeedDetailScreen';
 export { default as GoalDetailScreenV2 } from './GoalDetailScreenV2';
-export { default as LevelMapScreen } from './LevelMapScreen';
 
 // Utility Screens
 export { default as CalendarScreen } from './CalendarScreen';

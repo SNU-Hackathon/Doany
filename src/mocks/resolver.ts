@@ -35,37 +35,9 @@ export async function resolveMock<T = any>(
       return require('./users.me.json') as T;
     }
 
-    // Goals endpoints
-    if (path === '/me/goals' && method === 'GET') {
-      return require('./goals.list.json') as T;
-    }
-    if (path.match(/^\/me\/goals\/[\w-]+$/) && method === 'GET') {
-      // Extract goalId from path
-      const match = path.match(/\/me\/goals\/([\w-]+)/);
-      const requestedGoalId = match ? match[1] : 'goal-123';
-      
-      // Load all goal details
-      const allDetails = require('./goals.detail.json');
-      
-      // Find specific goal by goalId
-      const goalDetail = allDetails.find((g: any) => g.goalId === requestedGoalId);
-      
-      if (!goalDetail) {
-        console.warn(`[MOCK] Goal not found: ${requestedGoalId}, returning first goal`);
-        return allDetails[0] as T;
-      }
-      
-      return goalDetail as T;
-    }
-    if (path === '/goals' && method === 'POST') {
-      return require('./goals.create.json') as T;
-    }
-    if (path.match(/^\/goals\/[\w-]+$/) && method === 'PATCH') {
-      return require('./goals.detail.json') as T;
-    }
-    if (path.match(/^\/goals\/[\w-]+$/) && method === 'DELETE') {
-      return { success: true } as T;
-    }
+    // Goals endpoints - Removed mock support, now goes directly to server
+    // All goal-related requests (POST /goals, GET /goals/me/{userId}, GET /goals/quests/{goalId}, etc.) 
+    // will be handled by the actual server
 
     // Quest endpoints
     if (path.match(/^\/quests\/[\w-]+$/) && method === 'PATCH') {
@@ -171,7 +143,7 @@ export async function resolveMock<T = any>(
         accessToken: 'mock-jwt-token-' + Date.now(),
         tokenType: 'Bearer',
         expiresIn: 3600,
-        userId: 'user_123',
+        userId: '1',
       } as T;
     }
 

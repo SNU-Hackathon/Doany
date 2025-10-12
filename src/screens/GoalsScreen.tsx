@@ -174,7 +174,7 @@ export default function GoalsScreen() {
   const [selectedCategory, setSelectedCategory] = useState<GoalCategory | 'All'>('All');
 
   // Extract user ID as primitive to avoid infinite loop
-  const userId = user?.id || '';
+  const userId = user?.userId || '1';
 
   // API hooks
   const { 

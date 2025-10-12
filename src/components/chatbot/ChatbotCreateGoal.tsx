@@ -1128,7 +1128,7 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
       
       // Convert collected slots to CreateGoalForm format
       const goalFormData: CreateGoalForm & { userId: string } = {
-        userId: user.id,
+        userId: user.userId || '1',
         title: String(state.collectedSlots.title || ''),
         description: `${state.currentGoalType} 목표`,
         category: 'personal', // Default category

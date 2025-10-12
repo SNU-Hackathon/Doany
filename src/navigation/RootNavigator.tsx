@@ -6,7 +6,6 @@ import { ActivityIndicator, Text, View } from 'react-native';
 import OfflineBanner from '../components/OfflineBanner';
 import { useAuth } from '../hooks/useAuth';
 import AuthScreen from '../screens/AuthScreen';
-import LevelMapScreen from '../screens/LevelMapScreen';
 import MainTabNavigator from './MainTabNavigator';
 
 export type RootStackParamList = {
@@ -50,14 +49,6 @@ export default function RootNavigator() {
         <Stack.Screen 
           name="Tabs" 
           component={MainTabNavigator}
-        />
-        <Stack.Screen 
-          name="LevelMap" 
-          component={LevelMapScreen}
-          options={{ 
-            presentation: 'card',
-            animation: 'slide_from_right'
-          }} 
         />
       </Stack.Navigator>
     </View>

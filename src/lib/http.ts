@@ -106,6 +106,14 @@ const createAxiosInstance = (): AxiosInstance => {
 const axiosInstance = createAxiosInstance();
 
 /**
+ * Helper to check if a URL should bypass mocks (e.g., goal endpoints)
+ */
+const shouldBypassMock = (url: string): boolean => {
+  // Goal endpoints always go to real server
+  return url.includes('/goals');
+};
+
+/**
  * HTTP Client with mock support
  */
 export const httpClient = {
@@ -113,8 +121,8 @@ export const httpClient = {
    * GET request
    */
   async get<T = any>(url: string, config?: AxiosRequestConfig): Promise<T> {
-    // Route to mock if enabled
-    if (isMockMode()) {
+    // Route to mock if enabled (unless it's a goal endpoint)
+    if (isMockMode() && !shouldBypassMock(url)) {
       return resolveMock('GET', url, config?.params);
     }
 
@@ -126,8 +134,8 @@ export const httpClient = {
    * POST request
    */
   async post<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> {
-    // Route to mock if enabled
-    if (isMockMode()) {
+    // Route to mock if enabled (unless it's a goal endpoint)
+    if (isMockMode() && !shouldBypassMock(url)) {
       return resolveMock('POST', url, data);
     }
 
@@ -139,8 +147,8 @@ export const httpClient = {
    * PATCH request
    */
   async patch<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> {
-    // Route to mock if enabled
-    if (isMockMode()) {
+    // Route to mock if enabled (unless it's a goal endpoint)
+    if (isMockMode() && !shouldBypassMock(url)) {
       return resolveMock('PATCH', url, data);
     }
 
@@ -152,8 +160,8 @@ export const httpClient = {
    * DELETE request
    */
   async delete<T = any>(url: string, config?: AxiosRequestConfig): Promise<T> {
-    // Route to mock if enabled
-    if (isMockMode()) {
+    // Route to mock if enabled (unless it's a goal endpoint)
+    if (isMockMode() && !shouldBypassMock(url)) {
       return resolveMock('DELETE', url, config?.params);
     }
 
@@ -165,8 +173,8 @@ export const httpClient = {
    * PUT request
    */
   async put<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> {
-    // Route to mock if enabled
-    if (isMockMode()) {
+    // Route to mock if enabled (unless it's a goal endpoint)
+    if (isMockMode() && !shouldBypassMock(url)) {
       return resolveMock('PUT', url, data);
     }
 
