@@ -1258,8 +1258,8 @@ Goal Types and Required Information:
 
 3. "milestone": Project-based goals requiring state assessment
    - period (date range), milestones (stages), current state, verification methods, success rate
-   - Example: "유학 준비하기", "프로젝트 완성하기"
-   - Generated quests must have: title, targetValue, description
+   - Example: "유학 준비하기", "프로젝트 완성하기", "TOEIC 900점 달성하기"
+   - Generated quests must have: title, targetValue (number), description, verificationMethod
 
 Special Instructions for Milestone Goals:
 - Always assess the user's current state/level
@@ -1388,9 +1388,24 @@ For Milestone type:
   "quests": [
     {
       "id": "quest-1",
-      "title": "기초 단계",
-      "targetValue": 300,
-      "description": "기본기 다지기"
+      "title": "기초 완성 (700점)",
+      "targetValue": 700,
+      "description": "기본 문법과 어휘 다지기",
+      "verificationMethod": "camera"
+    },
+    {
+      "id": "quest-2",
+      "title": "중급 달성 (800점)",
+      "targetValue": 800,
+      "description": "실전 문제풀이와 듣기 집중",
+      "verificationMethod": "camera"
+    },
+    {
+      "id": "quest-3",
+      "title": "목표 달성 (900점)",
+      "targetValue": 900,
+      "description": "고난도 문제 정복 및 실전 모의고사",
+      "verificationMethod": "camera"
     }
   ]
 }

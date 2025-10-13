@@ -483,6 +483,7 @@ export interface CreateMilestoneGoalRequest extends CreateGoalRequestBase {
     title: string;
     targetValue: number;
     description: string;
+    verificationMethod: 'camera' | 'location' | 'manual';
   }>;
   totalSteps: number;
   currentStepIndex: number;

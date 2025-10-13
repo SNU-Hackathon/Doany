@@ -137,22 +137,18 @@ export const MILESTONE_SLOTS: SlotSchema = {
     {
       id: 'milestones',
       name: 'Milestone Steps',
-      type: 'chips',
+      type: 'text',
       required: true,
       label: '단계 목록',
-      description: '목표를 단계별로 나누어주세요',
-      options: ['kickoff', 'mid', 'finish'],
-      defaultValue: ['kickoff', 'mid', 'finish']
+      description: '목표를 단계별로 나누어주세요 (AI가 자동으로 생성합니다)'
     },
     {
-      id: 'currentStep',
-      name: 'Current Step',
-      type: 'chips',
-      required: false,
-      label: '현재 단계',
-      description: '현재 진행 중인 단계를 선택해주세요',
-      options: ['kickoff', 'mid', 'finish'],
-      defaultValue: 'kickoff'
+      id: 'currentState',
+      name: 'Current State',
+      type: 'text',
+      required: true,
+      label: '현재 상태',
+      description: '현재 어느 수준인지 알려주세요'
     },
     {
       id: 'verification',
@@ -163,6 +159,17 @@ export const MILESTONE_SLOTS: SlotSchema = {
       description: '목표 달성을 확인할 방법을 선택해주세요',
       options: ['사진', '위치 등록', '체크리스트'],
       defaultValue: ['체크리스트']
+    },
+    {
+      id: 'successRate',
+      name: 'Success Rate Target',
+      type: 'counter',
+      required: true,
+      label: '목표 달성률',
+      description: '몇 퍼센트 이상 달성하면 성공으로 인정할까요?',
+      min: 50,
+      max: 100,
+      defaultValue: 80
     }
   ]
 };

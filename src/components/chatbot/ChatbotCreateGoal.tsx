@@ -1212,16 +1212,23 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
           quests
         };
       } else {
-        // Milestone type: quests with title, targetValue, description
+        // Milestone type: quests with title, targetValue, description, verificationMethod
+        // Extract verification method from collectedSlots
+        const verificationMethods = state.collectedSlots.verification as string[] || ['체크리스트'];
+        const primaryVerification = verificationMethods[0] === '사진' ? 'camera' 
+          : verificationMethods[0] === '위치 등록' ? 'location' 
+          : 'manual';
+        
         // Use AI-generated quests if available, otherwise use default milestones
-        let quests: Array<{ title: string; targetValue: number; description: string }>;
+        let quests: Array<{ title: string; targetValue: number; description: string; verificationMethod: string }>;
         
         if (state.questPreview && state.questPreview.length > 0) {
           // Use AI-generated quests
           quests = state.questPreview.map((quest: any) => ({
             title: quest.title || '단계',
             targetValue: quest.targetValue || 100,
-            description: quest.description || '목표 달성'
+            description: quest.description || '목표 달성',
+            verificationMethod: quest.verificationMethod || primaryVerification
           }));
         } else {
           // Fallback to default milestones
@@ -1231,7 +1238,8 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
             targetValue: (index + 1) * 100,
             description: key === 'kickoff' ? '기본기 다지기' : 
                         key === 'mid' ? '중급 단계 진행' : 
-                        '최종 목표 달성'
+                        '최종 목표 달성',
+            verificationMethod: primaryVerification
           }));
         }
         
