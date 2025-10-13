@@ -41,7 +41,7 @@ export async function createGoal(
   // Determine goal type from form data
   const goalType: 'schedule' | 'frequency' | 'milestone' = 
     formData.type === 'schedule' ? 'schedule' :
-    formData.type === 'frequency' ? 'frequency' : 'frequency';
+    formData.type === 'frequency' ? 'frequency' : 'milestone';
 
   // Build API request based on goal type
   let apiRequest: CreateGoalRequest;

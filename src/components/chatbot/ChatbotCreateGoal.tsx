@@ -1143,13 +1143,27 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
       let goalData: any;
       const userId = user.userId || '1';
       const title = String(state.collectedSlots.title || '');
-      const description = `${state.currentGoalType} 목표`;
-      const tags = ['personal'];
+      
+      // Extract description and tags from collected slots or use title-based description
+      const description = state.collectedSlots.description 
+        ? String(state.collectedSlots.description)
+        : title; // Use title as description if not provided
+      
+      // Extract tags from collected slots or derive from title
+      const tags = state.collectedSlots.tags 
+        ? (Array.isArray(state.collectedSlots.tags) 
+            ? state.collectedSlots.tags 
+            : [String(state.collectedSlots.tags)])
+        : []; // Empty array if no tags provided
       
       if (state.currentGoalType === 'schedule') {
         // Schedule type: quests with date, time, description, verificationMethod
-        // Extract time from collectedSlots
+        // Extract time and verification method from collectedSlots
         const timeSlot = state.collectedSlots.time as string || '09:00';
+        const verificationMethods = state.collectedSlots.verification as string[] || ['camera'];
+        const primaryVerification = verificationMethods[0] === '사진' ? 'camera' 
+          : verificationMethods[0] === '위치 등록' ? 'location' 
+          : 'manual';
         
         const quests = (state.questPreview || []).map((quest: any) => {
           const date = quest.date || quest.scheduledDate || startAt?.split('T')[0];
@@ -1157,7 +1171,7 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
           return {
             date: `${date}T${time}`, // "2025-10-12T09:00"
             description: quest.description || quest.title || '퀘스트 완료',
-            verificationMethod: 'camera' as const
+            verificationMethod: quest.verificationMethod || primaryVerification
           };
         });
         
@@ -1167,7 +1181,7 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
           goalType: 'schedule' as const,
           title,
           description,
-          tags: tags || ['운동', '건강'],
+          tags,
           startAt,
           endAt,
           quests
@@ -1175,17 +1189,22 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
       } else if (state.currentGoalType === 'frequency') {
         // Frequency type: period, numbers, quests with unit
         const perWeek = Number(state.collectedSlots.perWeek) || 3;
+        const verificationMethods = state.collectedSlots.verification as string[] || ['camera'];
+        const primaryVerification = verificationMethods[0] === '사진' ? 'camera' 
+          : verificationMethods[0] === '위치 등록' ? 'location' 
+          : 'manual';
+        
         const quests = (state.questPreview || []).map((quest: any, index: number) => ({
           unit: index + 1,
           description: quest.description || quest.title || '퀘스트 완료',
-          verificationMethod: 'camera' as const
+          verificationMethod: quest.verificationMethod || primaryVerification
         }));
         
         goalData = {
           goalType: 'frequency' as const,
           title,
           description,
-          tags: tags || ['학습', '자기계발'],
+          tags,
           startAt,
           endAt,
           period: 'week' as const,
@@ -1218,21 +1237,27 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
         
         console.log('[SAVE.MILESTONE] Generated milestone quests:', quests);
         
+        // Calculate config values based on quest data
+        const lastQuest = quests[quests.length - 1];
+        const overallTargetValue = lastQuest?.targetValue || 0;
+        
         goalData = {
           goalType: 'milestone' as const,
           title,
           description,
-          tags: tags || ['자기계발', '학습'],
+          tags,
           startAt,
           endAt,
           scheduleMethod: 'milestone' as const,
           quests,
           totalSteps: quests.length,
           currentStepIndex: 0,
-          overallTarget: quests[quests.length - 1]?.targetValue || 100,
+          overallTarget: overallTargetValue,
           config: {
-            rewardPerStep: 100,
-            maxFails: 1
+            // Calculate reward per step based on total target divided by steps
+            rewardPerStep: Math.floor(overallTargetValue / quests.length) || 0,
+            // Allow failure for half of the steps (minimum 1)
+            maxFails: Math.max(1, Math.floor(quests.length / 2))
           }
         };
       }
