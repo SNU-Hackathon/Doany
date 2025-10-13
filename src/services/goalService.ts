@@ -52,8 +52,8 @@ export async function createGoal(
       title: formData.title,
       description: formData.description,
       tags: formData.category ? [formData.category] : [],
-      startAt: formData.duration?.startDate || undefined,
-      endAt: formData.duration?.endDate || undefined,
+      startAt: formData.duration?.startDate ? `${formData.duration.startDate}T00:00` : undefined,
+      endAt: formData.duration?.endDate ? `${formData.duration.endDate}T00:00` : undefined,
       quests: [], // Empty for now, should be filled by caller
     };
   } else if (goalType === 'frequency') {
@@ -62,8 +62,8 @@ export async function createGoal(
       title: formData.title,
       description: formData.description,
       tags: formData.category ? [formData.category] : [],
-      startAt: formData.duration?.startDate || undefined,
-      endAt: formData.duration?.endDate || undefined,
+      startAt: formData.duration?.startDate ? `${formData.duration.startDate}T00:00` : undefined,
+      endAt: formData.duration?.endDate ? `${formData.duration.endDate}T00:00` : undefined,
       period: 'week',
       numbers: formData.frequency?.count || 3,
       quests: [], // Empty for now, should be filled by caller
@@ -74,9 +74,17 @@ export async function createGoal(
       title: formData.title,
       description: formData.description,
       tags: formData.category ? [formData.category] : [],
-      startAt: formData.duration?.startDate || undefined,
-      endAt: formData.duration?.endDate || undefined,
+      startAt: formData.duration?.startDate ? `${formData.duration.startDate}T00:00` : undefined,
+      endAt: formData.duration?.endDate ? `${formData.duration.endDate}T00:00` : undefined,
+      scheduleMethod: 'milestone',
       quests: [], // Empty for now, should be filled by caller
+      totalSteps: 3, // Default value
+      currentStepIndex: 0,
+      overallTarget: 100,
+      config: {
+        rewardPerStep: 100,
+        maxFails: 1
+      }
     };
   }
 
