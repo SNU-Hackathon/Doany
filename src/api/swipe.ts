@@ -6,11 +6,11 @@
 
 import { httpClient } from '../lib/http';
 import {
-  Paged,
-  SwipeProofItem,
-  SwipeProofsResponse,
-  VoteRequest,
-  VoteResponse
+    Paged,
+    SwipeProofItem,
+    SwipeProofsResponse,
+    VoteRequest,
+    VoteResponse
 } from './types';
 
 /**
@@ -41,16 +41,15 @@ export async function getSwipeProofs(query?: {
  * Vote on a proof (per API v1.3 spec)
  * 
  * @endpoint PATCH /swipe/proofs/{proofId}
- * Updates voteCount (+1 for yes, -1 for no) and increments voteAttempt
+ * Updates voteCount (+1 for yes, -1 for no) and decrements voteAttempt by 1
  * 
  * @param proofId Proof ID
  * @param vote 'yes' or 'no'
- * @param serveId Session identifier
  * @returns Updated proof with vote stats
  * 
  * @example
  * ```typescript
- * const result = await voteOnProof('proof-456', 'yes', 'serve-session-789');
+ * const result = await voteOnProof({ proofId: 'proof-456', body: { vote: 'yes' } });
  * ```
  */
 export async function voteOnProof(opts: {
@@ -74,31 +73,28 @@ export async function voteOnProof(opts: {
 /**
  * Complete proof voting (per API v1.3 spec)
  * 
- * @endpoint PATCH /swipe-complete/proofs/{proofId}
- * Sets state to 'complete' or 'fail' based on quorum
+ * @endpoint PATCH /swipe/swipe-complete/proofs/{proofId}
+ * Sets state to 'complete' or 'fail' based on quorum (voteCount >= 0 → complete, < 0 → fail)
+ * Called when voteAttempt reaches 1 (last vote)
  * 
  * @param proofId Proof ID
- * @param serveId Session identifier (optional)
  * @returns Final proof state
  * 
  * @example
  * ```typescript
- * const result = await completeProofVoting('proof-456', 'serve-session-789');
+ * const result = await completeProofVoting('proof-456');
  * ```
  */
 export async function completeProofVoting(
-  proofId: string,
-  serveId?: string
+  proofId: string
 ): Promise<{ proofId: string; state: 'complete' | 'fail'; stats: { yes: number; no: number } }> {
   if (__DEV__) {
     console.log(`[completeProofVoting] proofId=${proofId}`);
   }
-
-  const payload = serveId ? { serveId } : {};
   
   return httpClient.patch<{ proofId: string; state: 'complete' | 'fail'; stats: { yes: number; no: number } }>(
-    `/swipe-complete/proofs/${proofId}`,
-    payload
+    `/swipe/swipe-complete/proofs/${proofId}`,
+    {}
   );
 }
 

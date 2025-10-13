@@ -36,7 +36,9 @@ const createAxiosInstance = (): AxiosInstance => {
 
       // Log requests in development
       if (__DEV__) {
-        console.log(`[HTTP] ${config.method?.toUpperCase()} ${config.url}`, {
+        // Construct full URL with query parameters
+        const fullUrl = `${config.baseURL}${config.url}${config.params ? '?' + new URLSearchParams(config.params).toString() : ''}`;
+        console.log(`[HTTP] 🌐 ${config.method?.toUpperCase()} ${fullUrl}`, {
           params: config.params,
           data: config.data,
         });

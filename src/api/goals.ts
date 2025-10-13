@@ -270,7 +270,7 @@ export async function postProof(
 /**
  * Get proof details
  * 
- * @endpoint GET /me/proofs/{proofId}
+ * @endpoint GET /goals/proofs/me/{proofId}
  * @param proofId Proof identifier
  * @returns Detailed proof information
  * 
@@ -280,13 +280,13 @@ export async function postProof(
  * ```
  */
 export async function getProof(proofId: string): Promise<ProofDetail> {
-  return httpClient.get<ProofDetail>(`/me/proofs/${proofId}`);
+  return httpClient.get<ProofDetail>(`/goals/proofs/me/${proofId}`);
 }
 
 /**
  * Delete a proof
  * 
- * @endpoint DELETE /proofs/{proofId}
+ * @endpoint DELETE /goals/proofs/{proofId}
  * @param proofId Proof identifier
  * 
  * @example
@@ -295,6 +295,6 @@ export async function getProof(proofId: string): Promise<ProofDetail> {
  * ```
  */
 export async function deleteProof(proofId: string): Promise<void> {
-  return httpClient.delete(`/proofs/${proofId}`);
+  return httpClient.delete(`/goals/proofs/${proofId}`);
 }
 

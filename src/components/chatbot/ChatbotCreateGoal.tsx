@@ -1128,10 +1128,10 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
       console.log('[SAVE.DEBUG] questPreview:', state.questPreview);
       console.log('[SAVE.DEBUG] collectedSlots:', state.collectedSlots);
       
-      // Get period data and convert to ISO format with time
+      // Get period data (API expects date only: "2025-10-12")
       const period = state.collectedSlots.period as { startDate: string; endDate: string };
-      const startAt = period?.startDate ? `${period.startDate}T09:00` : undefined;
-      const endAt = period?.endDate ? `${period.endDate}T18:00` : undefined;
+      const startAt = period?.startDate || undefined;
+      const endAt = period?.endDate || undefined;
       
       if (!startAt || !endAt) {
         console.error('[SAVE.FAIL] Missing start or end date');
@@ -1148,12 +1148,17 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
       
       if (state.currentGoalType === 'schedule') {
         // Schedule type: quests with date, time, description, verificationMethod
+        // Extract time from collectedSlots
+        const timeSlot = state.collectedSlots.time as string || '09:00';
+        
         const quests = (state.questPreview || []).map((quest: any) => ({
-          date: quest.date || quest.scheduledDate || startAt?.split('T')[0],
-          time: quest.time || '09:00',
+          date: quest.date || quest.scheduledDate || startAt,
+          time: quest.time || timeSlot,
           description: quest.description || quest.title || '퀘스트 완료',
           verificationMethod: 'camera' as const
         }));
+        
+        console.log('[SAVE.SCHEDULE] Generated schedule quests:', quests);
         
         goalData = {
           goalType: 'schedule' as const,
@@ -1186,27 +1191,42 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
         };
       } else {
         // Milestone type: quests with title, targetValue, description
-        const milestones = state.collectedSlots.milestones as string[] || ['kickoff', 'mid', 'finish'];
-        const quests = milestones.map((key: string, index: number) => ({
-          title: key === 'kickoff' ? '기초 완성 (700점)' : key === 'mid' ? '중급 달성 (800점)' : '목표 달성 (900점)',
-          targetValue: key === 'kickoff' ? 700 : key === 'mid' ? 800 : 900,
-          description: key === 'kickoff' ? '기본 문법과 어휘 다지기' : 
-                      key === 'mid' ? '실전 문제풀이와 듣기 집중' : 
-                      '고난도 문제 정복 및 실전 모의고사'
-        }));
+        // Use AI-generated quests if available, otherwise use default milestones
+        let quests: Array<{ title: string; targetValue: number; description: string }>;
+        
+        if (state.questPreview && state.questPreview.length > 0) {
+          // Use AI-generated quests
+          quests = state.questPreview.map((quest: any) => ({
+            title: quest.title || '단계',
+            targetValue: quest.targetValue || 100,
+            description: quest.description || '목표 달성'
+          }));
+        } else {
+          // Fallback to default milestones
+          const milestones = state.collectedSlots.milestones as string[] || ['kickoff', 'mid', 'finish'];
+          quests = milestones.map((key: string, index: number) => ({
+            title: key === 'kickoff' ? '기초 완성' : key === 'mid' ? '중급 달성' : '목표 달성',
+            targetValue: (index + 1) * 100,
+            description: key === 'kickoff' ? '기본기 다지기' : 
+                        key === 'mid' ? '중급 단계 진행' : 
+                        '최종 목표 달성'
+          }));
+        }
+        
+        console.log('[SAVE.MILESTONE] Generated milestone quests:', quests);
         
         goalData = {
           goalType: 'milestone' as const,
           title,
           description,
-          tags: tags || ['영어', 'TOEIC', '자격증'],
+          tags: tags || ['자기계발', '학습'],
           startAt,
           endAt,
           scheduleMethod: 'milestone' as const,
           quests,
-          totalSteps: milestones.length,
+          totalSteps: quests.length,
           currentStepIndex: 0,
-          overallTarget: 900,
+          overallTarget: quests[quests.length - 1]?.targetValue || 100,
           config: {
             rewardPerStep: 100,
             maxFails: 1
