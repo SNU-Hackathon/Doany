@@ -113,10 +113,10 @@ export interface MilestoneSpec {
     description?: string;
 
     /** 시작 시점 */
-    startAt?: string; // ISO date string e.g. "2025-10-01"
+    startAt?: string; // ISO date string e.g. "2025-10-01T00:00"
 
     /** 완료 시점 (optional) */
-    endAt?: string;
+    endAt?: string; // ISO date string e.g. "2025-10-31T00:00"
 
     /** 현재 달성 여부 */
     achieved?: boolean;
@@ -402,8 +402,8 @@ export interface CreateGoalRequestBase {
   title: string;
   description: string;
   tags: string[];
-  startAt: string; // "2025-10-12"
-  endAt: string; // "2025-10-29"
+  startAt: string; // "2025-10-12T00:00"
+  endAt: string; // "2025-10-29T00:00"
 }
 
 /**

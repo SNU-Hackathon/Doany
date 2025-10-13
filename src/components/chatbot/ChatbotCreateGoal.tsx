@@ -1128,10 +1128,10 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
       console.log('[SAVE.DEBUG] questPreview:', state.questPreview);
       console.log('[SAVE.DEBUG] collectedSlots:', state.collectedSlots);
       
-      // Get period data (API expects date only: "2025-10-12")
+      // Get period data (API expects ISO format: "2025-10-12T09:00")
       const period = state.collectedSlots.period as { startDate: string; endDate: string };
-      const startAt = period?.startDate || undefined;
-      const endAt = period?.endDate || undefined;
+      const startAt = period?.startDate ? `${period.startDate}T00:00` : undefined;
+      const endAt = period?.endDate ? `${period.endDate}T00:00` : undefined;
       
       if (!startAt || !endAt) {
         console.error('[SAVE.FAIL] Missing start or end date');
@@ -1151,12 +1151,15 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
         // Extract time from collectedSlots
         const timeSlot = state.collectedSlots.time as string || '09:00';
         
-        const quests = (state.questPreview || []).map((quest: any) => ({
-          date: quest.date || quest.scheduledDate || startAt,
-          time: quest.time || timeSlot,
-          description: quest.description || quest.title || '퀘스트 완료',
-          verificationMethod: 'camera' as const
-        }));
+        const quests = (state.questPreview || []).map((quest: any) => {
+          const date = quest.date || quest.scheduledDate || startAt?.split('T')[0];
+          const time = quest.time || timeSlot;
+          return {
+            date: `${date}T${time}`, // "2025-10-12T09:00"
+            description: quest.description || quest.title || '퀘스트 완료',
+            verificationMethod: 'camera' as const
+          };
+        });
         
         console.log('[SAVE.SCHEDULE] Generated schedule quests:', quests);
         
