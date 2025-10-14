@@ -21,7 +21,6 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
-import { getGoal } from '../api/goals';
 import { LoadingState, ScreenContainer, ScreenHeader } from '../components';
 import { ShareToFeedDialog } from '../components/feed';
 import { useAuth } from '../hooks/useAuth';
@@ -629,17 +628,20 @@ export default function GoalDetailScreenV2({ route, navigation, onClose }: GoalD
           else if (apiQuest.state === 'onTrack') status = 'pending';
 
           return {
-            id: apiQuest.questId,
+            // API fields
+            questId: apiQuest.questId,
             goalId: apiQuest.goalId,
+            date: apiQuest.date,
+            description: apiQuest.description,
+            state: apiQuest.state,
+            completedAt: apiQuest.completedAt,
+            proof: apiQuest.proof,
+            // Legacy fields for UI compatibility
+            id: apiQuest.questId,
             userId: userId,
             title: apiQuest.description || '',
-            description: apiQuest.description,
             status,
             targetDate: apiQuest.date,
-            completedAt: typeof apiQuest.completedAt === 'number'
-              ? new Date(apiQuest.completedAt).toISOString()
-              : apiQuest.completedAt,
-            // Extract proof photos if available
             verificationPhotos: apiQuest.proof?.url ? [apiQuest.proof.url] : [],
             createdAt: new Date(),
             updatedAt: new Date(),

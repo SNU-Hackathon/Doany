@@ -359,21 +359,43 @@ export interface GoalDetail {
   title: string;
   description?: string;
   tags?: string[];
-  GoalType?: 'schedule' | 'frequency' | 'milestone';
 
-  /** 일정 정보 (schedule 타입일 때만) */
-  schedule?: {
-    type: 'daily' | 'weekly' | 'monthly' | 'custom';
-    time?: string; // "21:00" 형태
-  };
+  /** 목표 유형 - 어떤 스펙을 쓸지 결정 */
+  goalType?: GoalType;
 
-  /** 퀘스트 목록 */
-  quests: Array<{
+  /** 일정 기반 목표 (e.g. 매일 9시 운동) */
+  schedule?: ScheduleSpec;
+
+  /** 빈도 기반 목표 (e.g. 주 3회 운동) */
+  frequency?: FrequencySpec;
+
+  /** 단계 기반 목표 (e.g. 3단계 다이어트 플랜) */
+  milestone?: MilestoneSpec;
+
+  /** 개별 세션(Quest) 정보 — schedule/frequency 공통 */
+  quests?: Array<{
     questId: string;
-    date: string; // "2025-10-08"
+    goalId: string;
+    date: string; // ISO date string: "2025-10-08"
     description: string;
-    state: 'complete' | 'fail' | 'onTrack';
+    state: QuestState; // 'onTrack' | 'complete' | 'fail'
+    completedAt?: number | string;
+    proof?: {
+      proofId?: string;
+      url?: string;
+      description?: string;
+      type?: 'photo' | 'video' | 'text' | 'document';
+    };
   }>;
+  
+  // 추가 필드들
+  visibility?: GoalVisibility;
+  state?: GoalState;
+  userId?: string;
+  startAt?: string;
+  endAt?: string;
+  createdAt?: number | string;
+  updatedAt?: number | string;
 }
 
 /**
