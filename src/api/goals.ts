@@ -84,15 +84,33 @@ export async function getMyGoals(
  * @param goalId Goal identifier
  * @returns Detailed goal information including quests
  * 
- * @example
- * ```typescript
- * const goal = await getGoalWithQuests('goal-123');
+ * @example Response:
+ * ```json
+ * {
+ *   "goalId": "goal_abc",
+ *   "title": "Read 30 mins",
+ *   "description": "Read book before bed",
+ *   "GoalType": "schedule",
+ *   "schedule": { "type": "daily", "time": "21:00" },
+ *   "tags": ["reading"],
+ *   "quests": [
+ *     {"questId": "qst_1", "date": "2025-10-08", "description": "책 30분 읽기", "state": "complete"}
+ *   ]
+ * }
  * ```
  */
 export async function getGoalWithQuests(
   goalId: string
 ): Promise<GoalDetail> {
-  return httpClient.get<GoalDetail>(`/goals/quests/${goalId}`);
+  try {
+    console.log('[GOALS] 📝 Fetching goal details:', goalId);
+    const response = await httpClient.get<GoalDetail>(`/goals/quests/${goalId}`);
+    console.log('[GOALS] ✅ Goal details received:', response);
+    return response;
+  } catch (error) {
+    console.error('[GOALS] ❌ Error fetching goal details:', error);
+    throw error;
+  }
 }
 
 /**
