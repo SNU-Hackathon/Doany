@@ -352,6 +352,19 @@ export interface ProofSummary {
 /**
  * Goal detail (expanded view)
  * 명세서: GET /goals/quests/{goalId} 응답
+ * 
+ * 예시:
+ * {
+ *   "goalId": "goal_abc",
+ *   "title": "Read 30 mins",
+ *   "description": "Read book before bed",
+ *   "GoalType": "schedule",
+ *   "schedule": { "type": "daily", "time": "21:00" },
+ *   "tags": ["reading"],
+ *   "quests": [
+ *     {"questId":"qst_1", "date": "2025-10-08", "description": "책 30분 읽기", "state":"complete"}
+ *   ]
+ * }
  */
 export interface GoalDetail {
   /** 기본 식별자 */
@@ -360,28 +373,24 @@ export interface GoalDetail {
   description?: string;
   tags?: string[];
 
-  /** 목표 유형 - 어떤 스펙을 쓸지 결정 */
-  goalType?: GoalType;
+  /** 목표 유형 (API 명세서: 대문자 GoalType) */
+  GoalType?: 'schedule' | 'frequency' | 'milestone';
 
-  /** 일정 기반 목표 (e.g. 매일 9시 운동) */
+  /** 일정 기반 목표 (schedule 타입일 때만) */
   schedule?: ScheduleSpec;
 
-  /** 빈도 기반 목표 (e.g. 주 3회 운동) */
+  /** 빈도 기반 목표 (frequency 타입일 때만) */
   frequency?: FrequencySpec;
 
-  /** 단계 기반 목표 (e.g. 3단계 다이어트 플랜) */
+  /** 단계 기반 목표 (milestone 타입일 때만) */
   milestone?: MilestoneSpec;
 
-  /** 개별 세션(Quest) 정보 — schedule/frequency 공통 */
+  /** 개별 세션(Quest) 정보 */
   quests?: Array<{
-    questId?: string;
+    questId: string;
     date: string; // ISO date string: "2025-10-08"
-    time?: string; // optional time string
-    description?: string;
-    state?: QuestState; // 'onTrack' | 'complete' | 'fail'
-    completedAt?: number | string;
-    method?: VerificationMethod;
-    url?: string; // proof image/video URL
+    description: string;
+    state: 'complete' | 'fail' | 'onTrack';
   }>;
   
   // 추가 필드들
@@ -513,15 +522,21 @@ export interface CreateGoalResponse {
 
 /**
  * Patch goal request
+ * 명세서: PATCH /goals/{goalId}
+ * 
+ * 예시:
+ * {
+ *   "title": "Read 20 mins",
+ *   "description": "Short before bed",
+ *   "tags": ["reading","night"],
+ *   "visibility": "public"
+ * }
  */
 export interface PatchGoalRequest {
   title?: string;
   description?: string;
   tags?: string[];
   visibility?: GoalVisibility;
-  state?: GoalState;
-  startAt?: number | string;
-  endAt?: number | string;
 }
 
 // ============================================================================
@@ -530,22 +545,38 @@ export interface PatchGoalRequest {
 
 /**
  * Patch quest request
+ * 명세서: PATCH /goals/quests/{questId}
+ * 
+ * 예시:
+ * {
+ *   "state": "complete",
+ *   "completedAt": 1727576400,
+ *   "note": "Finished chapter 2"
+ * }
  */
 export interface PatchQuestRequest {
-  state?: QuestState;
-  completedAt?: number | string;
-  description?: string;
+  state?: 'complete' | 'fail' | 'onTrack';
+  completedAt?: number;
+  note?: string;
 }
 
 /**
  * Patch quest response
+ * 명세서: PATCH /goals/quests/{questId} 응답
+ * 
+ * 예시:
+ * {
+ *   "goalId": "goal_abc",
+ *   "progressCurrent": 42,
+ *   "progressTotal": 50,
+ *   "successRate": 0.84
+ * }
  */
 export interface PatchQuestResponse {
-  questId: string;
   goalId: string;
-  state?: QuestState;
-  completedAt?: number | string;
-  updatedAt: number | string;
+  progressCurrent: number;
+  progressTotal: number;
+  successRate: number;
 }
 
 // ============================================================================
@@ -554,43 +585,53 @@ export interface PatchQuestResponse {
 
 /**
  * Post proof request
+ * 명세서: POST /goals/{goalId}/quests/{questId}/proofs
+ * 
+ * 예시:
+ * {
+ *   "url": "대충 사진 링크 어쩌고",
+ *   "description": "아침 7시에 헬스장 가기 (30분까지 허용)"
+ * }
  */
 export interface PostProofRequest {
   url: string;
   description?: string;
-  type?: ProofType;
 }
 
 /**
  * Post proof response
+ * 명세서: POST /goals/{goalId}/quests/{questId}/proofs 응답 201
+ * 
+ * 예시:
+ * {
+ *   "proofId": "proof_x1y2",
+ *   "createdAt": 1727576555
+ * }
  */
 export interface PostProofResponse {
   proofId: string;
-  questId: string;
-  goalId: string;
-  url: string;
-  description?: string;
-  type?: ProofType;
-  createdAt: number | string;
+  createdAt: number;
 }
 
 /**
  * Proof detail
+ * 명세서: GET /goals/proofs/me/{proofId} 응답 200
+ * 
+ * 예시:
+ * {
+ *   "type": "photo",
+ *   "url": "https://cdn.doany.com/proofs/photo123.jpg",
+ *   "description": "오늘 인증사진",
+ *   "createdAt": 1727662800,
+ *   "updatedAt": 1727662800
+ * }
  */
 export interface ProofDetail {
-  proofId: string;
-  questId: string;
-  goalId: string;
-  userId: string;
+  type: 'photo' | 'video' | 'pdf' | 'manual';
   url: string;
   description?: string;
-  type?: ProofType;
-  votes?: {
-    yes: number;
-    no: number;
-  };
-  createdAt: number | string;
-  updatedAt: number | string;
+  createdAt: number;
+  updatedAt: number;
 }
 
 // ============================================================================
