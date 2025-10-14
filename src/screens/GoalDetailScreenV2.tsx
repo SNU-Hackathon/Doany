@@ -21,6 +21,7 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
+import { getGoalWithQuests } from '../api/goals';
 import { LoadingState, ScreenContainer, ScreenHeader } from '../components';
 import { ShareToFeedDialog } from '../components/feed';
 import { useAuth } from '../hooks/useAuth';
