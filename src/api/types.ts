@@ -351,20 +351,7 @@ export interface ProofSummary {
 
 /**
  * Goal detail (expanded view)
- * 명세서: GET /goals/quests/{goalId} 응답
- * 
- * 예시:
- * {
- *   "goalId": "goal_abc",
- *   "title": "Read 30 mins",
- *   "description": "Read book before bed",
- *   "GoalType": "schedule",
- *   "schedule": { "type": "daily", "time": "21:00" },
- *   "tags": ["reading"],
- *   "quests": [
- *     {"questId":"qst_1", "date": "2025-10-08", "description": "책 30분 읽기", "state":"complete"}
- *   ]
- * }
+ * 앱 내부 "풍부한" GoalDetail 모델 (Schedule / Frequency / Milestone 지원)
  */
 export interface GoalDetail {
   /** 기본 식별자 */
@@ -373,24 +360,28 @@ export interface GoalDetail {
   description?: string;
   tags?: string[];
 
-  /** 목표 유형 (API 명세서: 대문자 GoalType) */
-  GoalType?: 'schedule' | 'frequency' | 'milestone';
+  /** 목표 유형 - 어떤 스펙을 쓸지 결정 */
+  goalType?: 'schedule' | 'frequency' | 'milestone';
 
-  /** 일정 기반 목표 (schedule 타입일 때만) */
+  /** 일정 기반 목표 (e.g. 매일 9시 운동) */
   schedule?: ScheduleSpec;
 
-  /** 빈도 기반 목표 (frequency 타입일 때만) */
+  /** 빈도 기반 목표 (e.g. 주 3회 운동) */
   frequency?: FrequencySpec;
 
-  /** 단계 기반 목표 (milestone 타입일 때만) */
+  /** 단계 기반 목표 (e.g. 3단계 다이어트 플랜) */
   milestone?: MilestoneSpec;
 
-  /** 개별 세션(Quest) 정보 */
+  /** 개별 세션(Quest) 정보 — schedule/frequency 공통 */
   quests?: Array<{
-    questId: string;
-    date: string; // ISO date string: "2025-10-08"
-    description: string;
-    state: 'complete' | 'fail' | 'onTrack';
+    questId?: string;
+    date: string;
+    time?: string; // optional time string
+    description?: string;
+    state?: QuestState; // 'onTrack' | 'complete' | 'fail'
+    completedAt?: number | string;
+    method?: 'camera' | 'photo' | 'manual';
+    url?: string; // proof image/video URL
   }>;
   
   // 추가 필드들
