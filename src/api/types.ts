@@ -374,18 +374,14 @@ export interface GoalDetail {
 
   /** 개별 세션(Quest) 정보 — schedule/frequency 공통 */
   quests?: Array<{
-    questId: string;
-    goalId: string;
+    questId?: string;
     date: string; // ISO date string: "2025-10-08"
-    description: string;
-    state: QuestState; // 'onTrack' | 'complete' | 'fail'
+    time?: string; // optional time string
+    description?: string;
+    state?: QuestState; // 'onTrack' | 'complete' | 'fail'
     completedAt?: number | string;
-    proof?: {
-      proofId?: string;
-      url?: string;
-      description?: string;
-      type?: 'photo' | 'video' | 'text' | 'document';
-    };
+    method?: VerificationMethod;
+    url?: string; // proof image/video URL
   }>;
   
   // 추가 필드들

@@ -614,38 +614,35 @@ export default function GoalDetailScreenV2({ route, navigation, onClose }: GoalD
 
     try {
       // Get goal with quests (mock includes quests with proofs)
-      const goalData = await getGoal(goalId, { expand: 'quests' });
+      const goalData = await getGoalWithQuests(goalId);
 
       setGoal(goalData as any);
       
-      // Transform API quests to Quest type
-      if (goalData.quests) {
-        const transformedQuests = goalData.quests.map(apiQuest => {
-          // Normalize API state to Quest status
-          let status: 'pending' | 'completed' | 'failed' | 'skipped' = 'pending';
-          if (apiQuest.state === 'complete') status = 'completed';
-          else if (apiQuest.state === 'fail') status = 'failed';
-          else if (apiQuest.state === 'onTrack') status = 'pending';
+          // Transform API quests to Quest type
+          if (goalData.quests) {
+            const transformedQuests = goalData.quests.map(apiQuest => {
+              // Normalize API state to Quest status
+              let status: 'pending' | 'completed' | 'failed' | 'skipped' = 'pending';
+              if (apiQuest.state === 'complete') status = 'completed';
+              else if (apiQuest.state === 'fail') status = 'failed';
+              else if (apiQuest.state === 'onTrack') status = 'pending';
 
-          return {
-            // API fields
-            questId: apiQuest.questId,
-            goalId: apiQuest.goalId,
-            date: apiQuest.date,
-            description: apiQuest.description,
-            state: apiQuest.state,
-            completedAt: apiQuest.completedAt,
-            proof: apiQuest.proof,
-            // Legacy fields for UI compatibility
-            id: apiQuest.questId,
-            userId: userId,
-            title: apiQuest.description || '',
-            status,
-            targetDate: apiQuest.date,
-            verificationPhotos: apiQuest.proof?.url ? [apiQuest.proof.url] : [],
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          } as Quest;
+              return {
+                // API fields
+                questId: apiQuest.questId,
+                date: apiQuest.date,
+                description: apiQuest.description,
+                state: apiQuest.state,
+                // Legacy fields for UI compatibility
+                id: apiQuest.questId,
+                goalId: goalId,
+                userId: userId,
+                title: apiQuest.description || '',
+                status,
+                targetDate: apiQuest.date,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+              } as Quest;
         });
 
         // Sort by date
