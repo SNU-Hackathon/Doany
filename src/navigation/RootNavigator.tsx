@@ -6,11 +6,13 @@ import { ActivityIndicator, Text, View } from 'react-native';
 import OfflineBanner from '../components/OfflineBanner';
 import { useAuth } from '../hooks/useAuth';
 import AuthScreen from '../screens/AuthScreen';
+import RankingScreen from '../screens/RankingScreen';
 import MainTabNavigator from './MainTabNavigator';
 
 export type RootStackParamList = {
   Tabs: undefined;
   LevelMap: undefined;
+  Ranking: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -49,6 +51,14 @@ export default function RootNavigator() {
         <Stack.Screen 
           name="Tabs" 
           component={MainTabNavigator}
+        />
+        <Stack.Screen 
+          name="Ranking" 
+          component={RankingScreen}
+          options={{
+            presentation: 'card',
+            animation: 'slide_from_right',
+          }}
         />
       </Stack.Navigator>
     </View>
