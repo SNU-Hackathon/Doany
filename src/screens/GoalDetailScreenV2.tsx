@@ -459,19 +459,21 @@ function DetailTab({ quests, goal, refreshing, onRefresh, onUpload, onComplete, 
   };
 
   return (
-    <FlatList
-      data={quests}
-      keyExtractor={(item) => item.id}
-      renderItem={renderQuestCard}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-      contentContainerStyle={{ paddingVertical: 16, paddingBottom: 100 }}
-      ListEmptyComponent={
-        <View style={{ alignItems: 'center', paddingVertical: 48 }}>
-          <Ionicons name="calendar-outline" size={64} color="#D1D5DB" />
-          <Text style={{ color: '#9CA3AF', marginTop: 16, fontSize: 14 }}>퀘스트가 없습니다</Text>
-        </View>
-      }
-    />
+    <View style={{ flex: 1 }}>
+      <FlatList
+        data={quests}
+        keyExtractor={(item) => item.id}
+        renderItem={renderQuestCard}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        contentContainerStyle={{ paddingVertical: 16, paddingBottom: 100 }}
+        ListEmptyComponent={
+          <View style={{ alignItems: 'center', paddingVertical: 48 }}>
+            <Ionicons name="calendar-outline" size={64} color="#D1D5DB" />
+            <Text style={{ color: '#9CA3AF', marginTop: 16, fontSize: 14 }}>퀘스트가 없습니다</Text>
+          </View>
+        }
+      />
+    </View>
   );
 }
 
@@ -542,12 +544,9 @@ export default function GoalDetailScreenV2({ route, navigation, onClose }: GoalD
   const pan = useMemo(() => new Animated.Value(0), []);
   const { height: screenHeight } = Dimensions.get('window');
 
-  // PanResponder for swipe down to dismiss
+  // PanResponder for swipe down to dismiss (only on drag indicator)
   const panResponder = useMemo(() => PanResponder.create({
-    onStartShouldSetPanResponder: (evt, gestureState) => {
-      // Always capture touches that start at the top of the screen
-      return evt.nativeEvent.pageY < 100;
-    },
+    onStartShouldSetPanResponder: () => true,
     onMoveShouldSetPanResponder: (evt, gestureState) => {
       // Respond to vertical swipes, especially downward
       const isVerticalSwipe = Math.abs(gestureState.dy) > Math.abs(gestureState.dx);
@@ -839,82 +838,85 @@ export default function GoalDetailScreenV2({ route, navigation, onClose }: GoalD
           }),
         },
       ]}
-      {...panResponder.panHandlers}
     >
-      <ScreenContainer backgroundColor="white">
-        {/* Drag indicator */}
-        <View style={styles.dragIndicator} />
-        
-        <ScreenHeader
-          title="퀘스트"
-          showBackButton
-          onBackPress={handleBack}
-          rightAction={{
-            icon: 'notifications-outline',
-            onPress: () => {},
-          }}
-          borderBottom
-        />
+      <ScreenContainer backgroundColor="white" scrollable={false} contentPadding={false}>
+        <View style={{ zIndex: 100 }}>
+          {/* Drag indicator */}
+          <View style={styles.dragIndicator} {...panResponder.panHandlers} />
+          
+          <ScreenHeader
+            title="퀘스트"
+            showBackButton
+            onBackPress={handleBack}
+            rightAction={{
+              icon: 'notifications-outline',
+              onPress: () => {},
+            }}
+            borderBottom
+          />
 
-      {/* Tabs */}
-      <View style={{ flexDirection: 'row', paddingHorizontal: 16, backgroundColor: 'white' }}>
-        <TouchableOpacity
-          style={{ 
-            flex: 1, 
-            paddingVertical: 14, 
-            borderBottomWidth: 2, 
-            borderBottomColor: activeTab === 'calendar' ? '#3B82F6' : 'transparent' 
-          }}
-          onPress={() => setActiveTab('calendar')}
-        >
-          <Text style={{ 
-            textAlign: 'center', 
-            fontSize: 15,
-            fontWeight: '700', 
-            color: activeTab === 'calendar' ? '#3B82F6' : '#9CA3AF' 
-          }}>
-            퀘스트
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={{ 
-            flex: 1, 
-            paddingVertical: 14, 
-            borderBottomWidth: 2, 
-            borderBottomColor: activeTab === 'detail' ? '#3B82F6' : 'transparent' 
-          }}
-          onPress={() => setActiveTab('detail')}
-        >
-          <Text style={{ 
-            textAlign: 'center', 
-            fontSize: 15,
-            fontWeight: '700', 
-            color: activeTab === 'detail' ? '#3B82F6' : '#9CA3AF' 
-          }}>
-            상세보기
-          </Text>
-        </TouchableOpacity>
-      </View>
+          {/* Tabs */}
+          <View style={{ flexDirection: 'row', paddingHorizontal: 16, backgroundColor: 'white' }}>
+            <TouchableOpacity
+              style={{ 
+                flex: 1, 
+                paddingVertical: 14, 
+                borderBottomWidth: 2, 
+                borderBottomColor: activeTab === 'calendar' ? '#3B82F6' : 'transparent' 
+              }}
+              onPress={() => setActiveTab('calendar')}
+            >
+              <Text style={{ 
+                textAlign: 'center', 
+                fontSize: 15,
+                fontWeight: '700', 
+                color: activeTab === 'calendar' ? '#3B82F6' : '#9CA3AF' 
+              }}>
+                퀘스트
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={{ 
+                flex: 1, 
+                paddingVertical: 14, 
+                borderBottomWidth: 2, 
+                borderBottomColor: activeTab === 'detail' ? '#3B82F6' : 'transparent' 
+              }}
+              onPress={() => setActiveTab('detail')}
+            >
+              <Text style={{ 
+                textAlign: 'center', 
+                fontSize: 15,
+                fontWeight: '700', 
+                color: activeTab === 'detail' ? '#3B82F6' : '#9CA3AF' 
+              }}>
+                상세보기
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
 
-      {/* Tab content */}
-      {activeTab === 'calendar' ? (
-        <CalendarTab 
-          selectedMonth={selectedMonth}
-          quests={quests}
-          onMonthChange={changeMonth}
-        />
-      ) : (
-        <DetailTab 
-          quests={quests}
-          goal={goal}
-          refreshing={refreshing}
-          onRefresh={handleRefresh}
-          onUpload={handleUpload}
-          onComplete={handleComplete}
-          onSkip={handleSkip}
-          onViewPhotos={handleViewPhotos}
-        />
-      )}
+        {/* Tab content */}
+        <View style={{ flex: 1 }}>
+          {activeTab === 'calendar' ? (
+            <CalendarTab 
+              selectedMonth={selectedMonth}
+              quests={quests}
+              onMonthChange={changeMonth}
+            />
+          ) : (
+            <DetailTab 
+              quests={quests}
+              goal={goal}
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              onUpload={handleUpload}
+              onComplete={handleComplete}
+              onSkip={handleSkip}
+              onViewPhotos={handleViewPhotos}
+            />
+          )}
+        </View>
 
       {/* Share to Feed Dialog */}
       {currentQuest && (
@@ -965,5 +967,8 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     marginTop: 8,
     marginBottom: 8,
+    // Expand touch area
+    paddingVertical: 12,
+    paddingHorizontal: 50,
   },
 });

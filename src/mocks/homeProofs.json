@@ -1,0 +1,183 @@
+[
+  {
+    "proofId": "proof_001",
+    "goalId": "goal_run_3k",
+    "user": {
+      "displayName": "User ID",
+      "tier": "골드",
+      "avatarUrl": "https://i.pravatar.cc/150?img=11"
+    },
+    "description": "하루 3km 러닝하기",
+    "media": {
+      "type": "photo",
+      "url": "https://images.unsplash.com/photo-1552674605-db6ffd4facb5?w=800",
+      "width": 1080,
+      "height": 1350
+    },
+    "tags": ["#러닝", "#달리기", "#운동"],
+    "createdAt": "2025-10-04T18:00:00Z"
+  },
+  {
+    "proofId": "proof_002",
+    "goalId": "goal_read_30m",
+    "user": {
+      "displayName": "User ID",
+      "tier": "실버",
+      "avatarUrl": "https://i.pravatar.cc/150?img=12"
+    },
+    "description": "매일 30분 독서",
+    "media": {
+      "type": "photo",
+      "url": "https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?w=800",
+      "width": 1080,
+      "height": 1350
+    },
+    "tags": ["#독서", "#습관"],
+    "createdAt": "2025-10-05T21:00:00Z"
+  },
+  {
+    "proofId": "proof_003",
+    "goalId": "goal_walk_10k",
+    "user": {
+      "displayName": "User ID",
+      "tier": "브론즈",
+      "avatarUrl": "https://i.pravatar.cc/150?img=13"
+    },
+    "description": "매일 1만 보 걷기",
+    "media": {
+      "type": "photo",
+      "url": "https://images.unsplash.com/photo-1591216049412-d37f0cd926a0?w=800",
+      "width": 1080,
+      "height": 1350
+    },
+    "tags": ["#산책", "#건강"],
+    "createdAt": "2025-10-06T19:30:00Z"
+  },
+  {
+    "proofId": "proof_004",
+    "goalId": "goal_gym_4x",
+    "user": {
+      "displayName": "User ID",
+      "tier": "골드",
+      "avatarUrl": "https://i.pravatar.cc/150?img=14"
+    },
+    "description": "주 4회 헬스장 가기",
+    "media": {
+      "type": "photo",
+      "url": "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=800",
+      "width": 1080,
+      "height": 1350
+    },
+    "tags": ["#헬스", "#웨이트"],
+    "createdAt": "2025-10-02T08:15:00Z"
+  },
+  {
+    "proofId": "proof_005",
+    "goalId": "goal_savings_10k",
+    "user": {
+      "displayName": "User ID",
+      "tier": "실버",
+      "avatarUrl": "https://i.pravatar.cc/150?img=15"
+    },
+    "description": "매일 1만원 저축하기",
+    "media": {
+      "type": "photo",
+      "url": "https://images.unsplash.com/photo-1579621970563-ebec7560ff3e?w=800",
+      "width": 1080,
+      "height": 1350
+    },
+    "tags": ["#저축", "#재테크"],
+    "createdAt": "2025-10-03T12:00:00Z"
+  },
+  {
+    "proofId": "proof_006",
+    "goalId": "goal_english_15m",
+    "user": {
+      "displayName": "User ID",
+      "tier": "브론즈",
+      "avatarUrl": "https://i.pravatar.cc/150?img=16"
+    },
+    "description": "매일 영어 15분 회화",
+    "media": {
+      "type": "photo",
+      "url": "https://images.unsplash.com/photo-1546410531-bb4caa6b424d?w=800",
+      "width": 1080,
+      "height": 1350
+    },
+    "tags": ["#영어", "#공부"],
+    "createdAt": "2025-10-06T07:40:00Z"
+  },
+  {
+    "proofId": "proof_007",
+    "goalId": "goal_meditate_10m",
+    "user": {
+      "displayName": "User ID",
+      "tier": "골드",
+      "avatarUrl": "https://i.pravatar.cc/150?img=17"
+    },
+    "description": "매일 10분 명상",
+    "media": {
+      "type": "photo",
+      "url": "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?w=800",
+      "width": 1080,
+      "height": 1350
+    },
+    "tags": ["#마음챙김", "#휴식"],
+    "createdAt": "2025-10-07T06:50:00Z"
+  },
+  {
+    "proofId": "proof_008",
+    "goalId": "goal_cooking_home",
+    "user": {
+      "displayName": "User ID",
+      "tier": "실버",
+      "avatarUrl": "https://i.pravatar.cc/150?img=18"
+    },
+    "description": "주 3회 집밥 만들기",
+    "media": {
+      "type": "photo",
+      "url": "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800",
+      "width": 1080,
+      "height": 1350
+    },
+    "tags": ["#요리", "#건강식"],
+    "createdAt": "2025-10-08T18:20:00Z"
+  },
+  {
+    "proofId": "proof_009",
+    "goalId": "goal_coding_1h",
+    "user": {
+      "displayName": "User ID",
+      "tier": "브론즈",
+      "avatarUrl": "https://i.pravatar.cc/150?img=19"
+    },
+    "description": "매일 1시간 코딩",
+    "media": {
+      "type": "photo",
+      "url": "https://images.unsplash.com/photo-1461749280684-dccba630e2f6?w=800",
+      "width": 1080,
+      "height": 1350
+    },
+    "tags": ["#개발", "#학습"],
+    "createdAt": "2025-10-09T22:10:00Z"
+  },
+  {
+    "proofId": "proof_010",
+    "goalId": "goal_water_2l",
+    "user": {
+      "displayName": "User ID",
+      "tier": "골드",
+      "avatarUrl": "https://i.pravatar.cc/150?img=20"
+    },
+    "description": "하루 물 2L 마시기",
+    "media": {
+      "type": "photo",
+      "url": "https://images.unsplash.com/photo-1548839140-29a749e1cf4d?w=800",
+      "width": 1080,
+      "height": 1350
+    },
+    "tags": ["#건강", "#수분"],
+    "createdAt": "2025-10-05T11:05:00Z"
+  }
+]
+

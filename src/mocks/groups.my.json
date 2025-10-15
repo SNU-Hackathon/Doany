@@ -1,0 +1,13 @@
+{
+  "groups": [
+    {
+      "id": "group_1",
+      "name": "삼대오백",
+      "iconUrl": "https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?w=200",
+      "memberNum": 34,
+      "description": "헬스 3대 운동 합산 500kg 달성을 목표로 하는 그룹",
+      "category": "운동"
+    }
+  ]
+}
+

@@ -1,27 +1,27 @@
 // Quest data models for goal-based task management
 
 export interface Quest {
-  id: string;
+  questId: string;
   goalId: string;
-  title: string;
-  description?: string;
-  type?: QuestType;
-  status: QuestStatus;
-  targetDate?: string; // ISO date string (YYYY-MM-DD) - preferred for new quests
-  scheduledDate?: string; // ISO date string - legacy field
-  weekNumber?: number; // For frequency goals
-  sequence?: number; // For milestone goals
-  verificationPhotos?: string[]; // Array of photo URLs from verifications
-  verification?: string[]; // Verification methods (사진, 위치 등록, etc.)
-  verificationRules?: VerificationRule[]; // Legacy detailed rules
-  difficulty?: string; // easy, medium, hard
-  estimatedTime?: string; // e.g., "60분"
-  tips?: string[]; // Quest tips
+  date: string; // "2025-10-08"
+  description: string;
+  state: 'complete' | 'fail' | 'onTrack';
+  completedAt?: string;
+  proof?: {
+    proofId?: string;
+    url?: string;
+    description?: string;
+    type?: 'photo' | 'video' | 'text' | 'document';
+  };
+  // Legacy fields for UI compatibility
+  id: string;
+  title?: string;
+  status?: QuestStatus;
+  targetDate?: string;
+  verificationPhotos?: string[];
+  userId?: string;
   createdAt?: string | Date;
   updatedAt?: string | Date;
-  completedAt?: string;
-  metadata?: QuestMetadata;
-  userId?: string; // User who owns this quest
 }
 
 export type QuestType = 'schedule' | 'frequency' | 'milestone';

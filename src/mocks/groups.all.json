@@ -1,0 +1,69 @@
+{
+  "groups": [
+    {
+      "id": "group_1",
+      "name": "삼대오백",
+      "iconUrl": "https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?w=200",
+      "memberNum": 34,
+      "description": "헬스 3대 운동 합산 500kg 달성을 목표로 하는 그룹",
+      "category": "운동"
+    },
+    {
+      "id": "group_2",
+      "name": "관악구 러닝 크루",
+      "iconUrl": "https://images.unsplash.com/photo-1552674605-db6ffd4facb5?w=200",
+      "memberNum": 23,
+      "description": "관악구에서 함께 러닝하는 크루",
+      "category": "운동"
+    },
+    {
+      "id": "group_3",
+      "name": "레알스터디",
+      "iconUrl": "https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=200",
+      "memberNum": 59,
+      "description": "진짜 공부하는 사람들의 모임",
+      "category": "공부"
+    },
+    {
+      "id": "group_4",
+      "name": "자취요리",
+      "iconUrl": "https://images.unsplash.com/photo-1556910103-1c02745aae4d?w=200",
+      "memberNum": 99,
+      "description": "자취생들의 요리 레시피 공유",
+      "category": "요리"
+    },
+    {
+      "id": "group_5",
+      "name": "취미테니스",
+      "iconUrl": "https://images.unsplash.com/photo-1554068865-24cecd4e34b8?w=200",
+      "memberNum": 23,
+      "description": "테니스를 취미로 즐기는 모임",
+      "category": "운동"
+    },
+    {
+      "id": "group_6",
+      "name": "홈백요리사",
+      "iconUrl": "https://images.unsplash.com/photo-1495521821757-a1efb6729352?w=200",
+      "memberNum": 11,
+      "description": "집에서 요리 실력을 키우는 사람들",
+      "category": "요리"
+    },
+    {
+      "id": "group_7",
+      "name": "헬창되자",
+      "iconUrl": "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=200",
+      "memberNum": 16,
+      "description": "헬스 중독자들의 모임",
+      "category": "운동"
+    },
+    {
+      "id": "group_8",
+      "name": "영어 스터디",
+      "iconUrl": "https://images.unsplash.com/photo-1546410531-bb4caa6b424d?w=200",
+      "memberNum": 7,
+      "description": "매일 영어 공부하는 스터디",
+      "category": "공부"
+    }
+  ]
+}
+

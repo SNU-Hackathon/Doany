@@ -7,8 +7,17 @@
 
 import { HttpMethod } from '../lib/http';
 
-// Mock data imports (will be added as we create JSON files)
-// For now, we'll use dynamic requires to avoid errors before files exist
+// Import JSON mock data
+import feedGoalsData from './feed.goals.json';
+import groupsAllData from './groups.all.json';
+import groupsMyData from './groups.my.json';
+import likesMineData from './likes.mine.json';
+
+// In-memory mutable copies for like/unlike operations
+const memoryStore = {
+  feedGoals: JSON.parse(JSON.stringify(feedGoalsData)),
+  likesMine: JSON.parse(JSON.stringify(likesMineData)),
+};
 
 /**
  * Mock resolver that matches API paths to mock JSON files
@@ -35,9 +44,108 @@ export async function resolveMock<T = any>(
       return require('./users.me.json') as T;
     }
 
-    // Goals endpoints - Removed mock support, now goes directly to server
-    // All goal-related requests (POST /goals, GET /goals/me/{userId}, GET /goals/quests/{goalId}, etc.) 
-    // will be handled by the actual server
+    // Space/Feed endpoints - NEW
+    if (path === '/space/goals' || path.startsWith('/space/goals?')) {
+      if (method === 'GET') {
+        return memoryStore.feedGoals as T;
+      }
+    }
+
+    // Space likes - my liked goals
+    if (path === '/space/likes/me' || path.startsWith('/space/likes/me?')) {
+      if (method === 'GET') {
+        return memoryStore.likesMine as T;
+      }
+    }
+
+    // Like/Unlike toggle for specific goal
+    if (path.match(/^\/space\/goals\/[\w-]+\/likes\/me$/)) {
+      const match = path.match(/\/space\/goals\/([\w-]+)\/likes\/me$/);
+      const goalId = match ? match[1] : '';
+      const item = memoryStore.feedGoals.items.find((g: any) => g.goalId === goalId);
+
+      if (item) {
+        if (method === 'POST') {
+          // Like the goal
+          item.social.didILike = true;
+          item.social.likes += 1;
+          
+          // Add to liked list if not already there
+          const alreadyLiked = memoryStore.likesMine.items.find((l: any) => l.goalId === goalId);
+          if (!alreadyLiked) {
+            memoryStore.likesMine.items.unshift({
+              id: goalId,
+              likedAt: Math.floor(Date.now() / 1000),
+              actor: item.actor,
+              goalId: item.goalId,
+              title: item.title,
+              thumbnailUrl: item.thumbnailUrl,
+              tags: item.tags,
+              category: item.category,
+              visibility: item.visibility,
+              startAt: item.startAt,
+              endAt: item.endAt,
+              completedAt: item.completedAt,
+              social: { ...item.social },
+              progress: { ...item.progress },
+            });
+          }
+
+          return {
+            goalId,
+            social: item.social,
+            updatedAt: Math.floor(Date.now() / 1000),
+          } as T;
+        } else if (method === 'PATCH' || method === 'DELETE') {
+          // Unlike the goal
+          item.social.didILike = false;
+          item.social.likes = Math.max(0, item.social.likes - 1);
+
+          // Remove from liked list
+          memoryStore.likesMine.items = memoryStore.likesMine.items.filter(
+            (l: any) => l.goalId !== goalId
+          );
+
+          return {
+            goalId,
+            social: item.social,
+            updatedAt: Math.floor(Date.now() / 1000),
+          } as T;
+        }
+      }
+
+      console.warn(`[MOCK] Goal not found for like toggle: ${goalId}`);
+      return {
+        success: false,
+        error: 'Goal not found',
+      } as T;
+    }
+
+    // Groups endpoints - NEW
+    if (path === '/groups/all' || path.startsWith('/groups/all?')) {
+      if (method === 'GET') {
+        return groupsAllData as T;
+      }
+    }
+
+    if (path === '/groups/my' || path.startsWith('/groups/my?')) {
+      if (method === 'GET') {
+        return groupsMyData as T;
+      }
+    }
+
+    // Legacy Feed endpoints (backwards compatibility)
+    if (path === '/feed/goals' && method === 'GET') {
+      return memoryStore.feedGoals as T;
+    }
+    if (path.match(/^\/feed\/goals\/[\w-]+\/likes\/me$/)) {
+      // Redirect to space endpoint logic
+      const newPath = path.replace('/feed/', '/space/');
+      return resolveMock(method, newPath, payload);
+    }
+    if (path === '/me/likes' && method === 'GET') {
+      return memoryStore.likesMine as T;
+    }
 
     // Quest endpoints
     if (path.match(/^\/quests\/[\w-]+$/) && method === 'PATCH') {
@@ -49,14 +157,9 @@ export async function resolveMock<T = any>(
       return require('./proofs.create.json') as T;
     }
     if (path.match(/^\/me\/proofs\/[\w-]+$/) && method === 'GET') {
-      // Extract proofId from path
       const match = path.match(/\/me\/proofs\/([\w-]+)/);
       const requestedProofId = match ? match[1] : 'proof-123-001';
-      
-      // Load proof map
       const proofsMap = require('./proofs.detail.json');
-      
-      // Find specific proof by proofId
       const proof = proofsMap[requestedProofId];
       
       if (!proof) {
@@ -79,34 +182,18 @@ export async function resolveMock<T = any>(
       return { success: true } as T;
     }
 
-    // Feed endpoints
-    if (path === '/feed/goals' && method === 'GET') {
-      return require('./feed.goals.json') as T;
-    }
-    if (path.match(/^\/feed\/goals\/[\w-]+\/likes\/me$/) && method === 'POST') {
-      return require('./feed.like.json') as T;
-    }
-    if (path.match(/^\/feed\/goals\/[\w-]+\/likes\/me$/) && method === 'DELETE') {
-      return require('./feed.like.json') as T;
-    }
-    if (path === '/me/likes' && method === 'GET') {
-      return require('./likes.mine.json') as T;
-    }
-
     // Swipe endpoints
     if (path === '/swipe/proofs' && method === 'GET') {
       const mockData = require('./swipe.proofs.json');
-      // Normalize to array if single object
       if (mockData && !Array.isArray(mockData) && typeof mockData === 'object') {
         if (mockData.items) {
-          return mockData as T; // Already paginated
+          return mockData as T;
         }
-        return [mockData] as T; // Single proof -> array
+        return [mockData] as T;
       }
       return mockData as T;
     }
     
-    // PATCH /swipe/proofs/{proofId} - Vote on proof
     if (path.match(/^\/swipe\/proofs\/[\w-]+$/) && method === 'PATCH') {
       const voteResult = require('./swipe.vote.json');
       return {
@@ -115,15 +202,13 @@ export async function resolveMock<T = any>(
       } as T;
     }
     
-    // PATCH /swipe-complete/proofs/{proofId} - Complete voting
     if (path.match(/^\/swipe-complete\/proofs\/[\w-]+$/) && method === 'PATCH') {
       const match = path.match(/\/swipe-complete\/proofs\/([\w-]+)/);
       const proofId = match ? match[1] : 'proof-swipe-1';
       
-      // Mock completion result
       return {
         proofId,
-        state: Math.random() > 0.5 ? 'complete' : 'fail', // Random for demo
+        state: Math.random() > 0.5 ? 'complete' : 'fail',
         stats: {
           yes: Math.floor(Math.random() * 20) + 5,
           no: Math.floor(Math.random() * 5),
@@ -131,14 +216,12 @@ export async function resolveMock<T = any>(
       } as T;
     }
     
-    // Legacy POST endpoint (backwards compatibility)
     if (path.match(/^\/swipe\/proofs\/[\w-]+\/votes$/) && method === 'POST') {
       return require('./swipe.vote.json') as T;
     }
 
     // Auth endpoints
     if (path === '/auth/login' && method === 'POST') {
-      // Return mock login response per v1.3 spec
       return {
         accessToken: 'mock-jwt-token-' + Date.now(),
         tokenType: 'Bearer',
@@ -157,11 +240,31 @@ export async function resolveMock<T = any>(
   } catch (error) {
     console.error(`[MOCK] Error loading mock for ${method} ${path}:`, error);
     
-    // Return a safe fallback
     return {
       success: false,
       error: `Mock file not found for ${method} ${path}`,
     } as T;
+  }
+}
+
+/**
+ * Helper function to simulate mockFetch for direct component usage
+ */
+export async function mockFetch(method: string, url: string, payload?: any): Promise<{
+  status: number;
+  json: () => Promise<any>;
+}> {
+  try {
+    const data = await resolveMock(method as HttpMethod, url, payload);
+    return {
+      status: 200,
+      json: async () => data,
+    };
+  } catch (error) {
+    return {
+      status: 500,
+      json: async () => ({ error: 'Mock fetch failed' }),
+    };
   }
 }
 
@@ -171,4 +274,3 @@ export async function resolveMock<T = any>(
 export async function simulateDelay(ms: number = 300): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
-

@@ -1,0 +1,69 @@
+{
+  "myRank": {
+    "rank": 17,
+    "xp": 23980
+  },
+  "rankings": [
+    {
+      "rank": 1,
+      "name": "User ID",
+      "xp": 109870,
+      "avatarUrl": "https://images.unsplash.com/photo-1605812860427-4024433a70fd?w=200"
+    },
+    {
+      "rank": 2,
+      "name": "User ID",
+      "xp": 99970,
+      "avatarUrl": "https://images.unsplash.com/photo-1533158326339-7f3cf2404354?w=200"
+    },
+    {
+      "rank": 3,
+      "name": "User ID",
+      "xp": 78800,
+      "avatarUrl": "https://i.pravatar.cc/150?img=10"
+    },
+    {
+      "rank": 4,
+      "name": "User ID",
+      "xp": 66080,
+      "avatarUrl": "https://i.pravatar.cc/150?img=11"
+    },
+    {
+      "rank": 5,
+      "name": "User ID",
+      "xp": 69670,
+      "avatarUrl": "https://i.pravatar.cc/150?img=12"
+    },
+    {
+      "rank": 6,
+      "name": "User ID",
+      "xp": 58920,
+      "avatarUrl": "https://i.pravatar.cc/150?img=13"
+    },
+    {
+      "rank": 7,
+      "name": "User ID",
+      "xp": 54320,
+      "avatarUrl": "https://i.pravatar.cc/150?img=14"
+    },
+    {
+      "rank": 8,
+      "name": "User ID",
+      "xp": 51200,
+      "avatarUrl": "https://i.pravatar.cc/150?img=15"
+    },
+    {
+      "rank": 9,
+      "name": "User ID",
+      "xp": 48900,
+      "avatarUrl": "https://i.pravatar.cc/150?img=16"
+    },
+    {
+      "rank": 10,
+      "name": "User ID",
+      "xp": 46500,
+      "avatarUrl": "https://i.pravatar.cc/150?img=17"
+    }
+  ]
+}
+

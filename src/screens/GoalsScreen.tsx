@@ -10,16 +10,17 @@ import {
   StatusBar,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View
 } from 'react-native';
 import { GoalDetailScreenV2 } from '.';
 import { GoalCategory, GoalListItem } from '../api/types';
 import { LoadingState } from '../components';
+import AppHeader from '../components/AppHeader';
 import CreateGoalModal from '../components/CreateGoalModal';
 import { useAuth } from '../hooks/useAuth';
 import { useMyGoals } from '../hooks/useGoals';
+import categoriesData from '../mocks/goals.categories.json';
 import { Goal, RootStackParamList } from '../types';
 import { Quest } from '../types/quest';
 
@@ -162,7 +163,6 @@ const GoalCard = React.memo(({
 });
 
 export default function GoalsScreen() {
-  console.error('[GOALS_SCREEN] 📝 GoalsScreen');
   const navigation = useNavigation<GoalsScreenNavigationProp>();
   const { user } = useAuth();
   
@@ -173,6 +173,7 @@ export default function GoalsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<GoalCategory | 'All'>('All');
+  const [categoriesExpanded, setCategoriesExpanded] = useState(false);
 
   // Extract user ID as primitive to avoid infinite loop
   const userId = user?.userId || '1';
@@ -245,8 +246,10 @@ export default function GoalsScreen() {
     refetch();
   }, [refetch]);
 
-  // Category options
-  const categories: (GoalCategory | 'All')[] = ['All', 'health fitness', 'study', 'sleep'];
+  // Category options - from JSON
+  const allCategories: (GoalCategory | 'All')[] = categoriesData.categories as (GoalCategory | 'All')[];
+  const displayedCategories = categoriesExpanded ? allCategories : allCategories.slice(0, 8);
+  const hasMoreCategories = allCategories.length > 8;
 
   // Render item
   const renderItem = useCallback(({ item }: { item: GoalListItem }) => (
@@ -269,35 +272,25 @@ export default function GoalsScreen() {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
       
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.headerTop}>
-          <Text style={styles.headerTitle}>나의 목표</Text>
-          <TouchableOpacity style={styles.notificationButton}>
-            <Ionicons name="notifications-outline" size={22} color="#1F2937" />
-            <View style={styles.notificationDot} />
-          </TouchableOpacity>
-        </View>
+      {/* Unified Header */}
+      <AppHeader
+        title="나의 목표"
+        showNotification
+        onNotificationPress={() => console.log('Notifications')}
+        showSearch
+        searchPlaceholder="search your goals !"
+        searchValue={searchQuery}
+        onSearchChange={setSearchQuery}
+        showSearchOptions
+        onSearchOptionsPress={() => console.log('Search options')}
+        showActionButton
+        actionButtonIcon="add"
+        onActionButtonPress={handleCreateGoal}
+        actionButtonColor="#4F46E5"
+      />
 
-        {/* Search Bar */}
-        <View style={styles.searchContainer}>
-          <View style={styles.searchBar}>
-            <Ionicons name="search" size={18} color="#9CA3AF" style={styles.searchIcon} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="search your goal !"
-              placeholderTextColor="#9CA3AF"
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-            />
-            <TouchableOpacity style={styles.filterButton}>
-              <Ionicons name="options-outline" size={18} color="#9CA3AF" />
-            </TouchableOpacity>
-          </View>
-          <TouchableOpacity style={styles.addButton} onPress={handleCreateGoal}>
-            <Ionicons name="add" size={20} color="#FFFFFF" />
-          </TouchableOpacity>
-        </View>
+      {/* Tabs and Filters Container */}
+      <View style={styles.filtersContainer}>
 
         {/* Tabs */}
         <View style={styles.tabsContainer}>
@@ -312,16 +305,23 @@ export default function GoalsScreen() {
         {/* Category Filters */}
         <View style={styles.categoriesContainer}>
           <FlatList
-            data={categories}
-            horizontal
+            data={displayedCategories}
+            horizontal={!categoriesExpanded}
+            numColumns={categoriesExpanded ? 4 : undefined}
+            key={categoriesExpanded ? 'expanded' : 'collapsed'}
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.categoriesList}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={[
+              styles.categoriesList,
+              categoriesExpanded && styles.categoriesListExpanded
+            ]}
             keyExtractor={(item) => item}
             renderItem={({ item }) => (
               <TouchableOpacity
                 style={[
                   styles.categoryChip,
-                  selectedCategory === item && styles.selectedCategoryChip
+                  selectedCategory === item && styles.selectedCategoryChip,
+                  categoriesExpanded && styles.categoryChipExpanded
                 ]}
                 onPress={() => setSelectedCategory(item)}
               >
@@ -336,6 +336,21 @@ export default function GoalsScreen() {
               </TouchableOpacity>
             )}
           />
+          {hasMoreCategories && (
+            <TouchableOpacity
+              style={styles.expandButton}
+              onPress={() => setCategoriesExpanded(!categoriesExpanded)}
+            >
+              <Ionicons 
+                name={categoriesExpanded ? 'chevron-up' : 'chevron-down'} 
+                size={16} 
+                color="#6B7280" 
+              />
+              <Text style={styles.expandButtonText}>
+                {categoriesExpanded ? '접기' : '더보기'}
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
@@ -393,76 +408,10 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F8FAFC',
   },
-  header: {
+  filtersContainer: {
     backgroundColor: '#FFFFFF',
-    paddingTop: 10,
-    paddingBottom: 15,
-    paddingHorizontal: 20,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
-  },
-  headerTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#1F2937',
-  },
-  notificationButton: {
-    position: 'relative',
-    padding: 6,
-  },
-  notificationDot: {
-    position: 'absolute',
-    top: 2,
-    right: 2,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#3B82F6',
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  searchBar: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F3F4F6',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginRight: 10,
-  },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 14,
-    color: '#1F2937',
-  },
-  filterButton: {
-    padding: 4,
-  },
-  addButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#3B82F6',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#3B82F6',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
-    elevation: 6,
   },
   tabsContainer: {
     flexDirection: 'row',
@@ -488,9 +437,14 @@ const styles = StyleSheet.create({
   },
   categoriesContainer: {
     marginBottom: 4,
+    marginLeft: 10,
   },
   categoriesList: {
     paddingRight: 20,
+  },
+  categoriesListExpanded: {
+    paddingRight: 0,
+    paddingBottom: 8,
   },
   categoryChip: {
     paddingHorizontal: 12,
@@ -498,6 +452,12 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     backgroundColor: '#F3F4F6',
     marginRight: 6,
+    marginBottom: 6,
+  },
+  categoryChipExpanded: {
+    flex: 1,
+    minWidth: 70,
+    alignItems: 'center',
   },
   selectedCategoryChip: {
     backgroundColor: '#E5E7EB',
@@ -510,6 +470,21 @@ const styles = StyleSheet.create({
   selectedCategoryChipText: {
     color: '#1F2937',
     fontWeight: '600',
+  },
+  expandButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginRight: 20,
+    marginBottom: 6,
+  },
+  expandButtonText: {
+    fontSize: 13,
+    color: '#6B7280',
+    fontWeight: '500',
+    marginLeft: 4,
   },
   content: {
     flex: 1,

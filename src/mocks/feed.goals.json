@@ -1,62 +1,157 @@
 {
   "page": 1,
   "pageSize": 20,
-  "total": 5,
+  "total": 135,
   "items": [
     {
-      "goalId": "goal-feed-1",
-      "userId": "user-456",
-      "userName": "Alice Johnson",
-      "title": "Run 5K Every Morning",
-      "description": "Building stamina through daily running",
-      "tags": ["fitness", "running", "health"],
+      "goalId": "goal_123",
+      "title": "한 달에 책 2권 읽기",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?w=800",
+      "tags": ["#독서", "#습관"],
+      "category": "독서",
       "visibility": "public",
-      "state": "onTrack",
-      "likes": 28,
-      "didILike": false,
-      "createdAt": 1609459200000,
-      "updatedAt": 1609545600000,
-      "recentProofs": [
-        {
-          "proofId": "proof-feed-1",
-          "url": "https://cdn.example.com/proof-feed-1.jpg",
-          "type": "photo",
-          "votes": {
-            "yes": 15,
-            "no": 2
-          },
-          "createdAt": 1609545600000
-        }
-      ]
+      "startAt": 1727235700,
+      "endAt": 1727486400,
+      "completedAt": 1727486400,
+      "actor": {
+        "actorId": "user_42",
+        "displayName": "Jin Park",
+        "avatarUrl": "https://i.pravatar.cc/150?img=21"
+      },
+      "social": {
+        "likes": 124,
+        "comments": 18,
+        "didILike": false
+      },
+      "progress": {
+        "current": 30,
+        "total": 30
+      }
     },
     {
-      "goalId": "goal-feed-2",
-      "userId": "user-789",
-      "userName": "Bob Smith",
-      "title": "Learn Spanish",
-      "description": "30 minutes of Spanish practice daily",
-      "tags": ["language", "learning", "spanish"],
+      "goalId": "goal_456",
+      "title": "주 4회 헬스장 가기",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=800",
+      "tags": ["#헬스", "#웨이트"],
+      "category": "운동",
       "visibility": "public",
-      "state": "onTrack",
-      "likes": 42,
-      "didILike": true,
-      "createdAt": 1609372800000,
-      "recentProofs": []
+      "startAt": 1727000000,
+      "endAt": 1727600000,
+      "completedAt": 1727580000,
+      "actor": {
+        "actorId": "user_77",
+        "displayName": "Minji",
+        "avatarUrl": "https://i.pravatar.cc/150?img=22"
+      },
+      "social": {
+        "likes": 87,
+        "comments": 9,
+        "didILike": true
+      },
+      "progress": {
+        "current": 16,
+        "total": 16
+      }
     },
     {
-      "goalId": "goal-feed-3",
-      "userId": "user-321",
-      "userName": "Carol Davis",
-      "title": "Meditation Challenge",
-      "description": "Meditate for 10 minutes each day",
-      "tags": ["mindfulness", "meditation", "wellness"],
+      "goalId": "goal_789",
+      "title": "매일 아침 이불 개기",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=800",
+      "tags": ["#습관", "#생활"],
+      "category": "생활",
       "visibility": "public",
-      "state": "onTrack",
-      "likes": 19,
-      "didILike": false,
-      "createdAt": 1609286400000,
-      "updatedAt": 1609459200000
+      "startAt": 1726800000,
+      "endAt": 1727486400,
+      "completedAt": 1727486400,
+      "actor": {
+        "actorId": "user_12",
+        "displayName": "User ID",
+        "avatarUrl": "https://i.pravatar.cc/150?img=23"
+      },
+      "social": {
+        "likes": 56,
+        "comments": 5,
+        "didILike": false
+      },
+      "progress": {
+        "current": 30,
+        "total": 30
+      }
+    },
+    {
+      "goalId": "goal_321",
+      "title": "매일 저녁 만들어 먹기",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800",
+      "tags": ["#요리", "#건강식"],
+      "category": "요리",
+      "visibility": "public",
+      "startAt": 1726700000,
+      "endAt": 1727400000,
+      "completedAt": 1727400000,
+      "actor": {
+        "actorId": "user_88",
+        "displayName": "User ID",
+        "avatarUrl": "https://i.pravatar.cc/150?img=24"
+      },
+      "social": {
+        "likes": 92,
+        "comments": 12,
+        "didILike": false
+      },
+      "progress": {
+        "current": 30,
+        "total": 30
+      }
+    },
+    {
+      "goalId": "goal_654",
+      "title": "하루 3시간 자격증 공부",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?w=800",
+      "tags": ["#공부", "#자격증"],
+      "category": "공부",
+      "visibility": "public",
+      "startAt": 1726600000,
+      "endAt": 1727300000,
+      "completedAt": 1727300000,
+      "actor": {
+        "actorId": "user_99",
+        "displayName": "User ID",
+        "avatarUrl": "https://i.pravatar.cc/150?img=25"
+      },
+      "social": {
+        "likes": 78,
+        "comments": 8,
+        "didILike": true
+      },
+      "progress": {
+        "current": 30,
+        "total": 30
+      }
+    },
+    {
+      "goalId": "goal_987",
+      "title": "주 5회 아침 요가 루틴",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?w=800",
+      "tags": ["#요가", "#명상"],
+      "category": "운동",
+      "visibility": "public",
+      "startAt": 1726500000,
+      "endAt": 1727100000,
+      "completedAt": 1727100000,
+      "actor": {
+        "actorId": "user_55",
+        "displayName": "User ID",
+        "avatarUrl": "https://i.pravatar.cc/150?img=26"
+      },
+      "social": {
+        "likes": 145,
+        "comments": 22,
+        "didILike": false
+      },
+      "progress": {
+        "current": 20,
+        "total": 20
+      }
     }
   ]
 }
-

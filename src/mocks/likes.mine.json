@@ -1,32 +1,60 @@
 {
   "page": 1,
-  "pageSize": 50,
-  "total": 12,
+  "pageSize": 20,
   "items": [
     {
-      "goalId": "goal-like-1",
-      "title": "Learn Spanish",
-      "description": "30 minutes of Spanish practice daily",
-      "userId": "user-789",
-      "userName": "Bob Smith",
-      "likedAt": 1609545600000
+      "id": "goal_456",
+      "likedAt": 1727486400,
+      "actor": {
+        "actorId": "user_77",
+        "actorName": "Minji",
+        "avatarUrl": "https://i.pravatar.cc/150?img=22"
+      },
+      "goalId": "goal_456",
+      "title": "주 4회 헬스장 가기",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=800",
+      "tags": ["#헬스", "#웨이트"],
+      "category": "운동",
+      "visibility": "public",
+      "startAt": 1727000000,
+      "endAt": 1727600000,
+      "completedAt": 1727580000,
+      "social": {
+        "likes": 87,
+        "comments": 9,
+        "didILike": true
+      },
+      "progress": {
+        "current": 16,
+        "total": 16
+      }
     },
     {
-      "goalId": "goal-like-2",
-      "title": "Morning Yoga",
-      "description": "15 minutes of yoga every morning",
-      "userId": "user-654",
-      "userName": "Emily White",
-      "likedAt": 1609459200000
-    },
-    {
-      "goalId": "goal-like-3",
-      "title": "Cook Healthy Meals",
-      "description": "Prepare healthy meals for the week",
-      "userId": "user-987",
-      "userName": "David Brown",
-      "likedAt": 1609372800000
+      "id": "goal_654",
+      "likedAt": 1727380000,
+      "actor": {
+        "actorId": "user_99",
+        "actorName": "User ID",
+        "avatarUrl": "https://i.pravatar.cc/150?img=25"
+      },
+      "goalId": "goal_654",
+      "title": "하루 3시간 자격증 공부",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?w=800",
+      "tags": ["#공부", "#자격증"],
+      "category": "공부",
+      "visibility": "public",
+      "startAt": 1726600000,
+      "endAt": 1727300000,
+      "completedAt": 1727300000,
+      "social": {
+        "likes": 78,
+        "comments": 8,
+        "didILike": true
+      },
+      "progress": {
+        "current": 30,
+        "total": 30
+      }
     }
   ]
 }
-
