@@ -8,6 +8,10 @@ export { default as ProfileScreen } from './ProfileScreen';
 // Main Navigation Screens
 export { default as FeedScreen } from './FeedScreen';
 export { default as GoalsScreen } from './GoalsScreen';
+export { default as GroupScreen } from './GroupScreen';
+export { default as HomeScreen } from './HomeScreen';
+export { default as RankingScreen } from './RankingScreen';
+export { default as SpaceScreen } from './SpaceScreen';
 export { default as SwipeHomeScreen } from './SwipeHomeScreen';
 export { default as SwipeScreen } from './SwipeScreen';
 
