@@ -170,6 +170,8 @@ export default function GoalsScreen() {
   const [selectedGoal, setSelectedGoal] = useState<GoalListItem | null>(null);
   const [showGoalDetail, setShowGoalDetail] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showMethodSelector, setShowMethodSelector] = useState(false);
+  const [creationMethod, setCreationMethod] = useState<'ai' | 'manual' | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<GoalCategory | 'All'>('All');
@@ -234,15 +236,23 @@ export default function GoalsScreen() {
   }, []);
 
   const handleCreateGoal = useCallback(() => {
+    setShowMethodSelector(true);
+  }, []);
+
+  const handleMethodSelect = useCallback((method: 'ai' | 'manual') => {
+    setCreationMethod(method);
+    setShowMethodSelector(false);
     setShowCreateModal(true);
   }, []);
 
   const handleCreateGoalClose = useCallback(() => {
     setShowCreateModal(false);
+    setCreationMethod(null);
   }, []);
 
   const handleGoalCreated = useCallback(() => {
     setShowCreateModal(false);
+    setCreationMethod(null);
     refetch();
   }, [refetch]);
 
@@ -394,10 +404,90 @@ export default function GoalsScreen() {
         )}
       </Modal>
 
+      {/* Method Selection Modal */}
+      <Modal
+        visible={showMethodSelector}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowMethodSelector(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }}>
+          <View style={{ backgroundColor: 'white', borderRadius: 24, padding: 32, width: SCREEN_WIDTH * 0.85, maxWidth: 400 }}>
+            <Text style={{ fontSize: 24, fontWeight: '700', color: '#1F2937', marginBottom: 12, textAlign: 'center' }}>
+              목표 생성 방식 선택
+            </Text>
+            <Text style={{ fontSize: 15, color: '#6B7280', marginBottom: 32, textAlign: 'center', lineHeight: 22 }}>
+              AI와 대화하며 생성하거나{'\n'}직접 수동으로 만들 수 있습니다
+            </Text>
+
+            {/* AI Method */}
+            <TouchableOpacity
+              onPress={() => handleMethodSelect('ai')}
+              activeOpacity={0.7}
+              style={{
+                backgroundColor: '#4F46E5',
+                borderRadius: 16,
+                padding: 20,
+                marginBottom: 16,
+                shadowColor: '#4F46E5',
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.3,
+                shadowRadius: 8,
+                elevation: 4,
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                <Ionicons name="sparkles" size={28} color="#FFF" />
+                <Text style={{ fontSize: 20, fontWeight: '700', color: '#FFF', marginLeft: 12 }}>
+                  AI와 대화하기
+                </Text>
+              </View>
+              <Text style={{ fontSize: 14, color: '#E0E7FF', lineHeight: 20 }}>
+                AI가 질문하면서 맞춤형 목표를 생성해드려요
+              </Text>
+            </TouchableOpacity>
+
+            {/* Manual Method */}
+            <TouchableOpacity
+              onPress={() => handleMethodSelect('manual')}
+              activeOpacity={0.7}
+              style={{
+                backgroundColor: '#FFF',
+                borderRadius: 16,
+                padding: 20,
+                borderWidth: 2,
+                borderColor: '#E5E7EB',
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                <Ionicons name="create-outline" size={28} color="#4F46E5" />
+                <Text style={{ fontSize: 20, fontWeight: '700', color: '#1F2937', marginLeft: 12 }}>
+                  직접 만들기
+                </Text>
+              </View>
+              <Text style={{ fontSize: 14, color: '#6B7280', lineHeight: 20 }}>
+                원하는 대로 세부사항을 직접 설정할 수 있어요
+              </Text>
+            </TouchableOpacity>
+
+            {/* Cancel Button */}
+            <TouchableOpacity
+              onPress={() => setShowMethodSelector(false)}
+              style={{ marginTop: 20, padding: 12 }}
+            >
+              <Text style={{ textAlign: 'center', color: '#6B7280', fontSize: 16, fontWeight: '600' }}>
+                취소
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       <CreateGoalModal
         visible={showCreateModal}
         onClose={handleCreateGoalClose}
         onGoalCreated={handleGoalCreated}
+        creationMethod={creationMethod}
       />
     </View>
   );

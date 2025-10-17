@@ -170,7 +170,7 @@ export default function SpaceScreen() {
         onSearchOptionsPress={() => console.log('Search options')}
       />
 
-      {/* Goals Feed */}
+      {/* Goals Feed - 2 Column Grid */}
       {loading ? (
         <View className="flex-1 items-center justify-center">
           <ActivityIndicator size="large" color="#4F46E5" />
@@ -179,22 +179,25 @@ export default function SpaceScreen() {
         <FlatList
           data={goals}
           keyExtractor={(item) => item.goalId}
+          numColumns={2}
           renderItem={({ item }) => (
-            <GoalCard
-              goal={item}
-              onPress={() => handleGoalPress(item.goalId)}
-              onLike={() => handleLike(item.goalId)}
-              onBookmark={() => handleBookmark(item.goalId)}
-            />
+            <View style={{ flex: 1, maxWidth: '50%', padding: 8 }}>
+              <GoalCard
+                goal={item}
+                onPress={() => handleGoalPress(item.goalId)}
+                onLike={() => handleLike(item.goalId)}
+                onBookmark={() => handleBookmark(item.goalId)}
+              />
+            </View>
           )}
           contentContainerStyle={{
-            paddingHorizontal: 16,
-            paddingTop: 16,
+            paddingHorizontal: 8,
+            paddingTop: 8,
             paddingBottom: 100,
           }}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
-            <View className="items-center justify-center py-20">
+            <View className="items-center justify-center py-20" style={{ width: '100%' }}>
               <Ionicons name="planet-outline" size={64} color="#D1D5DB" />
               <Text className="text-xl font-bold text-gray-400 mt-4 text-center">
                 아직 완료된 목표가 없습니다

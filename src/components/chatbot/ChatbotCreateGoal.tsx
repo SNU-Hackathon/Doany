@@ -38,6 +38,9 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
   const nextQuestionTimer = useRef<NodeJS.Timeout | null>(null);
   const isGeneratingQuestion = useRef<boolean>(false);
   const [isGeneratingQuests, setIsGeneratingQuests] = useState(false);
+  const [isEditingQuests, setIsEditingQuests] = useState(false);
+  const [editedQuests, setEditedQuests] = useState<any[]>([]);
+  const [userJustConfirmedWidget, setUserJustConfirmedWidget] = useState(false);
   
   // === Quest generation phase tracking ===
   const [generationPhase, setGenerationPhase] = useState<'idle' | 'generating' | 'done'>('idle');
@@ -441,10 +444,13 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
         return;
       }
 
-      // Case 2: Pending slots remain → Generate next question
-      if (state.pendingSlots.length > 0) {
-        console.log('[ChatbotCreateGoal] 📝 Pending slots exist, generating next question');
+      // Case 2: Pending slots remain → Generate next question ONLY if user just confirmed a widget
+      if (state.pendingSlots.length > 0 && userJustConfirmedWidget) {
+        console.log('[ChatbotCreateGoal] 📝 User confirmed widget, generating next question');
         console.log('[ChatbotCreateGoal] Next pending slot:', state.pendingSlots[0]);
+        
+        // Reset the flag
+        setUserJustConfirmedWidget(false);
         
         // Small delay to ensure state is stable
         setTimeout(async () => {
@@ -465,6 +471,7 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
     state.isComplete,
     awaitingConfirmation,
     isGeneratingQuests,
+    userJustConfirmedWidget, // ← Track user widget confirmation
     specV2.schedule?.occurrences?.length, // ← Track occurrences
     generateAndShowQuests
   ]);
@@ -623,6 +630,9 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
         if (isConfirmed) {
           setAwaitingConfirmation(null);
           console.log('[CONFIRM.STATE] Cleared awaitingConfirmation - proceeding to next step');
+          
+          // Set flag to trigger next question
+          setUserJustConfirmedWidget(true);
           
           // Show AI thinking indicator
           setIsTyping(true);
@@ -831,6 +841,9 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
     // Step 4: Show user selection as message
     const displayValue = formatSelectionDisplay(slotId, rawValue);
     actions.addMessage(displayValue, 'user');
+
+    // Set flag to trigger next question generation
+    setUserJustConfirmedWidget(true);
 
     console.log('[ChatbotCreateGoal] Slot confirmed, waiting for state update');
   }, [state.currentGoalType, state.collectedSlots, specV2, awaitingConfirmation, actions]); // ✅ state.collectedSlots 추가!
@@ -1455,7 +1468,7 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
           </View>
         )}
 
-        {/* Quest Preview - Enhanced with collapsible view */}
+        {/* Quest Preview - Enhanced with collapsible view and edit capability */}
         {generationPhase === 'done' && state.isComplete && state.questPreview && state.questPreview.length > 0 && (
           <View className="mt-4">
             <View className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
@@ -1464,30 +1477,108 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
                 "{String(state.collectedSlots.title)}" 목표가 성공적으로 생성되었습니다.
               </Text>
               <Text className="text-green-600 text-xs mt-1">
-                총 {state.questPreview.length}개의 퀘스트가 준비되었습니다.
+                총 {(isEditingQuests ? editedQuests : state.questPreview).length}개의 퀘스트가 준비되었습니다.
               </Text>
+              {!isEditingQuests && (
+                <Text className="text-green-600 text-xs mt-2">
+                  💡 퀘스트를 수정하거나 저장할 수 있습니다.
+                </Text>
+              )}
             </View>
             
             {/* Quest List Header */}
             <View className="flex-row items-center justify-between mb-3">
               <Text className="text-lg font-semibold text-gray-800">📋 퀘스트 미리보기</Text>
-              {state.questPreview.length > 3 && (
-                <TouchableOpacity
-                  onPress={() => setShowAllQuests(!showAllQuests)}
-                  className="bg-blue-100 px-3 py-1 rounded-full"
-                >
-                  <Text className="text-blue-600 text-sm font-medium">
-                    {showAllQuests ? '접기' : `전체 ${state.questPreview.length}개 보기`}
-                  </Text>
-                </TouchableOpacity>
-              )}
+              <View className="flex-row gap-2">
+                {!isEditingQuests && (
+                  <TouchableOpacity
+                    onPress={() => {
+                      setIsEditingQuests(true);
+                      setEditedQuests([...state.questPreview]);
+                    }}
+                    className="bg-purple-100 px-3 py-1 rounded-full"
+                  >
+                    <Text className="text-purple-600 text-sm font-medium">수정</Text>
+                  </TouchableOpacity>
+                )}
+                {state.questPreview.length > 3 && (
+                  <TouchableOpacity
+                    onPress={() => setShowAllQuests(!showAllQuests)}
+                    className="bg-blue-100 px-3 py-1 rounded-full"
+                  >
+                    <Text className="text-blue-600 text-sm font-medium">
+                      {showAllQuests ? '접기' : `전체 ${state.questPreview.length}개 보기`}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
             </View>
             
             {/* Show first 3 or all quests based on state */}
-            {(showAllQuests ? state.questPreview : state.questPreview.slice(0, 3)).map((quest, index) => (
+            {(showAllQuests ? (isEditingQuests ? editedQuests : state.questPreview) : (isEditingQuests ? editedQuests : state.questPreview).slice(0, 3)).map((quest, index) => (
               <View key={`quest-${quest.id}-${index}-${Date.now()}`} className="bg-white border border-gray-200 rounded-lg p-4 mb-3 shadow-sm">
-                <View className="flex-row items-start justify-between">
-                  <View className="flex-1 pr-2">
+                <View className="flex-row items-start justify-between mb-2">
+                  <View className="bg-blue-100 w-8 h-8 rounded-full items-center justify-center">
+                    <Text className="text-blue-600 font-bold text-sm">{index + 1}</Text>
+                  </View>
+                  {isEditingQuests && (
+                    <TouchableOpacity
+                      onPress={() => {
+                        const updated = editedQuests.filter((_, i) => i !== index);
+                        setEditedQuests(updated);
+                      }}
+                      className="bg-red-50 px-2 py-1 rounded"
+                    >
+                      <Text className="text-red-600 text-xs">삭제</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+                
+                {isEditingQuests ? (
+                  <View className="flex-1">
+                    <Text className="text-xs text-gray-500 mb-1">제목</Text>
+                    <TextInput
+                      value={quest.title}
+                      onChangeText={(text) => {
+                        const updated = [...editedQuests];
+                        updated[index] = { ...updated[index], title: text };
+                        setEditedQuests(updated);
+                      }}
+                      className="border border-gray-300 rounded px-2 py-1 mb-2 text-sm"
+                      placeholder="퀘스트 제목"
+                      blurOnSubmit={false}
+                      returnKeyType="next"
+                    />
+                    
+                    <Text className="text-xs text-gray-500 mb-1">설명</Text>
+                    <TextInput
+                      value={quest.description}
+                      onChangeText={(text) => {
+                        const updated = [...editedQuests];
+                        updated[index] = { ...updated[index], description: text };
+                        setEditedQuests(updated);
+                      }}
+                      className="border border-gray-300 rounded px-2 py-1 mb-2 text-sm"
+                      placeholder="퀘스트 설명"
+                      multiline
+                      blurOnSubmit={false}
+                      textAlignVertical="top"
+                      numberOfLines={3}
+                    />
+                    
+                    <View className="flex-row flex-wrap gap-2 mt-1">
+                      <View className="bg-blue-50 px-2 py-1 rounded">
+                        <Text className="text-blue-600 text-xs">📅 {quest.targetDate}</Text>
+                      </View>
+                      {quest.verification && quest.verification.length > 0 && (
+                        <View className="bg-green-50 px-2 py-1 rounded">
+                          <Text className="text-green-600 text-xs">✅ {quest.verification.join(', ')}</Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                ) : (
+                  <View className="flex-1">
                     <Text className="font-semibold text-gray-800 text-base mb-1">{quest.title}</Text>
                     <Text className="text-gray-600 text-sm mb-2">{quest.description}</Text>
                     
@@ -1507,11 +1598,7 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
                       )}
                     </View>
                   </View>
-                  
-                  <View className="bg-blue-100 w-8 h-8 rounded-full items-center justify-center">
-                    <Text className="text-blue-600 font-bold text-sm">{index + 1}</Text>
-                  </View>
-                </View>
+                )}
               </View>
             ))}
             
@@ -1531,34 +1618,63 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
             )}
             
             {/* Action Buttons */}
-            <View className="flex-row gap-3 mt-4">
-              <TouchableOpacity
-                onPress={() => {
-                  // Reset to allow editing
-                  actions.reset();
-                }}
-                className="flex-1 bg-gray-100 py-3 px-6 rounded-lg border border-gray-300"
-              >
-                <Text className="text-gray-700 text-center font-medium">다시 만들기</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                onPress={handleSaveGoal}
-                disabled={isSaving}
-                style={{
-                  flex: 1,
-                  paddingVertical: 16,
-                  paddingHorizontal: 24,
-                  borderRadius: 12,
-                  backgroundColor: isSaving ? '#C7C7CC' : '#007AFF',
-                  alignItems: 'center',
-                }}
-              >
-                <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '600' }}>
-                  {isSaving ? '저장 중...' : '목표 저장하기'}
-                </Text>
-              </TouchableOpacity>
-            </View>
+            {isEditingQuests ? (
+              <View className="flex-row gap-3 mt-4">
+                <TouchableOpacity
+                  onPress={() => {
+                    setIsEditingQuests(false);
+                    setEditedQuests([]);
+                  }}
+                  className="flex-1 bg-gray-100 py-3 px-6 rounded-lg border border-gray-300"
+                >
+                  <Text className="text-gray-700 text-center font-medium">취소</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  onPress={() => {
+                    // Apply edited quests to state
+                    actions.markComplete(editedQuests);
+                    setIsEditingQuests(false);
+                    actions.addMessage(
+                      `✅ ${editedQuests.length}개의 퀘스트가 수정되었습니다!`,
+                      'assistant'
+                    );
+                  }}
+                  className="flex-1 bg-blue-500 py-3 px-6 rounded-lg"
+                >
+                  <Text className="text-white text-center font-medium">수정 완료</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View className="flex-row gap-3 mt-4">
+                <TouchableOpacity
+                  onPress={() => {
+                    // Reset to allow editing
+                    actions.reset();
+                  }}
+                  className="flex-1 bg-gray-100 py-3 px-6 rounded-lg border border-gray-300"
+                >
+                  <Text className="text-gray-700 text-center font-medium">다시 만들기</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  onPress={handleSaveGoal}
+                  disabled={isSaving}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 16,
+                    paddingHorizontal: 24,
+                    borderRadius: 12,
+                    backgroundColor: isSaving ? '#C7C7CC' : '#007AFF',
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '600' }}>
+                    {isSaving ? '저장 중...' : '목표 저장하기'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         )}
       </ScrollView>

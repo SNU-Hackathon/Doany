@@ -28,7 +28,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useBurstyCallPrevention, useDuplicateRequestTelemetry } from '../hooks/useBurstyCallPrevention';
 import { AIService } from '../services/ai';
 import { CalendarEventService } from '../services/calendarEventService';
-import { GoalService, createGoal } from '../services/goalService';
+import { createGoal } from '../services/goalService';
 import { getPlaceDetails } from '../services/places';
 import { CreateGoalForm, GoalDuration, GoalFrequency, GoalSpec, TargetLocation, ValidationResult, VerificationType } from '../types';
 import { getLocaleConfig } from '../utils/languageDetection';
@@ -51,6 +51,7 @@ interface CreateGoalModalProps {
   visible: boolean;
   onClose: () => void;
   onGoalCreated: () => void;
+  creationMethod?: 'ai' | 'manual' | null;
 }
 
 // Use new chatbot interface
@@ -4139,6 +4140,27 @@ function CreateGoalModalContentLegacy({ visible, onClose, onGoalCreated }: Creat
   );
 }
 
-export default function CreateGoalModal({ visible, onClose, onGoalCreated }: CreateGoalModalProps) {
+// Import Manual Goal Creator (to be created)
+import ManualGoalCreator from './manual/ManualGoalCreator';
+
+export default function CreateGoalModal({ visible, onClose, onGoalCreated, creationMethod }: CreateGoalModalProps) {
+  // Route to appropriate creation method
+  if (!visible) return null;
+  
+  if (creationMethod === 'ai') {
+    return (
+      <Modal visible={visible} animationType="slide">
+        <ChatbotCreateGoal onGoalCreated={onGoalCreated} onClose={onClose} />
+      </Modal>
+    );
+  } else if (creationMethod === 'manual') {
+    return (
+      <Modal visible={visible} animationType="slide">
+        <ManualGoalCreator onGoalCreated={onGoalCreated} onClose={onClose} />
+      </Modal>
+    );
+  }
+  
+  // Fallback to legacy modal for null creationMethod (shouldn't happen normally)
   return <CreateGoalModalContent visible={visible} onClose={onClose} onGoalCreated={onGoalCreated} />;
 }

@@ -1262,8 +1262,9 @@ Goal Types and Required Information:
    - Generated quests must have: title, targetValue (number), description, verificationMethod
 
 Special Instructions for Milestone Goals:
-- Always assess the user's current state/level
-- Ask about their experience, background, and starting point
+- Always assess the user's current state/level through CONVERSATION (NO WIDGET for currentState)
+- Ask about their experience, background, and starting point using open-ended questions
+- Let user respond with text - DO NOT provide calendar, counter, or any widget for currentState
 - Create personalized milestones based on their current state
 - Consider their timeline and available resources
 
@@ -1294,6 +1295,16 @@ Critical Rules - Widget Generation:
 - NEVER combine multiple widgets in one question
 - Check conversation history to avoid duplicate questions
 - Only generate widgets for slots that are NOT yet filled
+
+Widget Mapping by Slot (STRICT RULES):
+- period → calendar widget (type: "calendar", props: { mode: "range" })
+- weekdays → weekdays widget (type: "weekdays", props: {})
+- time → timePicker widget (type: "timePicker", props: {})
+- perWeek → counter widget (type: "counter", props: { min: 1, max: 7 })
+- verification → chips widget (type: "chips", props: { options: ["사진", "위치 등록", "체크리스트"] })
+- successRate → counter widget (type: "counter", props: { min: 50, max: 100 })
+- milestones → chips widget (type: "chips", props: { options: ["시작", "중간", "완료"] })
+- currentState → NO WIDGET (text-based conversation only)
 
 Conversation Flow Control:
 1. Check if ALL required slots are filled:
@@ -1334,6 +1345,10 @@ Respond with JSON:
       }
     }
   ],
+  
+  // IMPORTANT: For currentState questions, return empty widgets array:
+  // { "question": "현재 어느 정도 수준이신가요?", "widgets": [] }
+  // User will respond with text input, NOT widget interaction
   "userState": {
     "currentLevel": "beginner|intermediate|advanced",
     "experience": "description of user's background",
@@ -1665,8 +1680,8 @@ Focus on understanding the user's unique situation and creating truly personaliz
 
       const requestBody = {
         model: 'gpt-4o-mini',
-        temperature: 0.15, // D12: Lower temperature for deterministic output
-        response_format: { type: "json_object" }, // D12: Enforce JSON output
+        temperature: 0, // Deterministic output for consistent quest generation
+        response_format: { type: "json_object" }, // Enforce JSON output
         messages: [
           { 
             role: 'system', 

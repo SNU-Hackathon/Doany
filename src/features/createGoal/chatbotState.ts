@@ -306,5 +306,11 @@ export function formatGoalTypeConfirmation(goalType: 'schedule' | 'frequency' | 
     milestone: '단계별로 진행하는 프로젝트형 목표'
   };
 
-  return `이 목표는 ${typeLabels[goalType]}로 분류됩니다.\n${descriptions[goalType]}\n\n맞나요?`;
+  const benefits = {
+    schedule: '✅ 규칙적인 일정으로 습관 형성\n✅ 알람 설정으로 자동 리마인더\n✅ 시간 관리 능력 향상',
+    frequency: '✅ 유연한 일정 조정 가능\n✅ 주간 목표 달성에 집중\n✅ 자기 주도적 계획 수립',
+    milestone: '✅ 큰 목표를 작은 단계로 분할\n✅ 단계별 성취감 경험\n✅ 장기 프로젝트에 최적'
+  };
+
+  return `🎯 이 목표는 **${typeLabels[goalType]}**로 분류됩니다.\n\n📝 ${descriptions[goalType]}\n\n${benefits[goalType]}\n\n이 방식으로 진행하시겠어요?`;
 }
