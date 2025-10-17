@@ -80,37 +80,25 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
 
   // Generate and show quests - useCallback to maintain reference
   const generateAndShowQuests = useCallback(async () => {
-    console.log('[GEN.END] 🎯 generateAndShowQuests called, checking conditions...');
-    console.log('[GEN.END] isGeneratingQuests:', isGeneratingQuests);
-    console.log('[GEN.END] state.isComplete:', state.isComplete);
-    console.log('[GEN.END] state.questPreview:', state.questPreview?.length || 0);
+    console.log('[GEN.QUESTS] Starting quest generation...');
     
     // STRICT: Prevent duplicate quest generation
     if (isGeneratingQuests) {
-      console.log('[GEN.END] ⛔ Already generating quests, BLOCKING duplicate call');
+      console.log('[GEN.QUESTS] ⛔ Already generating, blocking duplicate call');
       return;
     }
 
     // Check if quests already generated (not just isComplete)
     if (state.questPreview && state.questPreview.length > 0) {
-      console.log('[GEN.END] ⛔ Quests already generated, BLOCKING duplicate generation');
+      console.log('[GEN.QUESTS] ⛔ Quests already generated, blocking duplicate generation');
       return;
     }
 
     // Set flags FIRST to prevent any duplicate calls
     setIsGeneratingQuests(true);
     setGenerationPhase('generating');
-    console.log('[GEN.START] 🔒 Set isGeneratingQuests = true, phase = generating');
 
     try {
-      console.log('[GEN.END] 🚀 Starting AI-based quest generation...');
-      console.log('[GEN.END] 📊 Full state:', {
-        goalType: state.currentGoalType,
-        collectedSlots: state.collectedSlots,
-        userState: state.userState,
-        pendingSlots: state.pendingSlots
-      });
-      
       // === B. COMPUTE targetCount based on goal type ===
       let targetCount = 10; // Default
       const period = state.collectedSlots.period as { startDate: string; endDate: string } | undefined;
@@ -127,48 +115,25 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
           const totalCount = weeks * perWeek;
           const requiredCount = Math.ceil(totalCount * successRate / 100);
           targetCount = requiredCount;
-          
-          console.log('[CONFIRM] 📊 Frequency goal calculation:', {
-            weeks,
-            perWeek,
-            totalCount,
-            successRate: successRate + '%',
-            requiredCount,
-            targetCount
-          });
         } else if (state.currentGoalType === 'schedule') {
           const weekdays = (state.collectedSlots.weekdays as number[]) || [];
           targetCount = Math.min(weeks * weekdays.length, 15);
-          
-          console.log('[CONFIRM] 📊 Schedule goal calculation:', {
-            weeks,
-            weekdays,
-            targetCount
-          });
         } else if (state.currentGoalType === 'milestone') {
           const milestones = (state.collectedSlots.milestones as string[]) || ['시작', '중간', '완료'];
           targetCount = milestones.length;
-          
-          console.log('[CONFIRM] 📊 Milestone goal calculation:', {
-            milestones,
-            targetCount
-          });
         }
       }
       
       // Clamp to reasonable range
       targetCount = Math.max(5, Math.min(targetCount, 15));
-      console.log('[GEN.END] 🎯 Final targetCount:', targetCount);
+      console.log('[GEN.QUESTS] Target count:', targetCount, 'for', state.currentGoalType, 'goal');
       
       // Show loading indicator - CLEAR and VISIBLE
       setIsTyping(true);
-      console.log('[GEN.END] 💬 Adding "생성 중..." message');
       actions.addMessage('🎨 퀘스트 생성 중입니다. 잠시만 기다려주세요...', 'assistant');
       
       // Small delay to ensure message is rendered
       await new Promise(resolve => setTimeout(resolve, 100));
-      
-      console.log('[GEN.END] 🤖 Calling AIService.generatePersonalizedQuests...');
       
       // Create timeout promise (40 seconds for reliable generation)
       const timeoutPromise = new Promise<never>((_, reject) => {
@@ -181,15 +146,7 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
       let aiQuests;
       
       if (useV2) {
-        console.log('[GEN.END] 🆕 Using GoalSpecV2 for quest generation');
-        console.log('[GEN.END] 📊 SpecV2 details:', {
-          type: specV2.type,
-          hasOccurrences: !!specV2.schedule?.occurrences,
-          occurrencesCount: specV2.schedule?.occurrences?.length || 0,
-          firstOccurrence: specV2.schedule?.occurrences?.[0],
-          verification: specV2.verification,
-          successCriteria: specV2.successCriteria
-        });
+        console.log('[GEN.QUESTS] Using GoalSpecV2 with', specV2.schedule?.occurrences?.length || 0, 'occurrences');
         
         // Race between AI generation and timeout
         aiQuests = await Promise.race([
@@ -203,7 +160,7 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
               occurrences: specV2.schedule?.occurrences, // ✅ 확정된 일정 전달
               perWeek: specV2.frequency?.targetPerWeek,
               milestones: specV2.milestone?.milestones,
-              currentState: specV2.milestone?.currentState,
+              currentState: state.collectedSlots.currentState || specV2.milestone?.currentState, // ✅ state에서 직접 가져오기
               verification: specV2.verification?.signals,
               successRate: specV2.successCriteria?.targetRate
             },
@@ -214,9 +171,9 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
           timeoutPromise
         ]);
         
-        console.log('[GEN.END] 📝 AI returned:', aiQuests?.length || 0, 'quests');
+        console.log('[GEN.QUESTS] AI returned:', aiQuests?.length || 0, 'quests');
       } else {
-        console.log('[GEN.END] 📦 Using legacy collectedSlots for quest generation');
+        console.log('[GEN.QUESTS] Using legacy collectedSlots');
         
         // Race between AI generation and timeout
         aiQuests = await Promise.race([
@@ -231,26 +188,20 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
         ]);
       }
 
-      console.log('[GEN.END] 🎉 AI response received:', aiQuests);
       setIsTyping(false);
 
       if (aiQuests && aiQuests.length > 0) {
-        console.log('[GEN.END] ✅ AI generated', aiQuests.length, 'quests successfully');
-        console.log('[GEN.END] 📝 Quest samples:', aiQuests.slice(0, 2));
-        console.log('[GEN.END] 📝 All quest IDs:', aiQuests.map(q => q.id));
-        console.log('[GEN.END] 📝 Calling markComplete with quests');
+        console.log('[GEN.QUESTS] ✅ Generated', aiQuests.length, 'quests successfully');
         
         // Mark complete with quests
         actions.markComplete(aiQuests);
         
         // Set phase to done BEFORE adding completion message
         setGenerationPhase('done');
-        console.log('[GEN.END] ✅ Set generationPhase = done');
         
         // Wait for state to propagate
         await new Promise(resolve => setTimeout(resolve, 200));
         
-        console.log('[GEN.END] 💬 Adding completion message');
         actions.addMessage(
           `🎉 목표가 완성되었습니다! 총 ${aiQuests.length}개의 맞춤형 퀘스트가 준비되었어요.`,
           'assistant'
@@ -260,15 +211,9 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
         setTimeout(() => {
           scrollRef.current?.scrollToEnd({ animated: true });
         }, 300);
-        
-        console.log('[GEN.END] ✅ Quest generation complete - UI should update now');
-        console.log('[GEN.END] 🔍 Current state.isComplete:', state.isComplete);
-        console.log('[GEN.END] 🔍 Current state.questPreview:', state.questPreview?.length || 0);
-        console.log('[GEN.END] 🔍 Current generationPhase:', 'done');
       } else {
-        console.error('[GEN.END] ⚠️ AI returned empty array, using fallback');
+        console.warn('[GEN.QUESTS] ⚠️ AI returned empty array, using fallback');
         const simpleQuests = generateSimpleQuests();
-        console.log('[GEN.END] 📝 Generated', simpleQuests.length, 'simple quests');
         
         if (simpleQuests.length > 0) {
           actions.markComplete(simpleQuests);
@@ -281,14 +226,10 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
         }
       }
     } catch (error) {
-      console.error('[GEN.ERROR] ❌ AI quest generation failed with error:', error);
-      console.error('[GEN.ERROR] Error details:', error instanceof Error ? error.message : String(error));
-      console.error('[GEN.ERROR] Stack trace:', error instanceof Error ? error.stack : 'N/A');
+      console.error('[GEN.QUESTS] ❌ AI quest generation failed:', error instanceof Error ? error.message : String(error));
       setIsTyping(false);
       
-      console.log('[GEN.ERROR] 🔄 Using fallback simple quest generation');
       const simpleQuests = generateSimpleQuests();
-      console.log('[GEN.ERROR] 📝 Generated', simpleQuests.length, 'simple quests as fallback');
       
       if (simpleQuests.length > 0) {
         actions.markComplete(simpleQuests);
@@ -299,14 +240,13 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
           'assistant'
         );
       } else {
-        console.error('[GEN.ERROR] ❌ Even fallback generation failed!');
+        console.error('[GEN.QUESTS] ❌ Even fallback generation failed!');
         setGenerationPhase('idle');
       }
     } finally {
       // ALWAYS clear the generating flag after a delay
       setTimeout(() => {
         setIsGeneratingQuests(false);
-        console.log('[GEN.END] 🔓 Released isGeneratingQuests');
       }, 1000);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -392,52 +332,31 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
   // Auto-generate next question or quests based on pending slots
   useEffect(() => {
     const runEffect = async () => {
-      const collectedSlotsCount = Object.keys(state.collectedSlots).length;
-      
-      console.log('[ChatbotCreateGoal] useEffect triggered:', {
-        awaitingConfirmation,
-        isComplete: state.isComplete,
-        pendingSlotsLength: state.pendingSlots.length,
-        pendingSlots: state.pendingSlots,
-        currentGoalType: state.currentGoalType,
-        collectedSlotsCount,
-        collectedSlotsKeys: Object.keys(state.collectedSlots),
-        isGenerating: isGeneratingQuestion.current,
-        isGeneratingQuests
-      });
-
       // STRICT: Block if any generation is in progress
       if (isGeneratingQuestion.current || isGeneratingQuests || isTyping) {
-        console.log('[ChatbotCreateGoal] ⛔ Generation in progress, BLOCKING');
         return;
       }
 
       // Block if waiting for confirmation
       if (awaitingConfirmation) {
-        console.log('[ChatbotCreateGoal] ⛔ Waiting for confirmation');
         return;
       }
 
       // Block if no goal type set
       if (!state.currentGoalType) {
-        console.log('[ChatbotCreateGoal] ⛔ No goal type set');
         return;
       }
 
       // Case 1: All slots filled AND quests not yet generated → Generate quests
       if (state.pendingSlots.length === 0 && (!state.questPreview || state.questPreview.length === 0)) {
-        console.log('[ChatbotCreateGoal] ✅ All slots filled, checking quest generation conditions');
+        console.log('[CHATBOT] All slots filled, generating quests...');
         
         // For schedule goals, ensure occurrences are confirmed
         if (state.currentGoalType === 'schedule') {
           if (!specV2.schedule?.occurrences || specV2.schedule.occurrences.length === 0) {
-            console.log('[ChatbotCreateGoal] ⚠️ Schedule goal needs occurrence confirmation first - BLOCKING quest generation');
             return;
           }
-          console.log('[ChatbotCreateGoal] ✅ Occurrences confirmed, proceeding to quest generation');
         }
-        
-        console.log('[ChatbotCreateGoal] 🎯 Triggering quest generation NOW');
         setTimeout(() => {
           generateAndShowQuests();
         }, 500);
@@ -446,8 +365,6 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
 
       // Case 2: Pending slots remain → Generate next question ONLY if user just confirmed a widget
       if (state.pendingSlots.length > 0 && userJustConfirmedWidget) {
-        console.log('[ChatbotCreateGoal] 📝 User confirmed widget, generating next question');
-        console.log('[ChatbotCreateGoal] Next pending slot:', state.pendingSlots[0]);
         
         // Reset the flag
         setUserJustConfirmedWidget(false);
@@ -478,28 +395,40 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
 
   // 안전한 질문 생성 함수 (AI 기반)
   const generateNextQuestionSafely = async (forceGenerate = false) => {
-    // Prevent duplicate question generation - STRICT CHECK
-    if (isGeneratingQuestion.current) {
-      console.log('[ChatbotCreateGoal] ⛔ Question generation already in progress, BLOCKING duplicate call');
-      return;
-    }
-
-    console.log('[ChatbotCreateGoal] generateNextQuestionSafely called:', {
+    console.log('[DEBUG.GENERATE] 🚀 generateNextQuestionSafely called:', {
       forceGenerate,
+      isGenerating: isGeneratingQuestion.current,
       currentGoalType: state.currentGoalType,
-      pendingSlotsLength: state.pendingSlots.length,
       pendingSlots: state.pendingSlots,
-      collectedSlotsKeys: Object.keys(state.collectedSlots)
+      collectedSlots: Object.keys(state.collectedSlots),
+      timestamp: new Date().toISOString()
     });
 
-    if (!state.currentGoalType || state.pendingSlots.length === 0) {
-      console.log('[ChatbotCreateGoal] ⛔ No goal type or no pending slots, skipping question generation');
+    // Prevent duplicate question generation - STRICT CHECK
+    if (isGeneratingQuestion.current) {
+      console.log('[DEBUG.GENERATE] ⛔ Already generating, blocking duplicate call');
       return;
     }
 
+    // For milestone goals, we need to collect currentState even if pendingSlots is empty
+    const needsCurrentState = state.currentGoalType === 'milestone' && !state.collectedSlots.currentState;
+    
+    if (!state.currentGoalType || (state.pendingSlots.length === 0 && !needsCurrentState)) {
+      console.log('[DEBUG.GENERATE] ⛔ generateNextQuestionSafely blocked:', {
+        hasGoalType: !!state.currentGoalType,
+        goalType: state.currentGoalType,
+        pendingSlotsLength: state.pendingSlots.length,
+        pendingSlots: state.pendingSlots,
+        needsCurrentState,
+        hasCurrentState: !!state.collectedSlots.currentState,
+        forceGenerate
+      });
+      return;
+    }
+
+    console.log('[DEBUG.GENERATE] ✅ Proceeding with question generation');
     // Set generation flag IMMEDIATELY to block any concurrent calls
     isGeneratingQuestion.current = true;
-    console.log('[ChatbotCreateGoal] 🔒 Set isGeneratingQuestion = true');
 
     try {
       // Prepare conversation history for AI
@@ -508,52 +437,73 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
         content: msg.content
       }));
 
+      // For milestone goals, ensure currentState is in pendingSlots if not collected
+      const pendingSlots = needsCurrentState 
+        ? [...state.pendingSlots, 'currentState']
+        : state.pendingSlots;
+
+      console.log('[DEBUG.AI] 🤖 Calling AI for question generation:', {
+        goalType: state.currentGoalType,
+        pendingSlots,
+        collectedSlots: Object.keys(state.collectedSlots),
+        conversationHistoryLength: conversationHistory.length,
+        needsCurrentState
+      });
+
       // Use AI to generate conversational question
       const { question, widgets, userState, extractedSchedule, conversationComplete, quests } = await generateNextQuestionWithAI(
         state.currentGoalType!,
-        state.pendingSlots,
+        pendingSlots,
         state.collectedSlots,
         conversationHistory,
         state.userState
       );
+
+      console.log('[DEBUG.AI] ✅ AI response received:', {
+        hasQuestion: !!question,
+        questionLength: question?.length || 0,
+        widgetsCount: widgets?.length || 0,
+        hasUserState: !!userState,
+        hasExtractedSchedule: !!extractedSchedule,
+        conversationComplete,
+        questsCount: quests?.length || 0
+      });
 
       // Update user state if provided by AI
       if (userState) {
         actions.updateUserState(userState);
         console.log('[ChatbotCreateGoal] Updated user state:', userState);
       }
-
+      // print extractedSchedule and quests
+      console.log('[DEBUG.AI] extractedSchedule:', extractedSchedule);
+      console.log('[DEBUG.AI] quests:', quests);
       // Note: extractedSchedule is for pre-populating widgets, not for auto-filling slots
       // Each slot (period, weekdays, time) should be asked separately
       if (extractedSchedule) {
-        console.log('[ChatbotCreateGoal] AI extracted schedule info for widget pre-population:', extractedSchedule);
+        // extractedSchedule is used for widget pre-population, not for state updates
+        console.log('[CHATBOT] AI extracted schedule info for widget pre-population:', extractedSchedule);
       }
 
       // Check if conversation is complete and quests are provided
       if (conversationComplete && quests && quests.length > 0) {
-        console.log('[ChatbotCreateGoal] AI completed conversation with quests:', quests);
+        console.log('[CHATBOT] AI completed conversation with', quests.length, 'quests');
         actions.markComplete(quests);
         actions.addMessage(
           `🎉 목표가 완성되었습니다! 총 ${quests.length}개의 맞춤형 퀘스트가 준비되었어요.`,
           'assistant'
         );
         isGeneratingQuestion.current = false;
-        console.log('[ChatbotCreateGoal] 🔓 Released isGeneratingQuestion (conversation complete)');
         return; // Don't add another question message
       }
 
       // Check if this question was already asked (prevent duplicates)
       const lastAssistantMessage = state.messages.filter(m => m.role === 'assistant').pop();
       if (lastAssistantMessage && lastAssistantMessage.content === question) {
-        console.log('[ChatbotCreateGoal] ⛔ DUPLICATE question detected, skipping');
         isGeneratingQuestion.current = false;
         return;
       }
 
-      console.log('[ChatbotCreateGoal] ✅ AI Generated NEW question:', {
-        question: question.substring(0, 50) + '...',
-        widgets: widgets.map(w => ({ type: w.type, slotId: w.slotId }))
-      });
+      console.log('[CHATBOT] Generated question:', question.substring(0, 50) + '...');
 
       // Auto-manage keyboard based on question type
       if (widgets && widgets.length > 0) {
@@ -562,16 +512,15 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
 
       actions.addMessage(question, 'assistant', widgets);
       setLastQuestionTime(Date.now());
-      
-      console.log('[ChatbotCreateGoal] 📨 Message added successfully');
     } catch (error) {
       console.error('[ChatbotCreateGoal] ❌ AI question generation failed:', error);
       actions.addMessage('죄송합니다. 잠시 후 다시 시도해주세요.', 'assistant');
     } finally {
-      // ALWAYS clear generation flag - with delay to prevent immediate re-trigger
+      // ALWAYS clear generation flag and typing state
+      console.log('[DEBUG.GENERATE] 🔚 generateNextQuestionSafely completed, clearing states');
+      setIsTyping(false);
       setTimeout(() => {
         isGeneratingQuestion.current = false;
-        console.log('[ChatbotCreateGoal] 🔓 Released isGeneratingQuestion (after delay)');
       }, 1000); // 1 second delay before allowing next question generation
     }
   };
@@ -581,6 +530,16 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
     if (!userInput.trim()) return;
 
     const input = userInput.trim();
+    console.log('[DEBUG.INPUT] 🚀 User input received:', {
+      input,
+      currentGoalType: state.currentGoalType,
+      awaitingConfirmation,
+      pendingSlots: state.pendingSlots,
+      collectedSlots: Object.keys(state.collectedSlots),
+      isGenerating: isGeneratingQuestion.current,
+      isGeneratingQuests,
+      timestamp: new Date().toISOString()
+    });
     setUserInput('');
     actions.addMessage(input, 'user');
 
@@ -590,7 +549,9 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
     try {
       // If no goal type is set, classify from title using AI
       if (!state.currentGoalType) {
+        console.log('[DEBUG.CLASSIFY] 🔍 Starting goal type classification for:', input);
         const goalType = await actions.classifyAndSetGoalType(input);
+        console.log('[DEBUG.CLASSIFY] ✅ Classified goal type:', goalType);
         
         // Store title in collected slots
         actions.updateSlot('title', input);
@@ -628,6 +589,7 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
         });
         
         if (isConfirmed) {
+          console.log('[DEBUG.CONFIRM] ✅ User confirmed goal type:', state.currentGoalType);
           setAwaitingConfirmation(null);
           console.log('[CONFIRM.STATE] Cleared awaitingConfirmation - proceeding to next step');
           
@@ -639,33 +601,55 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
           
           // 사용자 확인 후 다음 질문 생성 (AI 기반)
           setTimeout(async () => {
-            console.log('[ChatbotCreateGoal] Generating next question after confirmation');
+            console.log('[DEBUG.CONFIRM] 🚀 Starting next question generation after confirmation');
             await generateNextQuestionSafely(true); // 강제 생성
-            setIsTyping(false);
+            // setIsTyping(false) will be handled by generateNextQuestionSafely
           }, 800); // 800ms 후 다음 질문 생성
         } else {
-          // 부정/모호: 타입 선택 칩 제시
-          actions.addMessage('어떤 유형의 목표인가요?', 'assistant', [
-            {
-              id: 'goaltype-selector',
-              type: 'chips',
-              slotId: 'goalType',
-              label: '목표 유형 선택',
-              props: { options: ['schedule', 'frequency', 'milestone'] },
-              onSelect: () => {}
-            }
-          ]);
+          // 부정/모호: 이미 설정된 타입을 유지하고 다음 단계로 진행
+          console.log('[DEBUG.CONFIRM] ❌ User declined confirmation, but keeping detected type:', state.currentGoalType);
+          setAwaitingConfirmation(null);
+          
+          // Set flag to trigger next question with current type
+          setUserJustConfirmedWidget(true);
+          
+          // Show AI thinking indicator
+          setIsTyping(true);
+        
+          // 사용자 확인 후 다음 질문 생성 (AI 기반)
+          setTimeout(async () => {
+            console.log('[DEBUG.CONFIRM] 🚀 Starting next question generation after declined confirmation');
+            await generateNextQuestionSafely(true); // 강제 생성
+            // setIsTyping(false) will be handled by generateNextQuestionSafely
+          }, 800); // 800ms 후 다음 질문 생성
         }
-        setIsTyping(false);
         return;
       }
 
-      // Process other text inputs - next question will be auto-generated
+      // Process other text inputs - store in appropriate slot and generate next question
+      if (state.pendingSlots.length > 0) {
+        const nextSlot = state.pendingSlots[0];
+        console.log('[DEBUG.SLOT] 📝 Storing user input in slot:', nextSlot, 'value:', input);
+        actions.updateSlot(nextSlot, input);
+        
+        // Set flag to trigger next question generation
+        setUserJustConfirmedWidget(true);
+        setIsTyping(true);
+        
+        // Generate next question after a short delay
+        setTimeout(async () => {
+          console.log('[DEBUG.SLOT] 🚀 Generating next question after slot update');
+          await generateNextQuestionSafely(true);
+        }, 500);
+      }
       
     } catch (error) {
       console.error('Error processing user input:', error);
       setIsTyping(false);
       actions.addMessage('죄송합니다. 처리 중 오류가 발생했습니다. 다시 시도해주세요.', 'assistant');
+    } finally {
+      // Typing state will be cleared by generateNextQuestionSafely or other handlers
+      console.log('[DEBUG.INPUT] 🔚 handleUserInput completed');
     }
   };
 

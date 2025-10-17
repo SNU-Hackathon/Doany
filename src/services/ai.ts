@@ -338,27 +338,27 @@ Output ONLY valid JSON matching the schema above. No explanations, no markdown, 
       });
 
       try {
-        const resp = await fetch(proxyUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            prompt: input.prompt,
-            title: input.title,
-            targetLocationName: input.targetLocationName,
-            placeId: input.placeId,
+      const resp = await fetch(proxyUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          prompt: input.prompt,
+          title: input.title,
+          targetLocationName: input.targetLocationName,
+          placeId: input.placeId,
             locale: detectedLocale,
             timezone: detectedTimezone,
-            userHints: input.userHints,
-            type: 'goal_spec' 
-          })
-        });
+          userHints: input.userHints,
+          type: 'goal_spec' 
+        })
+      });
         
         const duration = aiTimer.end(resp.ok, { 
           status: resp.status,
           model: 'proxy'
         });
         
-        const data = await resp.json();
+      const data = await resp.json();
         const responseInfo = safeTextLog(JSON.stringify(data));
         
         // Log AI response
@@ -374,7 +374,7 @@ Output ONLY valid JSON matching the schema above. No explanations, no markdown, 
           errorCode: resp.ok ? undefined : `HTTP_${resp.status}`,
         });
         
-        return data;
+      return data;
       } catch (error) {
         const duration = aiTimer.end(false, { error: error.message });
         
@@ -405,7 +405,7 @@ Output ONLY valid JSON matching the schema above. No explanations, no markdown, 
           signals: aiGoal.verificationMethods || ['manual']
         },
         ...(aiGoal.needsWeeklySchedule && aiGoal.weeklySchedule ? {
-          schedule: {
+        schedule: {
             events: Object.entries(aiGoal.weeklySchedule).map(([day, time]) => ({
               dayOfWeek: this.mapDayToEnum(day),
               time: time
@@ -1227,12 +1227,24 @@ Output ONLY valid JSON matching the schema above. No explanations, no markdown, 
   }> {
     const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
     
+    console.log('[DEBUG.AI.SERVICE] 🚀 Starting question generation:', {
+      goalType: input.goalType,
+      pendingSlots: input.pendingSlots,
+      pendingSlotsLength: input.pendingSlots.length,
+      collectedSlots: Object.keys(input.collectedSlots),
+      conversationHistoryLength: input.conversationHistory.length,
+      hasApiKey: !!apiKey,
+      timestamp: new Date().toISOString()
+    });
+    
     if (!apiKey) {
-      console.warn('[AI] Missing OpenAI API key');
+      console.warn('[AI.CONVERSATION] ❌ Missing OpenAI API key');
       return { question: '죄송합니다. AI 서비스에 접근할 수 없습니다.' };
     }
 
     try {
+      const startTime = Date.now();
+      
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
@@ -1441,8 +1453,23 @@ Focus on understanding the user's unique situation and creating truly personaliz
         })
       });
 
+      const responseTime = Date.now() - startTime;
+      
+      if (!response.ok) {
+        console.error('[DEBUG.AI.SERVICE] ❌ API request failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          responseTime: `${responseTime}ms`,
+          goalType: input.goalType,
+          pendingSlots: input.pendingSlots
+        });
+        throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+      }
+      
       const data = await response.json();
       const content = data.choices?.[0]?.message?.content || '{}';
+      
+      console.log('[AI.CONVERSATION] Response received in', responseTime + 'ms, content length:', content.length);
       
       try {
         let txt = content.trim().replace(/^```json\s*/i, '').replace(/^```/i, '').replace(/```\s*$/i, '').trim();
@@ -1450,11 +1477,21 @@ Focus on understanding the user's unique situation and creating truly personaliz
         if (first >= 0 && last > first) txt = txt.substring(first, last + 1);
         
         const parsed = JSON.parse(txt);
-        console.log('[AI] Generated enhanced conversational question:', parsed);
+        console.log('[AI.CONVERSATION] ✅ Parsed response:', {
+          hasQuestion: !!parsed.question,
+          widgetsCount: parsed.widgets?.length || 0,
+          conversationComplete: parsed.conversationComplete,
+          questsCount: parsed.quests?.length || 0
+        });
         return parsed;
       } catch (parseError) {
-        console.warn('[AI] Failed to parse enhanced conversational question response:', parseError);
-        console.warn('[AI] Raw response:', content);
+        console.error('[DEBUG.AI.SERVICE] ❌ Failed to parse AI response:', {
+          error: parseError instanceof Error ? parseError.message : String(parseError),
+          contentLength: content.length,
+          contentPreview: content.substring(0, 500),
+          goalType: input.goalType,
+          pendingSlots: input.pendingSlots
+        });
         
         // Provide more specific fallback based on pending slots
         if (input.pendingSlots.includes('period')) {
@@ -1487,7 +1524,13 @@ Focus on understanding the user's unique situation and creating truly personaliz
         return { question: '목표에 대해 조금 더 구체적으로 알려주세요. 예를 들어, 언제, 어디서, 어떻게 실천할 계획인가요?' };
       }
     } catch (error) {
-      console.error('[AI] Enhanced conversational question generation failed:', error);
+      console.error('[DEBUG.AI.SERVICE] ❌ Enhanced conversational question generation failed:', {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : 'N/A',
+        goalType: input.goalType,
+        pendingSlots: input.pendingSlots,
+        timestamp: new Date().toISOString()
+      });
       return { question: '죄송합니다. 잠시 후 다시 시도해주세요.' };
     }
   }
@@ -2546,51 +2589,51 @@ You MUST return a valid JSON object with a "quests" array:
           });
         } else {
           // Fallback to original English patterns for backward compatibility
-          const dayTimePatterns = [
-            { day: 'monday', regex: /monday\s*(\d{1,2}):?(\d{2})?\s*(am|pm)?/i },
-            { day: 'tuesday', regex: /tuesday\s*(\d{1,2}):?(\d{2})?\s*(am|pm)?/i },
-            { day: 'wednesday', regex: /wednesday\s*(\d{1,2}):?(\d{2})?\s*(am|pm)?/i },
-            { day: 'thursday', regex: /thursday\s*(\d{1,2}):?(\d{2})?\s*(am|pm)?/i },
-            { day: 'friday', regex: /friday\s*(\d{1,2}):?(\d{2})?\s*(am|pm)?/i },
-            { day: 'saturday', regex: /saturday\s*(\d{1,2}):?(\d{2})?\s*(am|pm)?/i },
-            { day: 'sunday', regex: /sunday\s*(\d{1,2}):?(\d{2})?\s*(am|pm)?/i },
-          ];
+        const dayTimePatterns = [
+          { day: 'monday', regex: /monday\s*(\d{1,2}):?(\d{2})?\s*(am|pm)?/i },
+          { day: 'tuesday', regex: /tuesday\s*(\d{1,2}):?(\d{2})?\s*(am|pm)?/i },
+          { day: 'wednesday', regex: /wednesday\s*(\d{1,2}):?(\d{2})?\s*(am|pm)?/i },
+          { day: 'thursday', regex: /thursday\s*(\d{1,2}):?(\d{2})?\s*(am|pm)?/i },
+          { day: 'friday', regex: /friday\s*(\d{1,2}):?(\d{2})?\s*(am|pm)?/i },
+          { day: 'saturday', regex: /saturday\s*(\d{1,2}):?(\d{2})?\s*(am|pm)?/i },
+          { day: 'sunday', regex: /sunday\s*(\d{1,2}):?(\d{2})?\s*(am|pm)?/i },
+        ];
 
-          // Check English patterns
-          dayTimePatterns.forEach(({ day, regex }) => {
-            const match = lowerPrompt.match(regex);
-            if (match) {
-              let hour = parseInt(match[1]);
-              const minute = match[2] ? parseInt(match[2]) : 0;
-              const ampm = match[3]?.toLowerCase();
-              
-              // Convert to 24-hour format
-              if (ampm === 'pm' && hour !== 12) hour += 12;
-              if (ampm === 'am' && hour === 12) hour = 0;
-              
-              const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
-              weeklySchedule[day] = timeString;
-            }
-          });
+        // Check English patterns
+        dayTimePatterns.forEach(({ day, regex }) => {
+          const match = lowerPrompt.match(regex);
+          if (match) {
+            let hour = parseInt(match[1]);
+            const minute = match[2] ? parseInt(match[2]) : 0;
+            const ampm = match[3]?.toLowerCase();
+            
+            // Convert to 24-hour format
+            if (ampm === 'pm' && hour !== 12) hour += 12;
+            if (ampm === 'am' && hour === 12) hour = 0;
+            
+            const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+            weeklySchedule[day] = timeString;
+          }
+        });
 
-          // Check for general time patterns without specific days
-          if (Object.keys(weeklySchedule).length === 0) {
-            const timeMatch = lowerPrompt.match(/(\d{1,2}):?(\d{2})?\s*(am|pm)?/);
-            if (timeMatch) {
-              let hour = parseInt(timeMatch[1]);
-              const minute = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
-              const ampm = timeMatch[3]?.toLowerCase();
-              
-              if (ampm === 'pm' && hour !== 12) hour += 12;
-              if (ampm === 'am' && hour === 12) hour = 0;
-              
-              const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
-              
-              // If no specific days mentioned but weekly pattern exists, apply to common weekdays
-              if (lowerPrompt.includes('week') || lowerPrompt.includes('weekly')) {
-                weeklySchedule['monday'] = timeString;
-                weeklySchedule['wednesday'] = timeString;
-                weeklySchedule['friday'] = timeString;
+        // Check for general time patterns without specific days
+        if (Object.keys(weeklySchedule).length === 0) {
+          const timeMatch = lowerPrompt.match(/(\d{1,2}):?(\d{2})?\s*(am|pm)?/);
+          if (timeMatch) {
+            let hour = parseInt(timeMatch[1]);
+            const minute = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+            const ampm = timeMatch[3]?.toLowerCase();
+            
+            if (ampm === 'pm' && hour !== 12) hour += 12;
+            if (ampm === 'am' && hour === 12) hour = 0;
+            
+            const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+            
+            // If no specific days mentioned but weekly pattern exists, apply to common weekdays
+            if (lowerPrompt.includes('week') || lowerPrompt.includes('weekly')) {
+              weeklySchedule['monday'] = timeString;
+              weeklySchedule['wednesday'] = timeString;
+              weeklySchedule['friday'] = timeString;
               }
             }
           }
