@@ -21,5 +21,4 @@ export { default as GoalDetailScreenV2 } from './GoalDetailScreenV2';
 
 // Utility Screens
 export { default as CalendarScreen } from './CalendarScreen';
-export { default as LocationPickerScreen } from './LocationPickerScreen';
 

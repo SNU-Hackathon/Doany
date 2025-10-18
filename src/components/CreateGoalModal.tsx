@@ -7,15 +7,15 @@ import { useNavigation } from '@react-navigation/native';
 import * as Location from 'expo-location';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  Modal,
-  ScrollView,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    FlatList,
+    Modal,
+    ScrollView,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 // import { LocationSearch } from '../components'; // Commented out to avoid web build issues
 import { FrequencyTarget, ScheduleWhen } from '../components/createGoal';
@@ -34,13 +34,13 @@ import { CreateGoalForm, GoalDuration, GoalFrequency, GoalSpec, TargetLocation, 
 import { getLocaleConfig } from '../utils/languageDetection';
 import { toIndexKeyMap } from '../utils/schedule';
 import {
-  generateRequestId,
-  getLoggingSessionId,
-  logStorage,
-  logUserAction,
-  logValidation,
-  PerformanceTimer,
-  setLoggingUserId
+    generateRequestId,
+    getLoggingSessionId,
+    logStorage,
+    logUserAction,
+    logValidation,
+    PerformanceTimer,
+    setLoggingUserId
 } from '../utils/structuredLogging';
 import { toast } from '../utils/toast';
 import QuestPreview from './QuestPreview';
@@ -2045,7 +2045,7 @@ function CreateGoalModalContentLegacy({ visible, onClose, onGoalCreated }: Creat
   // Robust navigation to LocationPicker at root level
   const openLocationPicker = useCallback(() => {
     // Open in-app overlay modal instead of navigating (ensures it appears above RN Modal)
-    console.log('[CreateGoalModal] Opening location picker with LocationSearch component');
+    console.log('[CreateGoalModal] Opening location picker');
     setPickerSelectedLocation(formData.targetLocation || null);
     setShowLocationPicker(true);
   }, [formData.targetLocation]);

@@ -7,6 +7,7 @@ module.exports = {
     "./app/**/*.{js,jsx,ts,tsx}",
   ],
   presets: [require("nativewind/preset")],
+  darkMode: 'class', // 다크 모드를 class 기반으로 설정
   theme: {
     extend: {
       colors: {

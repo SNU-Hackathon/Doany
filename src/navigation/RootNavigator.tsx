@@ -2,10 +2,8 @@
 
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import React from 'react';
-import { ActivityIndicator, Text, View } from 'react-native';
+import { View } from 'react-native';
 import OfflineBanner from '../components/OfflineBanner';
-import { useAuth } from '../hooks/useAuth';
-import AuthScreen from '../screens/AuthScreen';
 import RankingScreen from '../screens/RankingScreen';
 import MainTabNavigator from './MainTabNavigator';
 
@@ -18,26 +16,7 @@ export type RootStackParamList = {
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export default function RootNavigator() {
-  const { user, loading } = useAuth();
-
-  if (loading) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F9FAFB' }}>
-        <ActivityIndicator size="large" color="#3B82F6" />
-        <Text style={{ marginTop: 16, color: '#6B7280' }}>Loading...</Text>
-      </View>
-    );
-  }
-
-  if (!user) {
-    return (
-      <View style={{ flex: 1 }}>
-        <OfflineBanner />
-        <AuthScreen />
-      </View>
-    );
-  }
-
+  // 시연을 위해 로그인 체크 제거 - 바로 메인 화면으로 이동
   return (
     <View style={{ flex: 1, backgroundColor: '#000' }}>
       <OfflineBanner />
