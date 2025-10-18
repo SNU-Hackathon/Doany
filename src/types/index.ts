@@ -19,37 +19,8 @@ export interface Location {
   placeId?: string;
 }
 
-// New location types for the location picker
-export interface TargetLocation {
-  name: string;
-  placeId?: string;
-  lat: number;
-  lng: number;
-  address?: string;
-}
 
-export interface PlacePrediction {
-  placeId: string;
-  description: string;
-  structured_formatting?: {
-    main_text: string;
-    secondary_text: string;
-  };
-}
-
-export interface PlaceDetails {
-  placeId: string;
-  name: string;
-  formatted_address: string;
-  geometry: {
-    location: {
-      lat: number;
-      lng: number;
-    };
-  };
-}
-
-export type VerificationType = 'location' | 'time' | 'screentime' | 'photo' | 'manual';
+export type VerificationType = 'time' | 'screentime' | 'camera' | 'screenshot' | 'manual';
 export type TimeFrame = 'daily' | 'weekly' | 'monthly';
 export type VerificationStatus = 'success' | 'fail';
 
@@ -127,7 +98,6 @@ export interface Goal {
   verificationMethods: VerificationType[]; // Multiple verification methods allowed
   // AI-selected mandatory methods (locked in UI); optional field on stored goals
   lockedVerificationMethods?: VerificationType[];
-  targetLocation?: TargetLocation;
   frequency: GoalFrequency;
   duration: GoalDuration;
   notes?: string;
@@ -177,10 +147,6 @@ export type RootStackParamList = {
   
   GoalDetail: { goalId: string };
   QuestDetail: { questId: string };
-  LocationPicker: { 
-    returnTo?: string; 
-    onSelect?: (location: TargetLocation) => void;
-  };
 };
 
 export type MainTabParamList = {
@@ -250,12 +216,6 @@ export interface AIGoal {
     startDate?: string;
     endDate?: string;
   };
-  targetLocation?: {
-    name: string;
-    lat?: number;
-    lng?: number;
-    placeId?: string;
-  };
   notes?: string;
   missingFields?: string[];
   followUpQuestion?: string;
@@ -283,7 +243,6 @@ export interface CreateGoalForm {
   verificationMethods: VerificationType[];
   // Methods selected by AI as mandatory and locked in the UI
   lockedVerificationMethods?: VerificationType[];
-  targetLocation?: TargetLocation;
   frequency: GoalFrequency;
   duration: GoalDuration;
   notes?: string;
@@ -326,3 +285,4 @@ export * from './quest';
 
 // Feed types
 export * from './feed';
+

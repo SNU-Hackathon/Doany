@@ -1,6 +1,5 @@
 import React, { memo, useMemo, useRef, useState } from 'react';
 import { Dimensions, FlatList, ScrollView, Text, TouchableOpacity, View } from 'react-native';
-import LocationSection from '../../components/LocationSection';
 import SimpleDatePicker from '../../components/SimpleDatePicker';
 import { DateRange, minMaxFromRanges } from '../../utils/dateRanges';
 
@@ -30,8 +29,8 @@ type Props = {
 };
 
 const ALLOWED: Record<GoalType, string[]> = {
-  frequency: ['manual', 'location', 'photo'],
-  schedule:  ['manual', 'location', 'photo', 'time', 'screentime'],
+  frequency: ['manual', 'camera', 'screenshot'],
+  schedule:  ['manual', 'camera', 'screenshot', 'time', 'screentime'],
 };
 
 export default function ScheduleFlow({ goalType, formData, setFormData, onDone }: Props) {
@@ -48,12 +47,9 @@ export default function ScheduleFlow({ goalType, formData, setFormData, onDone }
     const base = ['period'];
     if (isFrequency) base.push('weeklyTarget');
     base.push('verification');
-    // location 메서드를 이미 선택했으면 location 페이지 포함
-    const selected: string[] = formData?.verificationMethods ?? [];
-    if (selected.includes('location')) base.push('location');
     base.push('successCriteria');
-    return base as Array<'period'|'weeklyTarget'|'verification'|'location'|'successCriteria'>;
-  }, [goalType, formData?.verificationMethods]);
+    return base as Array<'period'|'weeklyTarget'|'verification'|'successCriteria'>;
+  }, [goalType]);
 
   const width = Dimensions.get('window').width;
   // (상단으로 이동)
@@ -132,9 +128,6 @@ export default function ScheduleFlow({ goalType, formData, setFormData, onDone }
     }
     if (page === 'verification') {
       return selected.length > 0;
-    }
-    if (page === 'location') {
-      return !!formData?.targetLocation;
     }
     return true;
   })();
@@ -219,21 +212,6 @@ export default function ScheduleFlow({ goalType, formData, setFormData, onDone }
                 );
               })}
             </View>
-            {selected.includes('location') && (
-              <Text className="text-blue-600 text-sm mt-4 p-3 bg-blue-50 rounded-lg">
-                다음 단계에서 위치를 선택합니다.
-              </Text>
-            )}
-          </Page>
-        );
-      case 'location':
-        return (
-          <Page width={width}>
-            <Text className="text-2xl font-bold text-gray-800 mb-6">Target Location</Text>
-            <LocationSection
-              value={formData?.targetLocation}
-              onChange={(loc: any) => setFormData(prev => ({ ...prev, targetLocation: loc }))}
-            />
           </Page>
         );
       case 'successCriteria':

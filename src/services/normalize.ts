@@ -325,28 +325,28 @@ function normalizeCurrentState(raw: any): string {
  * Normalize verification signals
  * 
  * Input formats:
- * - ["사진", "위치 등록"] - Korean labels (from chips widget)
- * - ["photo", "location"] - English signals
+ * - ["사진", "스크린샷"] - Korean labels (from chips widget)
+ * - ["camera", "screenshot"] - English signals
  */
-function normalizeVerification(raw: any): { signals: Array<"manual" | "photo" | "location" | "time"> } {
+function normalizeVerification(raw: any): { signals: Array<"manual" | "camera" | "screenshot" | "time"> } {
   if (!Array.isArray(raw)) {
     console.error('[NORMALIZE] Verification must be an array:', raw);
     return { signals: ["manual"] };
   }
   
-  const signalMap: Record<string, "manual" | "photo" | "location" | "time"> = {
-    '사진': 'photo',
-    'photo': 'photo',
-    '위치 등록': 'location',
-    '위치': 'location',
-    'location': 'location',
+  const signalMap: Record<string, "manual" | "camera" | "screenshot" | "time"> = {
+    '사진': 'camera',
+    'camera': 'camera',
+    '카메라': 'camera',
+    '스크린샷': 'screenshot',
+    'screenshot': 'screenshot',
     '체크리스트': 'manual',
     'manual': 'manual',
     '시간': 'time',
     'time': 'time'
   };
   
-  const signals: Array<"manual" | "photo" | "location" | "time"> = [];
+  const signals: Array<"manual" | "camera" | "screenshot" | "time"> = [];
   
   for (const item of raw) {
     const key = String(item).toLowerCase();

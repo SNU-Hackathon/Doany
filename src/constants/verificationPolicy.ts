@@ -3,7 +3,7 @@
  * Single source of truth for verification signal combinations
  */
 
-export type VerificationSignal = 'time' | 'location' | 'photo' | 'manual' | 'partner';
+export type VerificationSignal = 'time' | 'camera' | 'screenshot' | 'manual' | 'partner';
 
 export type GoalType = 'schedule' | 'frequency' | 'milestone';
 
@@ -12,18 +12,18 @@ export type GoalType = 'schedule' | 'frequency' | 'milestone';
  */
 export const VERIFICATION_POLICIES = {
   schedule: {
-    withTimeAndPlace: ['time', 'location'] as VerificationSignal[],
-    withTimeOnly: ['time', 'photo'] as VerificationSignal[], // or ['time', 'manual']
+    withTimeAndPlace: ['time', 'camera'] as VerificationSignal[],
+    withTimeOnly: ['time', 'screenshot'] as VerificationSignal[], // or ['time', 'manual']
     fallback: ['time', 'manual'] as VerificationSignal[],
   },
   frequency: {
-    primary: ['manual', 'photo'] as VerificationSignal[],
-    withLocation: ['manual', 'location'] as VerificationSignal[], // when meaningful
+    primary: ['manual', 'camera'] as VerificationSignal[],
+    withScreenshot: ['manual', 'screenshot'] as VerificationSignal[], // when meaningful
     fallback: ['manual'] as VerificationSignal[],
   },
   milestone: {
     primary: ['time', 'manual'] as VerificationSignal[],
-    withPhoto: ['time', 'photo'] as VerificationSignal[],
+    withCamera: ['time', 'camera'] as VerificationSignal[],
   },
 } as const;
 
@@ -37,18 +37,18 @@ export const DEFAULT_VERIFICATION_SIGNALS: VerificationSignal[] = ['manual'];
  */
 export const VERIFICATION_POLICY_DESCRIPTIONS = {
   schedule: {
-    withTimeAndPlace: 'Schedule with specific time and place: include ["time","location"]',
-    withTimeOnly: 'Schedule with time but no place: ["time", "photo" or "manual"]',
+    withTimeAndPlace: 'Schedule with specific time and visual proof: include ["time","camera"]',
+    withTimeOnly: 'Schedule with time but no camera: ["time", "screenshot" or "manual"]',
     fallback: 'Schedule fallback: ["time", "manual"]',
   },
   frequency: {
-    primary: 'Frequency goals: prefer ["manual","photo"]',
-    withLocation: 'Frequency with meaningful location: ["manual","location"]',
+    primary: 'Frequency goals: prefer ["manual","camera"]',
+    withScreenshot: 'Frequency with screenshot evidence: ["manual","screenshot"]',
     fallback: 'Frequency fallback: ["manual"]',
   },
   milestone: {
     primary: 'Milestone goals: prefer ["time","manual"]',
-    withPhoto: 'Milestone with photo evidence: ["time","photo"]',
+    withCamera: 'Milestone with camera evidence: ["time","camera"]',
   },
 } as const;
 
@@ -59,13 +59,13 @@ export function getVerificationSignals(
   goalType: GoalType,
   context: {
     hasTime?: boolean;
-    hasLocation?: boolean;
+    hasCamera?: boolean;
     hasPartner?: boolean;
   } = {}
 ): VerificationSignal[] {
   switch (goalType) {
     case 'schedule':
-      if (context.hasTime && context.hasLocation) {
+      if (context.hasTime && context.hasCamera) {
         return VERIFICATION_POLICIES.schedule.withTimeAndPlace;
       } else if (context.hasTime) {
         return VERIFICATION_POLICIES.schedule.withTimeOnly;
@@ -74,15 +74,15 @@ export function getVerificationSignals(
       }
     
     case 'frequency':
-      if (context.hasLocation) {
-        return VERIFICATION_POLICIES.frequency.withLocation;
+      if (context.hasCamera) {
+        return VERIFICATION_POLICIES.frequency.withScreenshot;
       } else {
         return VERIFICATION_POLICIES.frequency.primary;
       }
     
     case 'milestone':
       return context.hasTime 
-        ? VERIFICATION_POLICIES.milestone.withPhoto
+        ? VERIFICATION_POLICIES.milestone.withCamera
         : VERIFICATION_POLICIES.milestone.primary;
     
     default:
@@ -111,9 +111,9 @@ export function validateVerificationSignals(
         suggestions.push('time');
       }
       
-      if (signals.includes('time') && !signals.includes('location') && !signals.includes('photo') && !signals.includes('manual')) {
-        errors.push('Schedule with time must include location, photo, or manual signal');
-        suggestions.push('location', 'photo', 'manual');
+      if (signals.includes('time') && !signals.includes('camera') && !signals.includes('screenshot') && !signals.includes('manual')) {
+        errors.push('Schedule with time must include camera, screenshot, or manual signal');
+        suggestions.push('camera', 'screenshot', 'manual');
       }
       break;
     
@@ -123,10 +123,10 @@ export function validateVerificationSignals(
         suggestions.push('manual');
       }
       
-      // Manual alone is valid (fallback), but recommend adding photo or location
-      if (signals.includes('manual') && !signals.includes('photo') && !signals.includes('location') && signals.length > 1) {
-        errors.push('Frequency goals should include photo or location signal');
-        suggestions.push('photo', 'location');
+      // Manual alone is valid (fallback), but recommend adding camera or screenshot
+      if (signals.includes('manual') && !signals.includes('camera') && !signals.includes('screenshot') && signals.length > 1) {
+        errors.push('Frequency goals should include camera or screenshot signal');
+        suggestions.push('camera', 'screenshot');
       }
       break;
     
@@ -135,9 +135,9 @@ export function validateVerificationSignals(
         errors.push('Milestone goals must include "time" signal');
         suggestions.push('time');
       }
-      if (!signals.includes('manual') && !signals.includes('photo')) {
-        errors.push('Milestone goals must include manual or photo signal');
-        suggestions.push('manual', 'photo');
+      if (!signals.includes('manual') && !signals.includes('camera')) {
+        errors.push('Milestone goals must include manual or camera signal');
+        suggestions.push('manual', 'camera');
       }
       break;
   }
@@ -154,10 +154,10 @@ export function validateVerificationSignals(
  */
 export function getPolicyDescriptionForPrompt(): string {
   return `VERIFICATION SIGNALS POLICY:
-- Schedule with time+place: ${JSON.stringify(VERIFICATION_POLICIES.schedule.withTimeAndPlace)}
+- Schedule with time+camera: ${JSON.stringify(VERIFICATION_POLICIES.schedule.withTimeAndPlace)}
 - Schedule with time only: ${JSON.stringify(VERIFICATION_POLICIES.schedule.withTimeOnly)} or ${JSON.stringify(VERIFICATION_POLICIES.schedule.fallback)}
-- Frequency goals: ${JSON.stringify(VERIFICATION_POLICIES.frequency.primary)} (add location when meaningful)
-- Milestone goals: ${JSON.stringify(VERIFICATION_POLICIES.milestone.primary)} or ${JSON.stringify(VERIFICATION_POLICIES.milestone.withPhoto)}`;
+- Frequency goals: ${JSON.stringify(VERIFICATION_POLICIES.frequency.primary)} (add camera when meaningful)
+- Milestone goals: ${JSON.stringify(VERIFICATION_POLICIES.milestone.primary)} or ${JSON.stringify(VERIFICATION_POLICIES.milestone.withCamera)}`;
 }
 
 /**
@@ -175,26 +175,26 @@ GOOD: {"type":"milestone","originalText":"매일 코치와 운동 검토","miles
  */
 export const ALLOWED_SIGNAL_COMBINATIONS = [
   // Schedule combinations
-  ['time', 'location'],
-  ['time', 'photo'],
+  ['time', 'camera'],
+  ['time', 'screenshot'],
   ['time', 'manual'],
-  ['time', 'location', 'photo'],
-  ['time', 'location', 'manual'],
-  ['time', 'photo', 'manual'],
+  ['time', 'camera', 'screenshot'],
+  ['time', 'camera', 'manual'],
+  ['time', 'screenshot', 'manual'],
   
   // Frequency combinations
-  ['manual', 'photo'],
-  ['manual', 'location'],
-  ['manual', 'photo', 'location'],
+  ['manual', 'camera'],
+  ['manual', 'screenshot'],
+  ['manual', 'camera', 'screenshot'],
   
   // Partner combinations
   ['partner'],
   ['partner', 'manual'],
-  ['partner', 'photo'],
-  ['partner', 'location'],
-  ['partner', 'manual', 'photo'],
-  ['partner', 'manual', 'location'],
-  ['partner', 'photo', 'location'],
+  ['partner', 'camera'],
+  ['partner', 'screenshot'],
+  ['partner', 'manual', 'camera'],
+  ['partner', 'manual', 'screenshot'],
+  ['partner', 'camera', 'screenshot'],
   
   // Fallback
   ['manual'],

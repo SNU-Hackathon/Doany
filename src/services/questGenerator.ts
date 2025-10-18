@@ -77,12 +77,7 @@ export class QuestGeneratorService {
         goalTitle: request.goalTitle,
         frequencyDetails: request.goalType === 'frequency' ? {
           weeksCount: Math.ceil((new Date(request.duration.endDate).getTime() - new Date(request.duration.startDate).getTime()) / (7 * 24 * 60 * 60 * 1000)),
-          perWeek: request.schedule?.frequency || 3,
-          weekBreakdown: quests.reduce((acc, quest) => {
-            const week = quest.weekNumber || 0;
-            acc[week] = (acc[week] || 0) + 1;
-            return acc;
-          }, {} as Record<number, number>)
+          perWeek: request.schedule?.frequency || 3
         } : undefined
       });
       
@@ -124,8 +119,7 @@ export class QuestGeneratorService {
       goalType: request.goalType,
       duration: request.duration,
       schedule: request.schedule,
-      verificationMethods: request.verificationMethods,
-      targetLocation: request.targetLocation
+      verificationMethods: request.verificationMethods
     });
 
     const basePrompt = getLanguageAwareSystemPrompt(`
@@ -143,7 +137,6 @@ GOAL ANALYSIS:
         ${request.schedule ? `
         - Weekdays: ${request.schedule.weekdays ? request.schedule.weekdays.map(d => ['일','월','화','수','목','금','토'][d]).join(', ') : 'Not specified'}
         - Time: ${request.schedule.time || 'Not specified'}
-        - Location: ${request.schedule.location || 'Not specified'}
         - Frequency: ${request.schedule.frequency || 'Not specified'} times per week
         
         IMPORTANT: Use this Schedule configuration to generate quests, not just the original goal text.
@@ -157,13 +150,6 @@ GOAL ANALYSIS:
         - Target per week: ${request.schedule?.frequency || 3} times
         - Expected quests: ${Math.ceil((new Date(request.duration.endDate).getTime() - new Date(request.duration.startDate).getTime()) / (7 * 24 * 60 * 60 * 1000)) * (request.schedule?.frequency || 3)} quests
         `}
-
-TARGET LOCATION:
-${request.targetLocation ? `
-- Name: ${request.targetLocation.name}
-- Address: ${(request.targetLocation as any).address || 'Not specified'}
-- Coordinates: ${(request.targetLocation as any).lat || 'N/A'}, ${(request.targetLocation as any).lng || 'N/A'}
-` : '- No target location specified'}
 
 QUEST GENERATION RULES:
 
@@ -201,15 +187,9 @@ Return ONLY valid JSON array of quests. Each quest MUST have these exact fields:
     "sequence": 1 (for milestone type only),
     "verificationRules": [
       {
-        "type": "location|photo|manual|time|partner|screentime",
+        "type": "camera|screenshot|manual|time|partner|screentime",
         "required": true,
-        "config": {
-          "location": {
-            "name": "Location name",
-            "coordinates": {"lat": 37.5665, "lng": 126.9780},
-            "radius": 100
-          }
-        }
+        "config": {}
       }
     ]
   }
@@ -220,10 +200,9 @@ Use ONLY the fields specified above: title, description, type, scheduledDate/wee
 
 VERIFICATION RULES:
 - Include ALL specified verification methods: ${request.verificationMethods.join(', ')}
-- If location verification: include target location details
 - If time verification: include time window based on schedule
 - Always include manual verification as fallback
-- Photo verification for visual confirmation
+- Camera/Screenshot verification for visual confirmation
 
 LOCALE SETTINGS:
 ${localeConfig.language === 'ko' ? 
@@ -625,7 +604,6 @@ ${localeConfig.language === 'ko' ?
       scheduleDetails: request.schedule ? {
         weekdays: request.schedule.weekdays,
         frequency: request.schedule.frequency,
-        location: request.schedule.location,
         time: request.schedule.time
       } : null
     });
@@ -656,21 +634,15 @@ ${localeConfig.language === 'ko' ?
     const questId = `${request.goalId}_quest_${index + 1}`;
     
     return {
+      questId: questId,
       id: questId,
       goalId: request.goalId,
+      date: data.scheduledDate || new Date().toISOString().split('T')[0],
+      state: 'onTrack',
       title: data.title || `Quest ${index + 1}`,
-      description: data.description,
-      type: data.type || request.goalType,
+      description: data.description || '',
       status: 'pending',
-      scheduledDate: data.scheduledDate,
-      weekNumber: data.weekNumber,
-      verificationRules: this.parseVerificationRules(data.verificationRules || [], request),
-      createdAt: new Date().toISOString(),
-      metadata: {
-        sequence: data.sequence,
-        dependencies: data.dependencies,
-        priority: data.priority || 'medium'
-      }
+      createdAt: new Date().toISOString()
     };
   }
   
@@ -689,16 +661,6 @@ ${localeConfig.language === 'ko' ?
       };
       
       // Add specific config based on verification type
-      if (method === 'location' && request.targetLocation) {
-        rule.config = {
-          location: {
-            name: request.targetLocation.name,
-            coordinates: request.targetLocation.coordinates,
-            radius: 100 // 100 meters default
-          }
-        };
-      }
-      
       if (method === 'time' && request.schedule?.time) {
         rule.config = {
           time: {
@@ -711,11 +673,19 @@ ${localeConfig.language === 'ko' ?
         };
       }
       
-      if (method === 'photo') {
+      if (method === 'camera') {
         rule.config = {
-          photo: {
+          camera: {
             required: true,
             exifValidation: true
+          }
+        };
+      }
+      
+      if (method === 'screenshot') {
+        rule.config = {
+          screenshot: {
+            required: true
           }
         };
       }
@@ -825,26 +795,20 @@ ${localeConfig.language === 'ko' ?
       let questIndex = 1;
       for (let week = 1; week <= totalWeeks; week++) {
         for (let session = 1; session <= frequencyPerWeek; session++) {
-        const quest = {
-          id: `fallback_${request.goalId}_quest_${questIndex}`,
-          goalId: request.goalId,
-          title: `${request.goalTitle} - ${week}주차 ${session}회차`,
-          description: `${week}주차 ${session}번째 ${request.goalTitle} 세션을 수행합니다`,
-          type: 'frequency' as const,
-          status: 'pending' as const,
-          weekNumber: week,
-          verificationRules: this.generateBasicVerificationRules(request),
-          createdAt: new Date().toISOString()
-        };
-        
-        // Remove undefined fields
-        Object.keys(quest).forEach(key => {
-          if (quest[key as keyof typeof quest] === undefined) {
-            delete quest[key as keyof typeof quest];
-          }
-        });
-        
-        quests.push(quest);
+          const questId = `fallback_${request.goalId}_quest_${questIndex}`;
+          const quest: Quest = {
+            questId: questId,
+            id: questId,
+            goalId: request.goalId,
+            date: new Date(startDate.getTime() + (week - 1) * 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            state: 'onTrack',
+            title: `${request.goalTitle} - ${week}주차 ${session}회차`,
+            description: `${week}주차 ${session}번째 ${request.goalTitle} 세션을 수행합니다`,
+            status: 'pending',
+            createdAt: new Date().toISOString()
+          };
+          
+          quests.push(quest);
           questIndex++;
         }
       }
@@ -861,24 +825,18 @@ ${localeConfig.language === 'ko' ?
         
         if (weekdays.includes(dayOfWeek)) {
           const dayName = dayNames[dayOfWeek];
-          const quest = {
-            id: `fallback_${request.goalId}_quest_${questIndex}`,
+          const questId = `fallback_${request.goalId}_quest_${questIndex}`;
+          const quest: Quest = {
+            questId: questId,
+            id: questId,
             goalId: request.goalId,
+            date: this.formatDate(currentDate),
+            state: 'onTrack',
             title: `${request.goalTitle} - ${dayName}요일`,
             description: `${dayName}요일에 ${request.goalTitle}를 수행합니다`,
-            type: 'schedule' as const,
-            status: 'pending' as const,
-            scheduledDate: this.formatDate(currentDate),
-            verificationRules: this.generateBasicVerificationRules(request),
+            status: 'pending',
             createdAt: new Date().toISOString()
           };
-          
-          // Remove undefined fields
-          Object.keys(quest).forEach(key => {
-            if (quest[key as keyof typeof quest] === undefined) {
-              delete quest[key as keyof typeof quest];
-            }
-          });
           
           quests.push(quest);
           questIndex++;
@@ -892,23 +850,18 @@ ${localeConfig.language === 'ko' ?
       const questCount = Math.min(totalDays, 10); // Max 10 fallback quests
       
       for (let i = 1; i <= questCount; i++) {
-        const quest = {
-          id: `fallback_${request.goalId}_quest_${i}`,
+        const questId = `fallback_${request.goalId}_quest_${i}`;
+        const quest: Quest = {
+          questId: questId,
+          id: questId,
           goalId: request.goalId,
+          date: new Date(startDate.getTime() + (i - 1) * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          state: 'onTrack',
           title: `${request.goalTitle} - Quest ${i}`,
           description: `${request.goalTitle}의 ${i}번째 단계를 수행합니다`,
-          type: request.goalType || 'frequency',
-          status: 'pending' as const,
-          verificationRules: this.generateBasicVerificationRules(request),
+          status: 'pending',
           createdAt: new Date().toISOString()
         };
-        
-        // Remove undefined fields
-        Object.keys(quest).forEach(key => {
-          if (quest[key as keyof typeof quest] === undefined) {
-            delete quest[key as keyof typeof quest];
-          }
-        });
         
         quests.push(quest);
       }
@@ -932,25 +885,19 @@ ${localeConfig.language === 'ko' ?
     });
     
     // Add other verification methods if specified
-    if (request.verificationMethods.includes('photo')) {
+    if (request.verificationMethods.includes('camera')) {
       rules.push({
-        type: 'photo',
+        type: 'camera',
         required: false,
-        config: { exifValidation: true }
+        config: { camera: { required: false, exifValidation: true } }
       });
     }
     
-    if (request.verificationMethods.includes('location') && request.targetLocation) {
+    if (request.verificationMethods.includes('screenshot')) {
       rules.push({
-        type: 'location',
+        type: 'screenshot',
         required: false,
-        config: {
-          location: {
-            name: request.targetLocation.name,
-            coordinates: request.targetLocation.coordinates,
-            radius: 100
-          }
-        }
+        config: { screenshot: { required: false } }
       });
     }
     

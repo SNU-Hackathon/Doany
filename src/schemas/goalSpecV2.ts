@@ -93,7 +93,7 @@ export interface GoalSpecV2 {
 
   /** Verification methods */
   verification?: {
-    signals: Array<"manual" | "photo" | "location" | "time">;
+    signals: Array<"manual" | "camera" | "screenshot" | "time" | "screentime">;
   };
 
   /** Success criteria */

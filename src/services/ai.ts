@@ -228,7 +228,7 @@ SCHEMA:
   "originalText": string,
   "schedule": {
     "events": [
-      { "dayOfWeek": "mon|tue|wed|thu|fri|sat|sun", "time": "HH:mm", "locationName"?: string }
+      { "dayOfWeek": "mon|tue|wed|thu|fri|sat|sun", "time": "HH:mm" }
     ]
   },
   "frequency": { "targetPerWeek": number, "windowDays": 7 },
@@ -555,27 +555,6 @@ Output ONLY valid JSON matching the schema above. No explanations, no markdown, 
       // Minimal heuristic fallback adhering to structure
       const hasLocation = input.targetLocationName || input.placeId;
       
-      // Detect if this is a movement goal (run, walk, cycle, etc.)
-      const isMovementGoal = /\b(run|jog|walk|hike|cycle|ride|swim|exercise|workout|fitness)\b/i.test(input.prompt);
-      
-      let locationConstraints;
-      if (isMovementGoal && !hasLocation) {
-        // Movement goal without fixed venue
-        locationConstraints = {
-          mode: 'movement' as const,
-          minDistanceKm: 1, // Default minimum distance
-          evidence: 'GPS' as const
-        };
-      } else if (hasLocation) {
-        // Fixed venue goal
-        locationConstraints = {
-          mode: 'geofence' as const,
-          placeId: input.placeId || undefined,
-          name: input.targetLocationName || undefined,
-          radiusM: 100,
-          minDwellMin: 10
-        };
-      }
       
       // Parse weekdays with regex: /\b(monday|mon|tuesday|tue|wednesday|wed|thursday|thu|friday|fri|saturday|sat|sunday|sun)\b/gi
       // Map to indices: Sun=0, Mon=1, ..., Sat=6
@@ -743,15 +722,11 @@ Output ONLY valid JSON matching the schema above. No explanations, no markdown, 
       return {
         title: input.title || '',
         verification: {
-          methods: locationConstraints ? ['location', 'manual'] : ['manual'],
-          mandatory: locationConstraints ? ['location'] : [],
-          constraints: locationConstraints ? { location: locationConstraints } : {},
-          sufficiency: !!locationConstraints,
-          rationale: locationConstraints 
-            ? (isMovementGoal 
-                ? 'Movement-based goal with GPS tracking; refine with AI for better accuracy.'
-                : 'Location-based goal with manual backup; refine with AI for better accuracy.')
-            : 'Manual-only fallback; refine with AI for better verification methods.'
+          methods: ['manual'],
+          mandatory: [],
+          constraints: {},
+          sufficiency: false,
+          rationale: 'Manual-only fallback; refine with AI for better verification methods.'
         },
         schedule: {
           countRule: { operator: '>=', count: 3, unit: 'per_week' },
@@ -774,7 +749,7 @@ Output ONLY valid JSON matching the schema above. No explanations, no markdown, 
         model: 'gpt-4o-mini',
         temperature: 0,
         messages: [
-          { role: 'system', content: 'STRICT JSON ONLY. No code fences or explanations. Output EXACTLY a GoalSpec object with this shape: {"title": string, "verification": {"methods": ("location"|"time"|"screentime"|"photo"|"manual")[], "mandatory": ("location"|"time"|"screentime"|"photo"|"manual")[], "constraints"?: object, "sufficiency": boolean, "rationale": string}, "schedule": {"countRule"?: {"operator": ">="|"=="|"<=", "count": number, "unit": "per_week"|"per_day"|"per_month"}, "weekdayConstraints"?: number[], "timeRules"?: [{"days": number[], "range": ["HH:MM","HH:MM"], "label"?: string, "source": "user_text"|"inferred"}], "timeWindows"?: [{"label": string, "range": ["HH:MM","HH:MM"], "source": "user_text"|"inferred"}], "weekBoundary"?: "startWeekday"|"isoWeek", "enforcePartialWeeks"?: boolean, "requiresDisambiguation"?: boolean, "followUpQuestion"?: string}. HARD RULES: - Location has two modes: 1) "geofence": attendance at a fixed place. Requires { name or placeId, radiusM, minDwellMin }. 2) "movement": distance/route based verification (e.g., run 5 km). Requires { minDistanceKm } and MUST NOT request a place name. - If the goal is a mobile activity (run/jog/walk/hike/cycle/ride/etc.) AND no fixed venue is explicitly specified by the user: - Include "location" in methods AND mandatory. - Set verification.constraints.location = { mode:"movement", minDistanceKm: <parsed from goal or infer>, evidence:"GPS|HealthKit|GoogleFit" }. - Do NOT include targetLocationName/placeId. Do NOT ask for a place-name follow-up. - If a fixed venue is explicit (gym, studio, library, office, class, ...): - Use mode:"geofence" and require { name/placeId, radiusM:100, minDwellMin:10 }. - If the goal is digital/app usage (study app, coding app, watching videos, social media control, focus timer, IDE, browser), you MUST include "screentime" in methods AND in mandatory. Provide constraints.screentime.bundleIds or a category hint. - If the goal requires visual proof (meal logging, workout set evidence, artifact submission, bodyweight record), include "photo" in methods; set it mandatory when photo is the primary proof. Set constraints.photo.required=true. - "time" is a scheduling trigger only, never sufficient as a standalone proof and must not be mandatory. - "manual" alone is insufficient for objective goals. If only manual/time are available, set sufficiency=false and provide ONE brief followUpQuestion proposing a viable proof (photo/location/screentime). - Semantic-first: do NOT force-map vague phrases (e.g., "morning"); represent them as timeWindows unless user gave exact times. - Preserve explicit user times exactly. - Use 24h HH:MM format in ranges. - Weekday indices: 0=Sun..6=Sat. - weekBoundary defaults to "startWeekday", enforcePartialWeeks defaults to false. WEEKDAY RULE: - If the prompt explicitly names weekdays (Mon/Tue/Wed/Thu/Fri/Sat/Sun; full or abbreviated), set schedule.weekdayConstraints to the EXACT set of mentioned days (deduplicated & sorted by 0=Sun..6=Sat). - If NO weekdays are named, OMIT schedule.weekdayConstraints entirely (treat as no restriction). TIME RULES (PREFERRED): - Use schedule.timeRules when the prompt ties specific times to specific weekdays. - timeRules: Array<{ days: number[], range: [string,string], label?: string, source: "user_text"|"inferred" }> - days use 0=Sun..6=Sat indices. - For exact times like "7 a.m.", create a point window ["07:00","07:00"]. - Only fall back to schedule.timeWindows (global union) when the prompt does NOT tie times to particular days. - Do NOT fabricate weekdayConstraints for "N times per week". TIME WINDOWS RULE (FALLBACK): - Build schedule.timeWindows as the UNION of all distinct times or intervals mentioned ONLY when no day→time binding exists. - A selected time is compatible if it lies INSIDE ANY allowed window (inclusive): start <= t <= end. - Equality counts as inside (e.g., 08:00 is inside [08:00–09:00] and [08:00–08:00]). FREQUENCY RULE: - For inputs like "N times per week", do not fabricate weekdayConstraints. EXAMPLES: Input: "Go to the gym at 7 a.m. on Mondays and Wednesdays, and at 9 a.m. on Fridays and Saturdays." → schedule.weekdayConstraints=[1,3,5,6], timeRules=[{ days: [1,3], range: ["07:00","07:00"], label: "07:00", source: "user_text" }, { days: [5,6], range: ["09:00","09:00"], label: "09:00", source: "user_text" }], Omit schedule.timeWindows. Input: "Exercise 3 times per week" → Omit both timeRules and timeWindows (no day→time binding). - JSON ONLY, no code fences or explanations.' },
+          { role: 'system', content: 'STRICT JSON ONLY. No code fences or explanations. Output EXACTLY a GoalSpec object with this shape: {"title": string, "verification": {"methods": ("time"|"screentime"|"camera"|"screenshot"|"manual")[], "mandatory": ("time"|"screentime"|"camera"|"screenshot"|"manual")[], "constraints"?: object, "sufficiency": boolean, "rationale": string}, "schedule": {"countRule"?: {"operator": ">="|"=="|"<=", "count": number, "unit": "per_week"|"per_day"|"per_month"}, "weekdayConstraints"?: number[], "timeRules"?: [{"days": number[], "range": ["HH:MM","HH:MM"], "label"?: string, "source": "user_text"|"inferred"}], "timeWindows"?: [{"label": string, "range": ["HH:MM","HH:MM"], "source": "user_text"|"inferred"}], "weekBoundary"?: "startWeekday"|"isoWeek", "enforcePartialWeeks"?: boolean, "requiresDisambiguation"?: boolean, "followUpQuestion"?: string}. HARD RULES: - If the goal is digital/app usage (study app, coding app, watching videos, social media control, focus timer, IDE, browser), you MUST include "screentime" in methods AND in mandatory. Provide constraints.screentime.bundleIds or a category hint. - If the goal requires visual proof (meal logging, workout set evidence, artifact submission, bodyweight record), include "camera" in methods; set it mandatory when camera is the primary proof. Set constraints.camera.required=true. - For screenshot-based verification (digital activity proof, app usage evidence), include "screenshot" in methods and set constraints.screenshot.required=true when mandatory. - "time" is a scheduling trigger only, never sufficient as a standalone proof and must not be mandatory. - "manual" alone is insufficient for objective goals. If only manual/time are available, set sufficiency=false and provide ONE brief followUpQuestion proposing a viable proof (camera/screenshot/screentime). - Semantic-first: do NOT force-map vague phrases (e.g., "morning"); represent them as timeWindows unless user gave exact times. - Preserve explicit user times exactly. - Use 24h HH:MM format in ranges. - Weekday indices: 0=Sun..6=Sat. - weekBoundary defaults to "startWeekday", enforcePartialWeeks defaults to false. WEEKDAY RULE: - If the prompt explicitly names weekdays (Mon/Tue/Wed/Thu/Fri/Sat/Sun; full or abbreviated), set schedule.weekdayConstraints to the EXACT set of mentioned days (deduplicated & sorted by 0=Sun..6=Sat). - If NO weekdays are named, OMIT schedule.weekdayConstraints entirely (treat as no restriction). TIME RULES (PREFERRED): - Use schedule.timeRules when the prompt ties specific times to specific weekdays. - timeRules: Array<{ days: number[], range: [string,string], label?: string, source: "user_text"|"inferred" }> - days use 0=Sun..6=Sat indices. - For exact times like "7 a.m.", create a point window ["07:00","07:00"]. - Only fall back to schedule.timeWindows (global union) when the prompt does NOT tie times to particular days. - Do NOT fabricate weekdayConstraints for "N times per week". TIME WINDOWS RULE (FALLBACK): - Build schedule.timeWindows as the UNION of all distinct times or intervals mentioned ONLY when no day→time binding exists. - A selected time is compatible if it lies INSIDE ANY allowed window (inclusive): start <= t <= end. - Equality counts as inside (e.g., 08:00 is inside [08:00–09:00] and [08:00–08:00]). FREQUENCY RULE: - For inputs like "N times per week", do not fabricate weekdayConstraints. EXAMPLES: Input: "Go to the gym at 7 a.m. on Mondays and Wednesdays, and at 9 a.m. on Fridays and Saturdays." → schedule.weekdayConstraints=[1,3,5,6], timeRules=[{ days: [1,3], range: ["07:00","07:00"], label: "07:00", source: "user_text" }, { days: [5,6], range: ["09:00","09:00"], label: "09:00", source: "user_text" }], Omit schedule.timeWindows. Input: "Exercise 3 times per week" → Omit both timeRules and timeWindows (no day→time binding). - JSON ONLY, no code fences or explanations.' },
           { role: 'user', content: JSON.stringify(payload) }
         ]
       })
@@ -1173,12 +1148,6 @@ Output ONLY valid JSON matching the schema above. No explanations, no markdown, 
       let summary = isCompatible
         ? 'Your schedule matches the goal\'s allowed days, time windows, and target frequency.'
         : 'Your schedule has conflicts with allowed days, time windows, or the required frequency.';
-      
-      // Add movement goal note to summary
-      const isMovementGoal = spec?.verification?.constraints?.location?.mode === 'movement';
-      if (isMovementGoal) {
-        summary += ' (Movement goal: schedule compatibility based on time windows, no place required)';
-      }
 
       // Add partial week note to summary
       if (enforcePartialWeeks) {
@@ -1583,8 +1552,8 @@ Focus on understanding the user's unique situation and creating truly personaliz
       // Convert English signals to Korean
       const verification = verificationRaw.map((v: string) => {
         const signalMap: Record<string, string> = {
-          'photo': '사진',
-          'location': '위치 등록',
+          'camera': '사진',
+          'screenshot': '스크린샷',
           'checklist': '체크리스트',
           'manual': '체크리스트'
         };
@@ -1652,7 +1621,7 @@ Focus on understanding the user's unique situation and creating truly personaliz
 
     // Validate verification labels (support both Korean and English)
     const verification = input.collectedSlots.verification as string[] || [];
-    const allowedVerification = ['사진', '위치 등록', '체크리스트', 'photo', 'location', 'checklist', 'manual'];
+    const allowedVerification = ['사진', '스크린샷', '체크리스트', 'camera', 'screenshot', 'checklist', 'manual'];
     const invalidLabels = verification.filter(v => !allowedVerification.includes(v));
     if (invalidLabels.length > 0) {
       console.error('[AI.QUEST] ❌ VALIDATION FAILED: Invalid verification labels:', invalidLabels);
@@ -1663,8 +1632,8 @@ Focus on understanding the user's unique situation and creating truly personaliz
     // Convert English signals to Korean for consistency
     const verificationKorean = verification.map(v => {
       const signalMap: Record<string, string> = {
-        'photo': '사진',
-        'location': '위치 등록',
+        'camera': '사진',
+        'screenshot': '스크린샷',
         'checklist': '체크리스트',
         'manual': '체크리스트'
       };
@@ -1749,8 +1718,8 @@ NEVER guess missing fields. Follow these rules STRICTLY:
    - This means ${finalTargetCount} quests are required for success
    
 5. verification: Use ONLY these labels from user's choice: ${JSON.stringify(verificationKorean)}
-   - Allowed: ["사진", "위치 등록", "체크리스트"]
-   - NEVER use other labels like "manual", "time", "location", "photo"
+   - Allowed: ["사진", "스크린샷", "체크리스트"]
+   - NEVER use other labels like "manual", "time", "camera", "screenshot"
    
 6. userState: ${input.userState ? JSON.stringify(input.userState) : 'not provided'}
    - Adjust difficulty, pacing, and tips based on currentLevel, experience, timeline, resources
@@ -1944,7 +1913,7 @@ You MUST return a valid JSON object with a "quests" array:
     targetLocationName?: string;
   }): Promise<{ summary: string }> {
     const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
-    const allowed: VerificationType[] = ['location','time','screentime','photo','manual'];
+    const allowed: VerificationType[] = ['time','screentime','camera','screenshot','manual'];
     const safeMethods = (ctx.verificationMethods || []).filter(m => (allowed as string[]).includes(m as any));
 
     const heuristic = () => {
@@ -2280,7 +2249,7 @@ You MUST return a valid JSON object with a "quests" array:
             model: 'gpt-4o-mini',
             temperature: 0.2,
             messages: [
-              { role: 'system', content: 'Output JSON only with fields: {"title":string,"category":string,"verificationMethods":string[],"mandatoryVerificationMethods"?:string[],"frequency":{ "count":number, "unit":"per_day"|"per_week"|"per_month" },"duration":{ "type":"days"|"weeks"|"months"|"range","value"?:number,"startDate"?:string,"endDate"?:string },"notes"?:string,"targetLocation"?:{ "name":string },"needsWeeklySchedule"?:boolean,"weeklySchedule"?:{ [weekdayName:string]: string },"weeklyWeekdays"?:number[],"weeklyTimeSettings"?:{ [dayIndex:number]: string[] },"includeDates"?:string[],"excludeDates"?:string[],"missingFields"?:string[],"followUpQuestion"?:string }. Rules: 1) If time-of-day is vague, map: morning→"07:00", before work→"07:00", lunchtime→"12:00", evening/after work→"19:00", night→"21:00". 2) Use 24h HH:MM, local timezone. 3) If schedule can be inferred, fill needsWeeklySchedule, weeklyWeekdays and weeklyTimeSettings. 4) If something is truly missing, set missingFields and provide EXACTLY ONE concise followUpQuestion. 5) Prefer proposing defaults.' },
+              { role: 'system', content: 'Output JSON only with fields: {"title":string,"category":string,"verificationMethods":string[],"mandatoryVerificationMethods"?:string[],"frequency":{ "count":number, "unit":"per_day"|"per_week"|"per_month" },"duration":{ "type":"days"|"weeks"|"months"|"range","value"?:number,"startDate"?:string,"endDate"?:string },"notes"?:string,"needsWeeklySchedule"?:boolean,"weeklySchedule"?:{ [weekdayName:string]: string },"weeklyWeekdays"?:number[],"weeklyTimeSettings"?:{ [dayIndex:number]: string[] },"includeDates"?:string[],"excludeDates"?:string[],"missingFields"?:string[],"followUpQuestion"?:string }. Rules: 1) If time-of-day is vague, map: morning→"07:00", before work→"07:00", lunchtime→"12:00", evening/after work→"19:00", night→"21:00". 2) Use 24h HH:MM, local timezone. 3) If schedule can be inferred, fill needsWeeklySchedule, weeklyWeekdays and weeklyTimeSettings. 4) If something is truly missing, set missingFields and provide EXACTLY ONE concise followUpQuestion. 5) Prefer proposing defaults.' },
               ...(Array.isArray((context as any).conversationHistory) ? (context as any).conversationHistory : []),
               { role: 'system', content: `Current partialGoal JSON: ${JSON.stringify((context as any).partialGoal || {})}. Fill only missing/ambiguous fields.` },
               { role: 'user', content: JSON.stringify({ prompt: userAnswer, timezone: 'Asia/Seoul', locale: 'ko-KR' }) }
@@ -2707,12 +2676,12 @@ You MUST return a valid JSON object with a "quests" array:
         category,
         verificationMethods: Array.isArray(goalData.verificationMethods) 
           ? goalData.verificationMethods.filter((vm: string) => 
-              ['location', 'time', 'screentime', 'photo', 'manual'].includes(vm)
+              ['time', 'screentime', 'camera', 'screenshot', 'manual'].includes(vm)
             )
           : ['manual'],
         mandatoryVerificationMethods: Array.isArray(goalData.mandatoryVerificationMethods)
           ? goalData.mandatoryVerificationMethods.filter((vm: string) =>
-              ['location', 'time', 'screentime', 'photo', 'manual'].includes(vm)
+              ['time', 'screentime', 'camera', 'screenshot', 'manual'].includes(vm)
             )
           : undefined,
         frequency: this.validateFrequency(goalData.frequency),
@@ -2812,7 +2781,7 @@ You MUST return a valid JSON object with a "quests" array:
   static async analyzeVerificationMethods(input: { prompt: string; title?: string; targetLocationName?: string; placeId?: string | null; locale?: string; timezone?: string; userHints?: string; weeklyTimeSettings?: { [key: string]: string[] }; calendarEvents?: any[] }): Promise<{ methods: VerificationType[]; mandatory: VerificationType[]; usedFallback?: boolean }> {
     const proxyUrl = process.env.EXPO_PUBLIC_AI_PROXY_URL;
     const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
-    const allowed: VerificationType[] = ['location','time','screentime','photo','manual'];
+    const allowed: VerificationType[] = ['time','screentime','camera','screenshot','manual'];
     const payload = {
       prompt: input.prompt,
       title: input.title,
@@ -2834,15 +2803,6 @@ You MUST return a valid JSON object with a "quests" array:
         const data = await response.json();
         let methods = (Array.isArray(data.methods) ? data.methods.filter((m: string) => (allowed as string[]).includes(m)) : []) as VerificationType[];
         let mandatory = (Array.isArray(data.mandatory) ? data.mandatory.filter((m: string) => (allowed as string[]).includes(m)) : []) as VerificationType[];
-        
-        // Check for movement goals or fixed venue goals
-        const isMovementGoal = /\b(run|jog|walk|hike|cycle|ride|swim|exercise|workout|fitness)\b/i.test(payload.prompt);
-        const hasFixedVenue = payload.targetLocationName || payload.placeId;
-        
-        if (isMovementGoal || hasFixedVenue) {
-          if (!methods.includes('location' as any)) methods = [...methods, 'location' as any];
-          if (!mandatory.includes('location' as any)) mandatory = [...mandatory, 'location' as any];
-        }
         
         // Enforce time/manual verification based on weeklyTimeSettings and calendarEvents
         const hasAnyTime = (() => {
@@ -2911,15 +2871,6 @@ You MUST return a valid JSON object with a "quests" array:
         })();
         let methods = (Array.isArray(parsed.methods) ? parsed.methods.filter((m: string) => (allowed as string[]).includes(m)) : []) as VerificationType[];
         let mandatory = (Array.isArray(parsed.mandatory) ? parsed.mandatory.filter((m: string) => (allowed as string[]).includes(m)) : []) as VerificationType[];
-        
-        // Check for movement goals or fixed venue goals
-        const isMovementGoal = /\b(run|jog|walk|hike|cycle|ride|swim|exercise|workout|fitness)\b/i.test(payload.prompt);
-        const hasFixedVenue = payload.targetLocationName || payload.placeId;
-        
-        if (isMovementGoal || hasFixedVenue) {
-          if (!methods.includes('location' as any)) methods = [...methods, 'location' as any];
-          if (!mandatory.includes('location' as any)) mandatory = [...mandatory, 'location' as any];
-        }
         
         // Enforce time/manual verification based on weeklyTimeSettings and calendarEvents
         const hasAnyTime = (() => {

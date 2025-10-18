@@ -9,11 +9,6 @@ const appJson = require('./app.json');
 export default ({ config }: ConfigContext): ExpoConfig => {
   const base: ExpoConfig = appJson.expo || {};
 
-  const androidMapsApiKey =
-    process.env.EXPO_PUBLIC_ANDROID_MAPS_API_KEY ||
-    process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ||
-    base?.android?.config?.googleMaps?.apiKey ||
-    'YOUR_ANDROID_MAPS_API_KEY';
   const androidPackage =
     process.env.EXPO_ANDROID_PACKAGE ||
     (base?.android as any)?.package ||
@@ -40,9 +35,6 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       package: androidPackage,
       config: {
         ...((base.android && (base.android as any).config) || {}),
-        googleMaps: {
-          apiKey: androidMapsApiKey,
-        },
       },
     },
   } as ExpoConfig;

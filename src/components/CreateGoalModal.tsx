@@ -4,7 +4,6 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import * as Location from 'expo-location';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -17,20 +16,18 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-// import { LocationSearch } from '../components'; // Commented out to avoid web build issues
 import { FrequencyTarget, ScheduleWhen } from '../components/createGoal';
 import { Categories } from '../constants';
 import { classifyGoalTypeFromTitle, computeVerificationPlan, CreateGoalState as CreateGoalFeatureState, GoalType, INITIAL_CREATE_GOAL_STATE, RULE_TIPS, useCreateGoal, validateFrequencyDraft } from '../features/createGoal';
 import ScheduleFlow from '../features/createGoal/ScheduleFlow';
-import { AIGoalDraft, mergeAIGoal, parseGoalSpec, updateDraftWithDates, validateAIGoal } from '../features/goals/aiDraft';
+import { AIGoalDraft, parseGoalSpec, updateDraftWithDates, validateAIGoal } from '../features/goals/aiDraft';
 import { useAIWithRetry } from '../hooks/useAIWithRetry';
 import { useAuth } from '../hooks/useAuth';
 import { useBurstyCallPrevention, useDuplicateRequestTelemetry } from '../hooks/useBurstyCallPrevention';
 import { AIService } from '../services/ai';
 import { CalendarEventService } from '../services/calendarEventService';
 import { createGoal } from '../services/goalService';
-import { getPlaceDetails } from '../services/places';
-import { CreateGoalForm, GoalDuration, GoalFrequency, GoalSpec, TargetLocation, ValidationResult, VerificationType } from '../types';
+import { CreateGoalForm, GoalDuration, GoalFrequency, GoalSpec, ValidationResult, VerificationType } from '../types';
 import { getLocaleConfig } from '../utils/languageDetection';
 import { toIndexKeyMap } from '../utils/schedule';
 import {
@@ -127,7 +124,6 @@ function CreateGoalModalContentLegacy({ visible, onClose, onGoalCreated }: Creat
       startDate: new Date().toISOString().split('T')[0],
       endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
     },
-    targetLocation: undefined,
     milestones: undefined,
     lockedVerificationMethods: [],
     weeklyWeekdays: [],
@@ -375,8 +371,8 @@ function CreateGoalModalContentLegacy({ visible, onClose, onGoalCreated }: Creat
   // Methods selection state for verification plan modal
   const [planSelectedMethods, setPlanSelectedMethods] = useState<{[key: string]: boolean}>({
     time: false,
-    location: false,
-    photo: false,
+    camera: false,
+    screenshot: false,
     manual: false
   });
 
@@ -392,7 +388,7 @@ function CreateGoalModalContentLegacy({ visible, onClose, onGoalCreated }: Creat
 
   // Utility: check if verification methods provide objective proof beyond manual
   const isVerificationSufficient = (methods: VerificationType[]) => {
-    const objective: VerificationType[] = ['location', 'time', 'photo', 'screentime'] as any;
+    const objective: VerificationType[] = ['camera', 'screenshot', 'time', 'screentime'] as any;
     return (methods || []).some((m) => (objective as any).includes(m));
   };
 
@@ -440,11 +436,6 @@ function CreateGoalModalContentLegacy({ visible, onClose, onGoalCreated }: Creat
           unit: 'per_week'
         } : { count: 3, unit: 'per_week' },
         verificationMethods: goalSpec.verification?.signals || ['manual'],
-        targetLocation: goalSpec.schedule?.events?.[0]?.locationName ? {
-          name: goalSpec.schedule.events[0].locationName,
-          lat: goalSpec.schedule.events[0].lat || 0,
-          lng: goalSpec.schedule.events[0].lng || 0
-        } : formData.targetLocation,
         // Schedule 타입일 때 weeklySchedule과 weeklyWeekdays 설정
         weeklySchedule: goalSpec.type === 'schedule' && goalSpec.schedule?.events ? 
           goalSpec.schedule.events.reduce((acc, event) => {
@@ -508,44 +499,6 @@ function CreateGoalModalContentLegacy({ visible, onClose, onGoalCreated }: Creat
     let missingFields: string[] = [];
     let followUpQuestion: string = '';
 
-    // Check location mode and requirements
-    const loc = spec?.verification?.constraints?.location;
-    
-    if (loc?.mode === 'movement') {
-      // never ask for place; do not add missingFields: 'targetLocation'
-      console.log('[PostProcess] Movement goal detected - no place name required');
-      // Ensure location stays in mandatory methods
-      if (!mandatory.includes('location' as any)) {
-        mandatory.push('location' as any);
-      }
-    } else if (loc?.mode === 'geofence') {
-      // For geofence mode, treat location as satisfied if ANY of these exist:
-      // - goalSpec.verification.constraints.location.name
-      // - goalSpec.verification.constraints.location.placeId  
-      // - formData.targetLocation?.name
-      const hasPlace = !!(loc?.name || loc?.placeId || formData?.targetLocation?.name);
-      
-      if (!hasPlace) {
-        // add missingFields ['targetLocation'] and set a single follow-up question
-        missingFields.push('targetLocation');
-        if (!followUpQuestion) {
-          followUpQuestion = 'Please provide the place name for location verification.';
-        }
-        console.log('[PostProcess] Added location to mandatory due to missing place info');
-      } else {
-        console.log('[PostProcess] Geofence location satisfied with existing place info');
-      }
-      
-      // Ensure location stays in mandatory methods
-      if (!mandatory.includes('location' as any)) {
-        mandatory.push('location' as any);
-      }
-    } else if (loc && !methods.includes('location' as any)) {
-      // If location constraint exists but not in methods/mandatory: add it
-      methods.push('location' as any);
-      mandatory.push('location' as any);
-      console.log('[PostProcess] Added location method due to location constraint');
-    }
 
     // Check if goal type looks digital from GoalSpec constraints or user text
     const hasScreentimeConstraints = !!(spec?.verification?.constraints?.screentime);
@@ -562,8 +515,8 @@ function CreateGoalModalContentLegacy({ visible, onClose, onGoalCreated }: Creat
       }
     }
 
-    // Enforce sufficiency = at least one of ['location','photo','screentime'] in both methods and mandatory
-    const objectiveMethods = ['location', 'photo', 'screentime'];
+    // Enforce sufficiency = at least one of ['camera','screenshot','screentime'] in both methods and mandatory
+    const objectiveMethods = ['camera', 'screenshot', 'screentime'];
     const hasObjectiveMethod = methods.some(m => objectiveMethods.includes(m));
     const hasObjectiveMandatory = mandatory.some(m => objectiveMethods.includes(m));
     const sufficiency = hasObjectiveMethod && hasObjectiveMandatory;
@@ -886,43 +839,6 @@ function CreateGoalModalContentLegacy({ visible, onClose, onGoalCreated }: Creat
   // Prevent duplicate AI verification application
   const aiVerificationAppliedRef = useRef(false);
 
-  // State for location picker
-  const [showLocationPicker, setShowLocationPicker] = useState(false);
-  const [pickerSelectedLocation, setPickerSelectedLocation] = useState<TargetLocation | null>(null);
-  const [pickerMarkers, setPickerMarkers] = useState<{ lat: number; lng: number; title?: string }[]>([]);
-  const detailsFetchSeqRef = useRef(0);
-  const detailsCacheRef = useRef<Record<string, { lat: number; lng: number; title?: string }>>({});
-
-  // Helper: fetch details for a set of placeIds (caching to minimize quota)
-  const ensureDetailsFor = useCallback(async (placeIds: string[]) => {
-    const missing = placeIds.filter((id) => !detailsCacheRef.current[id]);
-    if (missing.length === 0) return;
-    const seq = ++detailsFetchSeqRef.current;
-    const promises = missing.map(async (id) => {
-      try {
-        const d = await getPlaceDetails(id, ''); // Removed pickerSessionToken
-        detailsCacheRef.current[id] = { lat: d.lat, lng: d.lng, title: d.name };
-      } catch {}
-    });
-    await Promise.all(promises);
-    if (seq !== detailsFetchSeqRef.current) return; // outdated
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    const init = async () => {
-      try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== 'granted') return;
-        const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        if (!cancelled) {
-          // setPickerCenter({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }); // Removed pickerCenter
-        }
-      } catch {}
-    };
-    if (showLocationPicker) init();
-    return () => { cancelled = true; };
-  }, [showLocationPicker]);
 
   // Handle weekly schedule changes
   const handleWeeklyScheduleChange = useCallback((weekdays: number[], timeSettings: { [key: string]: string[] }) => {
@@ -1050,12 +966,6 @@ function CreateGoalModalContentLegacy({ visible, onClose, onGoalCreated }: Creat
       setFormData(prev => {
           const merged = new Set([...(prev.verificationMethods || []), ...methods, ...mandatory]);
           const locked = new Set([...(prev.lockedVerificationMethods || []), ...mandatory]);
-          // Client-side guard: if targetLocation exists, force-add and lock location
-          const hasTargetLoc = !!(prev.targetLocation && (prev.targetLocation.placeId || prev.targetLocation.name));
-          if (hasTargetLoc) {
-          merged.add('location' as any);
-          locked.add('location' as any);
-        }
         return { 
           ...prev, 
           verificationMethods: Array.from(merged) as any, 
@@ -1477,7 +1387,7 @@ function CreateGoalModalContentLegacy({ visible, onClose, onGoalCreated }: Creat
       typeLockedByUser: false,
       perWeek: 3,
       period: undefined,
-      methods: { manual: false, location: false, photo: false },
+      methods: { manual: false, camera: false, screenshot: false },
       milestones: undefined,
       step: 0 // step 속성 추가
     });
@@ -1486,7 +1396,6 @@ function CreateGoalModalContentLegacy({ visible, onClose, onGoalCreated }: Creat
     setShowTypeSelector(false);
     setShowSpecPlanModal(false);
     setShowScheduleFixes(false);
-    setShowLocationPicker(false);
     setShowDatePicker(false);
     
     // GoalSpec 관련 상태 초기화
@@ -1642,8 +1551,8 @@ function CreateGoalModalContentLegacy({ visible, onClose, onGoalCreated }: Creat
             } : undefined,
             methods: {
               manual: parsedSpec?.verification?.signals?.includes('manual') || false,
-              location: parsedSpec?.verification?.signals?.includes('location') || false,
-              photo: parsedSpec?.verification?.signals?.includes('photo') || false
+              camera: parsedSpec?.verification?.signals?.includes('camera') || false,
+              screenshot: parsedSpec?.verification?.signals?.includes('screenshot') || false
             }
           }));
           setGoalSpec(spec as GoalSpec);
@@ -1872,14 +1781,6 @@ function CreateGoalModalContentLegacy({ visible, onClose, onGoalCreated }: Creat
       type: draft.type || formData.type,
     };
 
-    // If any place info exists, ensure 'location' is selected and locked
-    const hasPlaceInfo = !!(draft.targetLocation || formData.targetLocation);
-    if (hasPlaceInfo) {
-      const vm = new Set([...(updatedForm.verificationMethods || []), 'location' as any]);
-      const locked = new Set([...(updatedForm.lockedVerificationMethods || []), 'location' as any]);
-      (updatedForm as any).verificationMethods = Array.from(vm);
-      (updatedForm as any).lockedVerificationMethods = Array.from(locked);
-    }
 
     // Apply AI mandatoryVerificationMethods generally
     if ((draft as any).mandatoryVerificationMethods?.length) {
@@ -2006,107 +1907,9 @@ function CreateGoalModalContentLegacy({ visible, onClose, onGoalCreated }: Creat
     });
   };
 
-  // Handle location selection
-  const handleLocationSelected = (location: TargetLocation) => {
-    console.time('[CreateGoalModal] Location Selection');
-    
-    setFormData(prev => {
-      const nextSelected = new Set([...(prev.verificationMethods || []), 'location' as any]);
-      const nextLocked = new Set([...(prev.lockedVerificationMethods || []), 'location' as any]);
-      return {
-        ...prev,
-        targetLocation: location,
-        verificationMethods: Array.from(nextSelected) as any,
-        lockedVerificationMethods: Array.from(nextLocked) as any
-      };
-    });
 
-    // Update AI draft as well
-    const updatedDraft = mergeAIGoal(aiDraft, {
-      targetLocation: {
-        name: location.name,
-        placeId: location.placeId,
-        lat: location.lat,
-        lng: location.lng,
-      }
-    });
-    setAiDraft(updatedDraft);
 
-    // Re-validate and transition state
-    const validation = validateAIGoal(updatedDraft);
-    if (!validation.missingFields || validation.missingFields.length === 0) {
-      updateFormFromAI(updatedDraft);
-      setAppState('READY_TO_REVIEW');
-    }
-    
-    console.timeEnd('[CreateGoalModal] Location Selection');
-  };
 
-  // Robust navigation to LocationPicker at root level
-  const openLocationPicker = useCallback(() => {
-    // Open in-app overlay modal instead of navigating (ensures it appears above RN Modal)
-    console.log('[CreateGoalModal] Opening location picker with LocationSearch component');
-    setPickerSelectedLocation(formData.targetLocation || null);
-    setShowLocationPicker(true);
-  }, [formData.targetLocation]);
-
-  const closeLocationPicker = useCallback(() => setShowLocationPicker(false), []);
-
-  const handlePickerConfirm = useCallback(() => {
-    if (!pickerSelectedLocation) {
-      Alert.alert('No Location Selected', 'Please select a location first.');
-      return;
-    }
-    setFormData(prev => ({ ...prev, targetLocation: pickerSelectedLocation }));
-    setShowLocationPicker(false);
-  }, [pickerSelectedLocation]);
-
-  // Handle current location selection
-  const handleUseCurrentLocation = async () => {
-    try {
-      // Request location permission
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert(
-          'Location Permission Denied',
-          'Location permission is required to use your current location.',
-          [{ text: 'OK' }]
-        );
-        return;
-      }
-
-      // Get current position
-      const location = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-
-      const { latitude, longitude } = location.coords;
-      
-      // Create current location object
-      const currentLocation: TargetLocation = {
-        name: 'Current Location',
-        lat: latitude,
-        lng: longitude,
-      };
-
-      // Update form data
-      setFormData(prev => {
-        const nextSelected = new Set([...(prev.verificationMethods || []), 'location' as any]);
-        const nextLocked = new Set([...(prev.lockedVerificationMethods || []), 'location' as any]);
-        return {
-          ...prev,
-          targetLocation: currentLocation,
-          verificationMethods: Array.from(nextSelected) as any,
-          lockedVerificationMethods: Array.from(nextLocked) as any
-        };
-      });
-
-      console.log('[CreateGoalModal] Current location set:', currentLocation);
-    } catch (error) {
-      console.error('[CreateGoalModal] Current location error:', error);
-      Alert.alert('Error', 'Failed to get current location. Please try again.');
-    }
-  };
 
   // Handle date selection
   const handleDateSelection = (selection: DateSelection) => {
@@ -2628,55 +2431,6 @@ function CreateGoalModalContentLegacy({ visible, onClose, onGoalCreated }: Creat
     </View>
   );
 
-  const renderLocationSection = () => (
-    <View style={{
-      marginBottom: 24,
-      backgroundColor: '#fffbeb',
-      borderRadius: 8,
-      padding: 16,
-      borderWidth: 1,
-      borderColor: '#fcd34d'
-    }}>
-      <Text style={{ color: '#b45309', marginBottom: 12, fontSize: 14 }}>{followUpQuestion}</Text>
-      
-      {/* Target Location Display */}
-      <View style={{ marginBottom: 12 }}>
-        <Text style={{ color: '#374151', fontWeight: '600', marginBottom: 8 }}>Target Location</Text>
-        {formData.targetLocation ? (
-          <View style={{ backgroundColor: 'white', borderRadius: 8, padding: 12, borderWidth: 1, borderColor: '#d1d5db' }}>
-            <Text style={{ color: '#1f2937', fontWeight: '500' }}>{formData.targetLocation.name}</Text>
-            {formData.targetLocation.address && (
-              <Text style={{ color: '#4b5563', fontSize: 14, marginTop: 4 }}>{formData.targetLocation.address}</Text>
-            )}
-            <Text style={{ color: '#6b7280', fontSize: 12, marginTop: 4 }}>
-              {formData.targetLocation.lat?.toFixed(6) || 'N/A'}, {formData.targetLocation.lng?.toFixed(6) || 'N/A'}
-            </Text>
-          </View>
-        ) : (
-          <Text style={{ color: '#6b7280', fontStyle: 'italic' }}>Not set</Text>
-        )}
-      </View>
-
-      {/* Location Action Buttons */}
-      <View style={{ flexDirection: 'row', gap: 12 }}>
-        <TouchableOpacity
-          style={{ flex: 1, backgroundColor: '#3b82f6', borderRadius: 8, padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}
-          onPress={openLocationPicker}
-        >
-          <Ionicons name="search" size={20} color="white" />
-          <Text style={{ color: 'white', fontWeight: '600', marginLeft: 8 }}>Search</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity
-          style={{ flex: 1, backgroundColor: '#10b981', borderRadius: 8, padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}
-          onPress={handleUseCurrentLocation}
-        >
-          <Ionicons name="location" size={20} color="white" />
-          <Text style={{ color: 'white', fontWeight: '600', marginLeft: 8 }}>Current Location</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
 
   // Type-specific sections based on aiDraft.type (final type after verification plan)
   const renderTypeSpecificSections = () => {
@@ -2709,8 +2463,8 @@ function CreateGoalModalContentLegacy({ visible, onClose, onGoalCreated }: Creat
 
   // Verification Methods: 타입별 whitelist
   const ALLOWED: Record<'frequency'|'schedule', string[]> = {
-    frequency: ['manual','location','photo'],
-    schedule:  ['manual','location','photo','time','screentime'],
+    frequency: ['manual','camera','screenshot'],
+    schedule:  ['manual','camera','screenshot','time','screentime'],
   };
   const allowed = ALLOWED[isFrequency ? 'frequency' : 'schedule'];
   
@@ -3227,9 +2981,6 @@ function CreateGoalModalContentLegacy({ visible, onClose, onGoalCreated }: Creat
               blockingReasons={blockingReasons}
               initialSelectedWeekdays={formData.weeklyWeekdays}
               initialWeeklyTimeSettings={formData.weeklySchedule}
-              targetLocation={formData.targetLocation}
-              onOpenLocationPicker={openLocationPicker}
-              onUseCurrentLocation={handleUseCurrentLocation}
               goalSpec={goalSpec}
               calendarEvents={formData.calendarEvents || []}
               onCalendarEventsChange={(events) => {
@@ -3276,9 +3027,6 @@ function CreateGoalModalContentLegacy({ visible, onClose, onGoalCreated }: Creat
               blockingReasons={blockingReasons}
               initialSelectedWeekdays={formData.weeklyWeekdays}
               initialWeeklyTimeSettings={formData.weeklySchedule}
-              targetLocation={formData.targetLocation}
-              onOpenLocationPicker={openLocationPicker}
-              onUseCurrentLocation={handleUseCurrentLocation}
               goalSpec={goalSpec}
               calendarEvents={formData.calendarEvents || []}
               onCalendarEventsChange={(events) => {
@@ -3310,8 +3058,6 @@ function CreateGoalModalContentLegacy({ visible, onClose, onGoalCreated }: Creat
             </Text>
           </View>
         );
-      case 'location':
-        return renderLocationSection();
       case 'manualForm':
         return renderManualFormSection();
       case 'validation':
@@ -4067,70 +3813,6 @@ function CreateGoalModalContentLegacy({ visible, onClose, onGoalCreated }: Creat
           </View>
         )}
 
-      {/* Location Picker Overlay Modal */}
-      <Modal
-        visible={showLocationPicker}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={closeLocationPicker}
-      >
-        <View style={{ flex: 1, backgroundColor: '#fff' }}>
-          {/* Drag handle */}
-          <View style={{ padding: 16, backgroundColor: '#2563eb' }}>
-            <View style={{ width: 40, height: 5, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.6)' }} />
-            <Text style={{ color: 'white', fontSize: 18, fontWeight: '600', marginTop: 8 }}>Select Location</Text>
-          </View>
-
-          {/* Temporary placeholder - LocationSearch disabled for web compatibility */}
-          <View style={{ padding: 20, alignItems: 'center' }}>
-            <Text style={{ color: '#6B7280', textAlign: 'center' }}>
-              Location search is temporarily unavailable.
-            </Text>
-            <TouchableOpacity
-              style={{ marginTop: 16, backgroundColor: '#2563eb', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 }}
-              onPress={() => setShowLocationPicker(false)}
-            >
-              <Text style={{ color: 'white', fontWeight: '600' }}>Close</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Confirm */}
-          <View style={{ padding: 16 }}>
-            <TouchableOpacity
-              style={{ 
-                flex: 1, 
-                backgroundColor: pickerSelectedLocation ? '#2563eb' : '#9ca3af', 
-                borderRadius: 8, 
-                padding: 16, 
-                flexDirection: 'row', 
-                alignItems: 'center', 
-                justifyContent: 'center',
-                minHeight: 56
-              }}
-              onPress={() => {
-                if (pickerSelectedLocation) {
-                  handlePickerConfirm();
-                }
-              }}
-            >
-              <Ionicons 
-                name={pickerSelectedLocation ? "checkmark" : "location-outline"} 
-                size={24} 
-                color="#FFFFFF" 
-              />
-              <Text style={{ 
-                color: '#FFFFFF', 
-                fontWeight: '700', 
-                fontSize: 16,
-                marginLeft: 12,
-                textAlign: 'center'
-              }}>
-                {pickerSelectedLocation ? 'Confirm Location' : 'Select a Location First'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
       </View>
       <ToastContainer position="top" />
       
