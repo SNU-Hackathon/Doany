@@ -13,9 +13,9 @@
 export const apiConfig = {
   /**
    * Base URL for DoAny API
-   * Default: https://13.209.220.97:8080/api
+   * Default: /api (uses Vercel proxy)
    */
-  baseURL: process.env.EXPO_PUBLIC_API_BASE_URL || 'http://13.209.220.97:8080/api',
+  baseURL: process.env.EXPO_PUBLIC_API_BASE_URL || '/api',
   
   /**
    * Whether to use mock responses instead of real API calls
