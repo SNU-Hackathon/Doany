@@ -9,12 +9,12 @@ import { loginPassword as apiLoginPassword, logout as apiLogout } from '../api/a
 import type { LoginResponse, UserMe } from '../api/types';
 import { getMe } from '../api/users';
 import {
-  clearAuth,
-  getAuthState,
-  getStoredToken,
-  setAuth,
-  setUser as setUserInStore,
-  type AuthState
+    clearAuth,
+    getAuthState,
+    getStoredToken,
+    setAuth,
+    setUser as setUserInStore,
+    type AuthState
 } from '../state/auth.store';
 
 /**
@@ -158,9 +158,20 @@ export function useAuth(): UseAuthReturn {
     ? { ...authState.user, id: authState.user.userId }
     : undefined;
 
+  // 시연용: 기본 user 정보 제공 (user = 1)
+  const demoUser: User = {
+    userId: '1',
+    id: '1',
+    name: 'Demo User',
+    email: 'demo@example.com',
+    profileImageUrl: null,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
   return {
-    user: userWithAlias,
-    isAuthenticated: authState.isAuthenticated,
+    user: userWithAlias || demoUser, // 시연용 기본 user 제공
+    isAuthenticated: authState.isAuthenticated || true, // 시연용으로 항상 인증됨
     isLoading,
     loading: isLoading,
     signIn,

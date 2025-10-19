@@ -1412,6 +1412,7 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
           <View className="items-start mb-3">
             <View
               style={{
+                
                 backgroundColor: '#F0F0F0',
                 paddingHorizontal: 16,
                 paddingVertical: 12,
