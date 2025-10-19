@@ -77,14 +77,9 @@ export class AIService {
         return await this.generateWithProxy(proxyUrl, prompt);
       }
 
-      // API key no longer needed - using server proxy
-      if (apiKey) {
-        // Use OpenAI directly when key provided
-        const aiGoal = await this.generateWithOpenAI(apiKey, prompt);
-        return this.validateAndNormalizeAIGoal(aiGoal);
-      }
-
-      return this.generateWithLocalHeuristic(prompt);
+      // Use server proxy for AI calls
+      const aiGoal = await this.generateWithOpenAI(prompt);
+      return this.validateAndNormalizeAIGoal(aiGoal);
     } finally {
       console.timeEnd('[AI] Goal Generation Total');
     }
@@ -393,9 +388,8 @@ Output ONLY valid JSON matching the schema above. No explanations, no markdown, 
       }
     }
 
-    if (!apiKey) {
-      // Fallback to local heuristic - convert AIGoal to GoalSpec
-      const aiGoal = this.generateWithLocalHeuristic(input.prompt);
+    // Use server proxy for AI calls
+    const aiGoal = await this.generateWithOpenAI(input.prompt);
       
       // Convert AIGoal to GoalSpec format and validate
       const heuristicSpec = {
@@ -436,48 +430,8 @@ Output ONLY valid JSON matching the schema above. No explanations, no markdown, 
           }
         };
       }
-    }
+    
 
-    // Use OpenAI API with enhanced prompt
-    const response = await fetch('/api/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        temperature: 0.1,
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: userPrompt }
-        ]
-      })
-    });
-    
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || '{}';
-    console.log("[AI] LLM raw response:", content);
-    
-    const result = safeParse(content);
-    const duration = timer.end(true, { 
-      model: 'openai',
-      success: true,
-      schemaValid: true
-    });
-    
-    // Log final AI response
-    logAIResponse({
-      requestId,
-      model: 'openai',
-      durationMs: duration,
-      success: true,
-      schemaValid: true,
-      responseLength: content.length,
-      responseHash: safeTextLog(content).hash,
-      message: 'AI OpenAI request completed successfully',
-    });
-    
-    return result;
   }
 
   /**
@@ -549,9 +503,8 @@ Output ONLY valid JSON matching the schema above. No explanations, no markdown, 
       return data;
     }
 
-    if (!apiKey) {
-      // Minimal heuristic fallback adhering to structure
-      const hasLocation = input.targetLocationName || input.placeId;
+    // Use server proxy for AI calls
+      const aiGoal = await this.generateWithOpenAI(input.prompt);
       
       // Detect if this is a movement goal (run, walk, cycle, etc.)
       const isMovementGoal = /\b(run|jog|walk|hike|cycle|ride|swim|exercise|workout|fitness)\b/i.test(input.prompt);
@@ -763,23 +716,7 @@ Output ONLY valid JSON matching the schema above. No explanations, no markdown, 
         },
         missingFields: ['schedule']
       };
-    }
 
-    const response = await fetch('/api/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        temperature: 0,
-        messages: [
-          { role: 'system', content: 'STRICT JSON ONLY. No code fences or explanations. Output EXACTLY a GoalSpec object with this shape: {"title": string, "verification": {"methods": ("location"|"time"|"screentime"|"photo"|"manual")[], "mandatory": ("location"|"time"|"screentime"|"photo"|"manual")[], "constraints"?: object, "sufficiency": boolean, "rationale": string}, "schedule": {"countRule"?: {"operator": ">="|"=="|"<=", "count": number, "unit": "per_week"|"per_day"|"per_month"}, "weekdayConstraints"?: number[], "timeRules"?: [{"days": number[], "range": ["HH:MM","HH:MM"], "label"?: string, "source": "user_text"|"inferred"}], "timeWindows"?: [{"label": string, "range": ["HH:MM","HH:MM"], "source": "user_text"|"inferred"}], "weekBoundary"?: "startWeekday"|"isoWeek", "enforcePartialWeeks"?: boolean, "requiresDisambiguation"?: boolean, "followUpQuestion"?: string}. HARD RULES: - Location has two modes: 1) "geofence": attendance at a fixed place. Requires { name or placeId, radiusM, minDwellMin }. 2) "movement": distance/route based verification (e.g., run 5 km). Requires { minDistanceKm } and MUST NOT request a place name. - If the goal is a mobile activity (run/jog/walk/hike/cycle/ride/etc.) AND no fixed venue is explicitly specified by the user: - Include "location" in methods AND mandatory. - Set verification.constraints.location = { mode:"movement", minDistanceKm: <parsed from goal or infer>, evidence:"GPS|HealthKit|GoogleFit" }. - Do NOT include targetLocationName/placeId. Do NOT ask for a place-name follow-up. - If a fixed venue is explicit (gym, studio, library, office, class, ...): - Use mode:"geofence" and require { name/placeId, radiusM:100, minDwellMin:10 }. - If the goal is digital/app usage (study app, coding app, watching videos, social media control, focus timer, IDE, browser), you MUST include "screentime" in methods AND in mandatory. Provide constraints.screentime.bundleIds or a category hint. - If the goal requires visual proof (meal logging, workout set evidence, artifact submission, bodyweight record), include "photo" in methods; set it mandatory when photo is the primary proof. Set constraints.photo.required=true. - "time" is a scheduling trigger only, never sufficient as a standalone proof and must not be mandatory. - "manual" alone is insufficient for objective goals. If only manual/time are available, set sufficiency=false and provide ONE brief followUpQuestion proposing a viable proof (photo/location/screentime). - Semantic-first: do NOT force-map vague phrases (e.g., "morning"); represent them as timeWindows unless user gave exact times. - Preserve explicit user times exactly. - Use 24h HH:MM format in ranges. - Weekday indices: 0=Sun..6=Sat. - weekBoundary defaults to "startWeekday", enforcePartialWeeks defaults to false. WEEKDAY RULE: - If the prompt explicitly names weekdays (Mon/Tue/Wed/Thu/Fri/Sat/Sun; full or abbreviated), set schedule.weekdayConstraints to the EXACT set of mentioned days (deduplicated & sorted by 0=Sun..6=Sat). - If NO weekdays are named, OMIT schedule.weekdayConstraints entirely (treat as no restriction). TIME RULES (PREFERRED): - Use schedule.timeRules when the prompt ties specific times to specific weekdays. - timeRules: Array<{ days: number[], range: [string,string], label?: string, source: "user_text"|"inferred" }> - days use 0=Sun..6=Sat indices. - For exact times like "7 a.m.", create a point window ["07:00","07:00"]. - Only fall back to schedule.timeWindows (global union) when the prompt does NOT tie times to particular days. - Do NOT fabricate weekdayConstraints for "N times per week". TIME WINDOWS RULE (FALLBACK): - Build schedule.timeWindows as the UNION of all distinct times or intervals mentioned ONLY when no day→time binding exists. - A selected time is compatible if it lies INSIDE ANY allowed window (inclusive): start <= t <= end. - Equality counts as inside (e.g., 08:00 is inside [08:00–09:00] and [08:00–08:00]). FREQUENCY RULE: - For inputs like "N times per week", do not fabricate weekdayConstraints. EXAMPLES: Input: "Go to the gym at 7 a.m. on Mondays and Wednesdays, and at 9 a.m. on Fridays and Saturdays." → schedule.weekdayConstraints=[1,3,5,6], timeRules=[{ days: [1,3], range: ["07:00","07:00"], label: "07:00", source: "user_text" }, { days: [5,6], range: ["09:00","09:00"], label: "09:00", source: "user_text" }], Omit schedule.timeWindows. Input: "Exercise 3 times per week" → Omit both timeRules and timeWindows (no day→time binding). - JSON ONLY, no code fences or explanations.' },
-          { role: 'user', content: JSON.stringify(payload) }
-        ]
-      })
-    });
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || '{}';
-    return safeParse(content);
   }
 
   /**
@@ -835,10 +772,11 @@ Output ONLY valid JSON matching the schema above. No explanations, no markdown, 
         return data;
       }
 
-      if (apiKey) {
+      // Use server proxy for AI calls
+      {
         const response = await fetch('/api/openai/v1/chat/completions', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             model: 'gpt-4o-mini',
             temperature: 0,
@@ -1231,7 +1169,7 @@ Output ONLY valid JSON matching the schema above. No explanations, no markdown, 
       pendingSlotsLength: input.pendingSlots.length,
       collectedSlots: Object.keys(input.collectedSlots),
       conversationHistoryLength: input.conversationHistory.length,
-      hasApiKey: !!apiKey,
+      hasApiKey: false,
       timestamp: new Date().toISOString()
     });
     
@@ -1242,7 +1180,7 @@ Output ONLY valid JSON matching the schema above. No explanations, no markdown, 
       
       const response = await fetch('/api/openai/v1/chat/completions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: 'gpt-4o-mini',
           temperature: 0.7,
@@ -1792,7 +1730,7 @@ You MUST return a valid JSON object with a "quests" array:
       
       const response = await fetch('/api/openai/v1/chat/completions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody)
       });
 
@@ -1880,16 +1818,11 @@ You MUST return a valid JSON object with a "quests" array:
   }): Promise<{ weeklyWeekdays: number[]; weeklyTimeSettings: { [key: number]: string[] }; followUpQuestion?: string }> {
     // API key no longer needed - using server proxy
     
-    if (!apiKey) {
-      if (process.env.NODE_ENV !== 'production') {
-        console.warn('[AI] proposeSchedule: missing API key; fail-closed with follow-up.');
-      }
-      return Promise.resolve({ weeklyWeekdays: [], weeklyTimeSettings: {}, followUpQuestion: '원하는 시간대를 알려주세요 (예: 06:00 또는 19:00)' });
-    }
+    // Use server proxy for AI calls
     try {
       const response = await fetch('/api/openai/v1/chat/completions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: 'gpt-4o-mini',
           temperature: 0,
@@ -1976,12 +1909,12 @@ You MUST return a valid JSON object with a "quests" array:
       return { summary };
     };
 
-    if (!apiKey) return Promise.resolve(heuristic());
+    // Use server proxy for AI calls
 
     try {
       const response = await fetch('/api/openai/v1/chat/completions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: 'gpt-4o-mini',
           temperature: 0,
@@ -2259,7 +2192,8 @@ You MUST return a valid JSON object with a "quests" array:
       }
 
       // API key no longer needed - using server proxy
-      if (apiKey) {
+      // Use server proxy for AI calls
+      {
         // Refinement with context: include conversation history and partialGoal
         const response = await fetch('/api/openai/v1/chat/completions', {
           method: 'POST',
@@ -2292,8 +2226,6 @@ You MUST return a valid JSON object with a "quests" array:
         return this.validateAndNormalizeAIGoal(parsed);
       }
 
-      // Fallback to local heuristic with context
-      return this.generateWithLocalHeuristic(userAnswer);
     } finally {
       console.timeEnd('[AI] Goal Refinement Total');
     }
@@ -2302,7 +2234,7 @@ You MUST return a valid JSON object with a "quests" array:
   /**
    * Generate goal using OpenAI ChatGPT with timeout and retry
    */
-  private static async generateWithOpenAI(apiKey: string, prompt: string): Promise<any> {
+  private static async generateWithOpenAI(prompt: string): Promise<any> {
     console.time('[AI] OpenAI Generation');
     const safeParse = (raw: string) => {
       let txt = (raw || '').trim();
@@ -2868,7 +2800,8 @@ You MUST return a valid JSON object with a "quests" array:
         return { methods, mandatory };
       }
 
-      if (apiKey) {
+      // Use server proxy for AI calls
+      {
         const response = await fetch('/api/openai/v1/chat/completions', {
           method: 'POST',
           headers: {
@@ -2944,20 +2877,6 @@ You MUST return a valid JSON object with a "quests" array:
         return { methods, mandatory };
       }
 
-      // Heuristic fallback
-      const heuristic = this.generateWithLocalHeuristic(payload.prompt);
-      let methods = heuristic.verificationMethods as VerificationType[];
-      let mandatory = (heuristic as any).mandatoryVerificationMethods || [];
-      
-      // Check for movement goals or fixed venue goals
-      const isMovementGoal = /\b(run|jog|walk|hike|cycle|ride|swim|exercise|workout|fitness)\b/i.test(payload.prompt);
-      const hasFixedVenue = payload.targetLocationName || payload.placeId;
-      
-      if (isMovementGoal || hasFixedVenue) {
-        if (!methods.includes('location' as any)) methods = [...methods, 'location' as any];
-        if (!mandatory.includes('location' as any)) mandatory = [...mandatory, 'location' as any];
-      }
-      return { methods, mandatory, usedFallback: true };
     } catch (error) {
       console.warn('[AI] analyzeVerificationMethods failed, using heuristic fallback:', error);
       const heuristic = this.generateWithLocalHeuristic(payload.prompt);
