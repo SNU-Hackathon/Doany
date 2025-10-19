@@ -77,7 +77,7 @@ export class AIService {
         return await this.generateWithProxy(proxyUrl, prompt);
       }
 
-      const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
+      // API key no longer needed - using server proxy
       if (apiKey) {
         // Use OpenAI directly when key provided
         const aiGoal = await this.generateWithOpenAI(apiKey, prompt);
@@ -111,7 +111,7 @@ export class AIService {
     
     console.log("[AI] compileGoalSpec input:", input.prompt);
     
-    const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
+    // API key no longer needed - using server proxy
     const proxyUrl = process.env.EXPO_PUBLIC_AI_PROXY_URL;
     
     // Check for injection attempts and log security events
@@ -439,16 +439,14 @@ Output ONLY valid JSON matching the schema above. No explanations, no markdown, 
     }
 
     // Use OpenAI API with enhanced prompt
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const response = await fetch('/api/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
         model: 'gpt-4o-mini',
         temperature: 0.1,
-        response_format: { type: "json_object" },
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content: userPrompt }
@@ -494,7 +492,7 @@ Output ONLY valid JSON matching the schema above. No explanations, no markdown, 
     timezone?: string;
     userHints?: string;
   }): Promise<GoalSpec> {
-    const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
+    // API key no longer needed - using server proxy
     const proxyUrl = process.env.EXPO_PUBLIC_AI_PROXY_URL;
     const payload = {
       prompt: input.prompt,
@@ -767,7 +765,7 @@ Output ONLY valid JSON matching the schema above. No explanations, no markdown, 
       };
     }
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const response = await fetch('/api/openai/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
       body: JSON.stringify({
@@ -802,7 +800,7 @@ Output ONLY valid JSON matching the schema above. No explanations, no markdown, 
     followUpQuestion?: string;
     summary: string;
   }> {
-    const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
+    // API key no longer needed - using server proxy
     const proxyUrl = process.env.EXPO_PUBLIC_AI_PROXY_URL;
     const payload = {
       goalSpec: input.goalSpec,
@@ -838,7 +836,7 @@ Output ONLY valid JSON matching the schema above. No explanations, no markdown, 
       }
 
       if (apiKey) {
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        const response = await fetch('/api/openai/v1/chat/completions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
           body: JSON.stringify({
@@ -1225,7 +1223,7 @@ Output ONLY valid JSON matching the schema above. No explanations, no markdown, 
       tips?: string[];
     }>;
   }> {
-    const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
+    // API key no longer needed - using server proxy
     
     console.log('[DEBUG.AI.SERVICE] 🚀 Starting question generation:', {
       goalType: input.goalType,
@@ -1237,15 +1235,12 @@ Output ONLY valid JSON matching the schema above. No explanations, no markdown, 
       timestamp: new Date().toISOString()
     });
     
-    if (!apiKey) {
-      console.warn('[AI.CONVERSATION] ❌ Missing OpenAI API key');
-      return { question: '죄송합니다. AI 서비스에 접근할 수 없습니다.' };
-    }
+    // API key no longer needed - using server proxy
 
     try {
       const startTime = Date.now();
       
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      const response = await fetch('/api/openai/v1/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
         body: JSON.stringify({
@@ -1629,13 +1624,9 @@ Focus on understanding the user's unique situation and creating truly personaliz
     }
     
     // === E. VALIDATION ===
-    const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
+    // API key no longer needed - using server proxy
     
-    if (!apiKey) {
-      console.error('[AI.QUEST] ❌ CRITICAL: Missing OpenAI API key - Quest generation IMPOSSIBLE');
-      console.error('[AI.QUEST] Please set EXPO_PUBLIC_OPENAI_API_KEY in your .env file');
-      return [];
-    }
+    // API key no longer needed - using server proxy
 
     // Validate required slots for goal type
     const requiredSlots: Record<string, string[]> = {
@@ -1724,7 +1715,7 @@ Focus on understanding the user's unique situation and creating truly personaliz
       const requestBody = {
         model: 'gpt-4o-mini',
         temperature: 0, // Deterministic output for consistent quest generation
-        response_format: { type: "json_object" }, // Enforce JSON output
+ // Enforce JSON output
         messages: [
           { 
             role: 'system', 
@@ -1799,7 +1790,7 @@ You MUST return a valid JSON object with a "quests" array:
       
       console.log('[AI.QUEST] Request body:', JSON.stringify(requestBody, null, 2).substring(0, 500) + '...');
       
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      const response = await fetch('/api/openai/v1/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
         body: JSON.stringify(requestBody)
@@ -1887,7 +1878,7 @@ You MUST return a valid JSON object with a "quests" array:
     duration?: { type: 'days'|'weeks'|'months'|'range'; value?: number; startDate?: string; endDate?: string };
     notes?: string;
   }): Promise<{ weeklyWeekdays: number[]; weeklyTimeSettings: { [key: number]: string[] }; followUpQuestion?: string }> {
-    const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
+    // API key no longer needed - using server proxy
     
     if (!apiKey) {
       if (process.env.NODE_ENV !== 'production') {
@@ -1896,7 +1887,7 @@ You MUST return a valid JSON object with a "quests" array:
       return Promise.resolve({ weeklyWeekdays: [], weeklyTimeSettings: {}, followUpQuestion: '원하는 시간대를 알려주세요 (예: 06:00 또는 19:00)' });
     }
     try {
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      const response = await fetch('/api/openai/v1/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
         body: JSON.stringify({
@@ -1943,7 +1934,7 @@ You MUST return a valid JSON object with a "quests" array:
     excludeDates?: string[];
     targetLocationName?: string;
   }): Promise<{ summary: string }> {
-    const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
+    // API key no longer needed - using server proxy
     const allowed: VerificationType[] = ['location','time','screentime','photo','manual'];
     const safeMethods = (ctx.verificationMethods || []).filter(m => (allowed as string[]).includes(m as any));
 
@@ -1988,7 +1979,7 @@ You MUST return a valid JSON object with a "quests" array:
     if (!apiKey) return Promise.resolve(heuristic());
 
     try {
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      const response = await fetch('/api/openai/v1/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
         body: JSON.stringify({
@@ -2267,14 +2258,13 @@ You MUST return a valid JSON object with a "quests" array:
         return await this.generateWithProxy(proxyUrl, userAnswer);
       }
 
-      const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
+      // API key no longer needed - using server proxy
       if (apiKey) {
         // Refinement with context: include conversation history and partialGoal
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        const response = await fetch('/api/openai/v1/chat/completions', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`
           },
           body: JSON.stringify({
             model: 'gpt-4o-mini',
@@ -2327,11 +2317,10 @@ You MUST return a valid JSON object with a "quests" array:
       }
     };
     try {
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      const response = await fetch('/api/openai/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
         },
         body: JSON.stringify({
           model: 'gpt-4o-mini',
@@ -2811,7 +2800,7 @@ You MUST return a valid JSON object with a "quests" array:
    */
   static async analyzeVerificationMethods(input: { prompt: string; title?: string; targetLocationName?: string; placeId?: string | null; locale?: string; timezone?: string; userHints?: string; weeklyTimeSettings?: { [key: string]: string[] }; calendarEvents?: any[] }): Promise<{ methods: VerificationType[]; mandatory: VerificationType[]; usedFallback?: boolean }> {
     const proxyUrl = process.env.EXPO_PUBLIC_AI_PROXY_URL;
-    const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
+    // API key no longer needed - using server proxy
     const allowed: VerificationType[] = ['location','time','screentime','photo','manual'];
     const payload = {
       prompt: input.prompt,
@@ -2880,11 +2869,10 @@ You MUST return a valid JSON object with a "quests" array:
       }
 
       if (apiKey) {
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        const response = await fetch('/api/openai/v1/chat/completions', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`
           },
           body: JSON.stringify({
             model: 'gpt-4o-mini',
