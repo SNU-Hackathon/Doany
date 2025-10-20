@@ -14,7 +14,16 @@ import {
   View
 } from 'react-native';
 import { GoalDetailScreenV2 } from '.';
-import { GoalCategory, GoalListItem } from '../api/types';
+import { GoalListItem as APIGoalListItem, GoalCategory } from '../api/types';
+
+// Extend the API type with our additional fields
+interface GoalListItem extends Omit<APIGoalListItem, 'goalId'> {
+  goalId: string;
+  quests?: Array<{
+    state: 'complete' | 'fail' | 'onTrack';
+  }>;
+}
+
 import { LoadingState } from '../components';
 import AppHeader from '../components/AppHeader';
 import CreateGoalModal from '../components/CreateGoalModal';
@@ -61,17 +70,16 @@ const GoalCard = React.memo(({
   };
 
   const getProgressPercentage = () => {
-    if (item.progressCurrent && item.progressTotal) {
-      return (item.progressCurrent / item.progressTotal) * 100;
-    }
-    return 56; // Mock data for screenshot match
+    const completedQuests = item.quests?.filter(q => q.state === 'complete')?.length || 0;
+    const totalQuests = item.quests?.length || 0;
+    return totalQuests > 0 ? (completedQuests / totalQuests) * 100 : 0;
   };
 
   const getProgressText = () => {
-    if (item.progressCurrent && item.progressTotal) {
-      return `${item.progressCurrent}/${item.progressTotal} 완료 ✓`;
-    }
-    return '9/16 완료 ✓';
+    // 실제 퀘스트 완료율 계산
+    const completedQuests = item.quests?.filter(q => q.state === 'complete')?.length || 0;
+    const totalQuests = item.quests?.length || 0;
+    return totalQuests > 0 ? `${completedQuests}/${totalQuests} 완료 ✓` : '시작 전';
   };
 
   const formatDateRange = () => {
@@ -188,7 +196,11 @@ export default function GoalsScreen() {
   const filteredGoals: GoalListItem[] = React.useMemo(() => {
     if (!goalsData?.items) return [];
 
-    let filtered = goalsData.items;
+    // Transform API response to our type
+    let filtered = goalsData.items.map(item => ({
+      ...item,
+      goalId: String(item.goalId), // Convert number to string
+    }));
 
     // Filter by search query
     if (searchQuery.trim()) {

@@ -105,10 +105,11 @@ function getQuestState(quest: Quest): QuestState {
 interface CalendarTabProps {
   selectedMonth: Date;
   quests: Quest[];
+  goal: Goal | null;
   onMonthChange: (direction: 'prev' | 'next') => void;
 }
 
-function CalendarTab({ selectedMonth, quests, onMonthChange }: CalendarTabProps) {
+function CalendarTab({ selectedMonth, quests, goal, onMonthChange }: CalendarTabProps) {
   const gridDays = useMemo(() => {
     return buildMonthGrid(selectedMonth.getFullYear(), selectedMonth.getMonth());
   }, [selectedMonth]);
@@ -222,14 +223,25 @@ function CalendarTab({ selectedMonth, quests, onMonthChange }: CalendarTabProps)
             </View>
           )}
 
-          {/* Level up badge on 29th */}
-          {dayNumber === 29 && item.inMonth && !past && (
+          {/* Start/End date indicators */}
+          {goal?.startDate && new Date(goal.startDate).toISOString().split('T')[0] === item.iso && !past && (
+            <View style={{ 
+              backgroundColor: '#E0F2FE', 
+              borderRadius: 4, 
+              paddingHorizontal: 4, 
+              paddingVertical: 2,
+              marginTop: 2
+            }}>
+              <Text style={{ fontSize: 7, fontWeight: '700', color: '#0369A1' }}>Start</Text>
+            </View>
+          )}
+          {goal?.endDate && new Date(goal.endDate).toISOString().split('T')[0] === item.iso && !past && (
             <View style={{ 
               backgroundColor: '#FEF3C7', 
               borderRadius: 4, 
               paddingHorizontal: 4, 
               paddingVertical: 2,
-              marginTop: 2
+              marginTop: goal?.startDate && new Date(goal.startDate).toISOString().split('T')[0] === item.iso ? 1 : 2
             }}>
               <Text style={{ fontSize: 7, fontWeight: '700', color: '#92400E' }}>Level up</Text>
             </View>
@@ -902,6 +914,7 @@ export default function GoalDetailScreenV2({ route, navigation, onClose }: GoalD
             <CalendarTab 
               selectedMonth={selectedMonth}
               quests={quests}
+              goal={goal}
               onMonthChange={changeMonth}
             />
           ) : (
