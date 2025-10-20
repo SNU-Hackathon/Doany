@@ -4,20 +4,20 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useCallback } from 'react';
 import {
-    Dimensions,
-    Image,
-    Text,
-    TouchableOpacity,
-    View,
+  Dimensions,
+  Image,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
-    interpolate,
-    runOnJS,
-    useAnimatedStyle,
-    useSharedValue,
-    withSpring,
-    withTiming,
+  interpolate,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
 } from 'react-native-reanimated';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -46,14 +46,16 @@ interface SwipeCardProps {
   proof: Proof;
   onVoteYes: () => void;
   onVoteNo: () => void;
-  onSkip?: () => void;
+  onUndo?: () => void;
+  canUndo?: boolean;
 }
 
 export default function SwipeCard({
   proof,
   onVoteYes,
   onVoteNo,
-  onSkip,
+  onUndo,
+  canUndo = false,
 }: SwipeCardProps) {
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
@@ -117,7 +119,7 @@ export default function SwipeCard({
       transform: [
         { translateX: translateX.value },
         { translateY: translateY.value },
-        { rotate: `${rotate}deg` as any },
+        { rotate: `${rotate}deg` } as any,
       ] as any,
       opacity,
     };
@@ -141,84 +143,98 @@ export default function SwipeCard({
     return { opacity };
   });
 
-  const handleYes = useCallback(() => {
-    translateX.value = withTiming(SCREEN_WIDTH + 100, { duration: 300 });
-    setTimeout(onVoteYes, 100);
-  }, [onVoteYes, translateX]);
-
   const handleNo = useCallback(() => {
     translateX.value = withTiming(-SCREEN_WIDTH - 100, { duration: 300 });
     setTimeout(onVoteNo, 100);
   }, [onVoteNo, translateX]);
 
+  const handleYes = useCallback(() => {
+    translateX.value = withTiming(SCREEN_WIDTH + 100, { duration: 300 });
+    setTimeout(onVoteYes, 100);
+  }, [onVoteYes, translateX]);
+
   return (
-    <View className="flex-1 items-center justify-center px-4">
-      {/* Action Buttons */}
-      <View className="absolute top-16 flex-row items-center justify-center" style={{ gap: 12, zIndex: 10 }}>
+    <View style={{ flex: 1, paddingTop: 16 }}>
+      {/* 버튼 바: 카드 바깥, wrapper 기준 절대 배치 */}
+      <View
+        style={{
+          position: 'absolute',
+          top: 8,            // 헤더 바로 아래 떠 있게
+          left: 0,
+          right: 0,
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 12,
+          zIndex: 30,
+          pointerEvents: 'box-none',
+        }}
+      >
+        {/* X */}
         <TouchableOpacity
           onPress={handleNo}
-          className="bg-white rounded-full p-4"
-          activeOpacity={0.75}
           style={{
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: 0.15,
-            shadowRadius: 12,
-            elevation: 6,
+            width: 52, height: 40, borderRadius: 20,
+            backgroundColor: 'rgba(255,255,255,0.95)',
+            alignItems: 'center', justifyContent: 'center',
+            shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.15, shadowRadius: 12, elevation: 8,
           }}
+          activeOpacity={0.75}
           accessibilityLabel="Reject"
-          accessibilityRole="button"
-          accessibilityHint="Swipe left or tap to reject this proof"
         >
           <Ionicons name="close" size={28} color="#EF4444" />
         </TouchableOpacity>
 
-        {onSkip && (
+        {/* Undo */}
+        {onUndo && (
           <TouchableOpacity
-            onPress={onSkip}
-            className="bg-white rounded-full p-4"
-            activeOpacity={0.75}
+            onPress={onUndo}
             style={{
-              shadowColor: '#000',
-              shadowOffset: { width: 0, height: 4 },
-              shadowOpacity: 0.15,
-              shadowRadius: 12,
-              elevation: 6,
+              width: 52, height: 40, borderRadius: 20,
+              backgroundColor: 'rgba(255,255,255,0.95)',
+              alignItems: 'center', justifyContent: 'center',
+              shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.15, shadowRadius: 12, elevation: 6,
+              opacity: canUndo ? 1 : 0.3,
             }}
-            accessibilityLabel="Skip"
-            accessibilityRole="button"
+            activeOpacity={0.75}
+            accessibilityLabel="Undo"
+            disabled={!canUndo}
           >
-            <Ionicons name="refresh" size={24} color="#6B7280" />
+            <Ionicons name="arrow-undo" size={24} color="#6B7280" />
           </TouchableOpacity>
         )}
 
+        {/* Check */}
         <TouchableOpacity
           onPress={handleYes}
-          className="bg-white rounded-full p-4"
-          activeOpacity={0.75}
           style={{
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: 0.15,
-            shadowRadius: 12,
-            elevation: 6,
+            width: 52, height: 40, borderRadius: 20,
+            backgroundColor: 'rgba(255,255,255,0.95)',
+            alignItems: 'center', justifyContent: 'center',
+            shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.15, shadowRadius: 12, elevation: 8,
           }}
+          activeOpacity={0.75}
           accessibilityLabel="Approve"
-          accessibilityRole="button"
-          accessibilityHint="Swipe right or tap to approve this proof"
         >
           <Ionicons name="checkmark" size={28} color="#10B981" />
         </TouchableOpacity>
       </View>
 
-      {/* Swipeable Card */}
+      {/* Swipeable Card: 버튼과는 분리해서 제스처 적용 */}
       <GestureDetector gesture={panGesture}>
         <Animated.View
-          className="bg-white rounded-3xl overflow-hidden w-full"
           style={[
             animatedStyle,
             {
-              maxWidth: 380,
+              marginHorizontal: 16,
+              marginTop: 40,     // 버튼 아래로 살짝 내리기
+              marginBottom: 120, // 하단 탭바 간격
+              backgroundColor: '#FFFFFF',
+              borderRadius: 24,
+              overflow: 'hidden', // 둥근 모서리 유지
               shadowColor: '#000',
               shadowOffset: { width: 0, height: 8 },
               shadowOpacity: 0.15,
@@ -229,92 +245,122 @@ export default function SwipeCard({
         >
           {/* Like/Nope Overlays */}
           <Animated.View
-            className="absolute top-8 right-8 z-10 bg-green-500 rounded-2xl px-6 py-3"
-            style={likeOpacityStyle}
+            style={[
+              likeOpacityStyle,
+              {
+                position: 'absolute',
+                top: 100,
+                right: 32,
+                zIndex: 10,
+                backgroundColor: '#10B981',
+                borderRadius: 16,
+                paddingHorizontal: 24,
+                paddingVertical: 12,
+              },
+            ]}
           >
-            <Text className="text-white text-2xl font-bold">승인</Text>
+            <Text style={{ color: '#FFFFFF', fontSize: 24, fontWeight: '700' }}>승인</Text>
           </Animated.View>
 
           <Animated.View
-            className="absolute top-8 left-8 z-10 bg-red-500 rounded-2xl px-6 py-3"
-            style={nopeOpacityStyle}
+            style={[
+              nopeOpacityStyle,
+              {
+                position: 'absolute',
+                top: 100,
+                left: 32,
+                zIndex: 10,
+                backgroundColor: '#EF4444',
+                borderRadius: 16,
+                paddingHorizontal: 24,
+                paddingVertical: 12,
+              },
+            ]}
           >
-            <Text className="text-white text-2xl font-bold">거절</Text>
+            <Text style={{ color: '#FFFFFF', fontSize: 24, fontWeight: '700' }}>거절</Text>
           </Animated.View>
 
           {/* User Info Header */}
-          <View className="p-5 pb-3">
-            <View className="flex-row items-center">
+          <View style={{ padding: 20, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
               <Image
                 source={{ uri: proof.user.avatarUrl }}
-                className="w-12 h-12 rounded-full bg-gray-200 mr-3"
                 style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: 24,
+                  backgroundColor: '#F3F4F6',
+                  marginRight: 12,
                   borderWidth: 1.5,
                   borderColor: 'rgba(0, 0, 0, 0.06)',
                 }}
               />
-              <View className="flex-1">
-                <View className="flex-row items-center">
-                  <Text className="text-base font-semibold text-gray-900 mr-2">
-                    {proof.user.displayName}
-                  </Text>
-                  <View
-                    className="px-2.5 py-1 rounded-full"
-                    style={{ backgroundColor: `${getTierColor(proof.user.tier)}15` }}
-                  >
-                    <Text
-                      className="text-xs font-bold"
-                      style={{ color: getTierColor(proof.user.tier) }}
-                    >
-                      {proof.user.tier}
-                    </Text>
-                  </View>
-                </View>
-                <Text className="text-sm text-gray-600 mt-0.5">
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 16, fontWeight: '700', color: '#111827' }}>
+                  {proof.user.displayName}
+                </Text>
+                <Text style={{ fontSize: 14, color: '#6B7280', marginTop: 2 }}>
                   {proof.description}
                 </Text>
               </View>
             </View>
+
+            {/* Gold Button */}
+            <TouchableOpacity
+              style={{
+                backgroundColor: '#FCD34D',
+                paddingHorizontal: 20,
+                paddingVertical: 10,
+                borderRadius: 16,
+                shadowColor: '#F59E0B',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.25,
+                shadowRadius: 4,
+                elevation: 3,
+              }}
+              activeOpacity={0.8}
+            >
+              <Text style={{ fontSize: 14, fontWeight: '700', color: '#92400E' }}>
+                골드
+              </Text>
+            </TouchableOpacity>
           </View>
 
-          {/* Media */}
-          <Image
-            source={{ uri: proof.media.url }}
-            className="w-full bg-gray-100"
-            style={{
-              aspectRatio: proof.media.width / proof.media.height,
-              maxHeight: 480,
-            }}
-            resizeMode="cover"
-          />
+          {/* Media Image */}
+          <View style={{ width: '100%', aspectRatio: 1, backgroundColor: '#F3F4F6' }}>
+            <Image
+              source={{ uri: proof.media.url }}
+              style={{ width: '100%', height: '100%' }}
+              resizeMode="cover"
+            />
+          </View>
 
           {/* Footer */}
-          <View className="p-5">
-            {/* Tags */}
-            <View className="flex-row flex-wrap mb-3" style={{ gap: 6 }}>
-              {proof.tags.map((tag, index) => (
-                <Text key={index} className="text-sm font-medium text-blue-600">
-                  {tag}
-                </Text>
-              ))}
+          <View style={{ padding: 20, paddingTop: 16 }}>
+            {/* Tags and Date Row */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, flex: 1 }}>
+                {proof.tags.map((tag, index) => (
+                  <Text key={index} style={{ fontSize: 13, color: '#6366F1', fontWeight: '600' }}>
+                    {`#${tag}${index < proof.tags.length - 1 ? ' ' : ''}`}
+                  </Text>
+                ))}
+              </View>
+              <Text style={{ fontSize: 13, color: '#9CA3AF', fontWeight: '500', marginLeft: 12 }}>
+                {formatDate(proof.createdAt)}
+              </Text>
             </View>
-
-            {/* Date */}
-            <Text className="text-xs text-gray-500">
-              {formatDate(proof.createdAt)}
-            </Text>
 
             {/* Comment Button */}
             <TouchableOpacity
-              className="mt-3 flex-row items-center justify-center bg-gray-50 rounded-xl py-3"
-              activeOpacity={0.75}
-              accessibilityLabel="Comment"
-              accessibilityRole="button"
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                paddingVertical: 2,
+              }}
+              activeOpacity={0.7}
             >
-              <Ionicons name="chatbubble-outline" size={18} color="#6B7280" />
-              <Text className="ml-2 text-sm font-medium text-gray-700">
-                댓글 남기기
-              </Text>
+              <Ionicons name="chatbubble-outline" size={22} color="#9CA3AF" />
             </TouchableOpacity>
           </View>
         </Animated.View>
