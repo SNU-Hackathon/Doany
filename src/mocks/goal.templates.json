@@ -1,0 +1,270 @@
+{
+  "templates": [
+    {
+      "id": "template_001",
+      "title": "아침형 인간 되기",
+      "description": "규칙적인 아침 루틴으로 건강한 하루를 시작하세요",
+      "category": "lifestyle",
+      "tags": ["아침루틴", "건강", "생활습관"],
+      "icon": "sunny-outline",
+      "color": "#FF9500",
+      "difficulty": "쉬움",
+      "estimatedDuration": "3주",
+      "participants": 1247,
+      "successRate": 87,
+      "quests": [
+        {
+          "type": "schedule",
+          "title": "오전 7시까지 일어나기",
+          "description": "매일 아침 7시 알람으로 일어나서 하루를 시작합니다",
+          "verificationMethods": ["time", "camera"],
+          "schedule": {
+            "weekdays": [1, 2, 3, 4, 5],
+            "time": "07:00",
+            "timeWindow": ["06:30", "07:30"]
+          }
+        },
+        {
+          "type": "frequency",
+          "title": "아침 스트레칭 10분",
+          "description": "일어나자마자 간단한 스트레칭으로 몸을 깨웁니다",
+          "verificationMethods": ["time", "camera"],
+          "frequency": {
+            "count": 5,
+            "unit": "per_week"
+          }
+        },
+        {
+          "type": "schedule",
+          "title": "아침 식사하기",
+          "description": "건강한 아침 식사로 에너지를 충전합니다",
+          "verificationMethods": ["camera"],
+          "schedule": {
+            "weekdays": [1, 2, 3, 4, 5, 6, 7],
+            "timeWindow": ["07:00", "09:00"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "template_002",
+      "title": "한 달 5kg 감량 챌린지",
+      "description": "규칙적인 운동과 식단 관리로 건강하게 살 빼기",
+      "category": "health fitness",
+      "tags": ["다이어트", "운동", "건강"],
+      "icon": "fitness-outline",
+      "color": "#34C759",
+      "difficulty": "보통",
+      "estimatedDuration": "4주",
+      "participants": 2891,
+      "successRate": 72,
+      "quests": [
+        {
+          "type": "frequency",
+          "title": "헬스장 운동하기",
+          "description": "주 3-4회 헬스장에서 1시간 이상 운동합니다",
+          "verificationMethods": ["time", "camera"],
+          "frequency": {
+            "count": 4,
+            "unit": "per_week"
+          }
+        },
+        {
+          "type": "milestone",
+          "title": "주간 체중 감량 목표",
+          "description": "매주 1kg씩 감량하여 목표 체중에 도달합니다",
+          "verificationMethods": ["camera", "manual"],
+          "milestones": [
+            { "label": "1주차: -1kg", "targetValue": 1 },
+            { "label": "2주차: -2kg", "targetValue": 2 },
+            { "label": "3주차: -3kg", "targetValue": 3 },
+            { "label": "4주차: -5kg", "targetValue": 5 }
+          ]
+        },
+        {
+          "type": "frequency",
+          "title": "저녁 6시 이후 금식",
+          "description": "저녁 식사 후 야식을 먹지 않고 금식합니다",
+          "verificationMethods": ["manual"],
+          "frequency": {
+            "count": 6,
+            "unit": "per_week"
+          }
+        },
+        {
+          "type": "schedule",
+          "title": "주간 체중 측정",
+          "description": "매주 일요일 아침 공복 상태로 체중을 측정합니다",
+          "verificationMethods": ["camera"],
+          "schedule": {
+            "weekdays": [7],
+            "timeWindow": ["06:00", "09:00"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "template_003",
+      "title": "영어 회화 마스터",
+      "description": "매일 꾸준한 연습으로 영어 실력을 향상시키세요",
+      "category": "study",
+      "tags": ["영어", "학습", "자기계발"],
+      "icon": "language-outline",
+      "color": "#007AFF",
+      "difficulty": "보통",
+      "estimatedDuration": "8주",
+      "participants": 3456,
+      "successRate": 65,
+      "quests": [
+        {
+          "type": "frequency",
+          "title": "영어 회화 앱 30분",
+          "description": "매일 영어 회화 앱으로 학습합니다",
+          "verificationMethods": ["screentime"],
+          "frequency": {
+            "count": 6,
+            "unit": "per_week"
+          },
+          "constraints": {
+            "screentime": {
+              "appName": "듀오링고",
+              "minDuration": 30
+            }
+          }
+        },
+        {
+          "type": "schedule",
+          "title": "원어민과 화상 영어",
+          "description": "주 2회 원어민 선생님과 화상 영어 수업을 합니다",
+          "verificationMethods": ["manual", "camera"],
+          "schedule": {
+            "weekdays": [2, 5],
+            "timeWindow": ["19:00", "21:00"]
+          }
+        },
+        {
+          "type": "milestone",
+          "title": "레벨업 목표",
+          "description": "단계별로 영어 실력을 향상시킵니다",
+          "verificationMethods": ["manual"],
+          "milestones": [
+            { "label": "기초 문법 완성", "targetValue": 2 },
+            { "label": "일상 대화 가능", "targetValue": 4 },
+            { "label": "비즈니스 영어 시작", "targetValue": 6 },
+            { "label": "자유로운 토론 가능", "targetValue": 8 }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "template_004",
+      "title": "독서 습관 만들기",
+      "description": "매일 책을 읽는 습관으로 지식을 쌓아가세요",
+      "category": "hobby",
+      "tags": ["독서", "자기계발", "취미"],
+      "icon": "book-outline",
+      "color": "#5856D6",
+      "difficulty": "쉬움",
+      "estimatedDuration": "4주",
+      "participants": 1893,
+      "successRate": 81,
+      "quests": [
+        {
+          "type": "frequency",
+          "title": "매일 30분 독서",
+          "description": "하루 30분씩 책을 읽는 시간을 가집니다",
+          "verificationMethods": ["time", "camera"],
+          "frequency": {
+            "count": 6,
+            "unit": "per_week"
+          }
+        },
+        {
+          "type": "milestone",
+          "title": "월간 독서 목표",
+          "description": "한 달에 4권의 책을 완독합니다",
+          "verificationMethods": ["camera", "manual"],
+          "milestones": [
+            { "label": "1주차: 1권 완독", "targetValue": 1 },
+            { "label": "2주차: 2권 완독", "targetValue": 2 },
+            { "label": "3주차: 3권 완독", "targetValue": 3 },
+            { "label": "4주차: 4권 완독", "targetValue": 4 }
+          ]
+        },
+        {
+          "type": "schedule",
+          "title": "독서 노트 작성",
+          "description": "주말에 읽은 책의 내용을 정리하고 감상을 기록합니다",
+          "verificationMethods": ["camera", "manual"],
+          "schedule": {
+            "weekdays": [7],
+            "timeWindow": ["14:00", "18:00"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "template_005",
+      "title": "디지털 디톡스",
+      "description": "스마트폰 사용을 줄이고 진정한 휴식을 찾으세요",
+      "category": "lifestyle",
+      "tags": ["디지털디톡스", "건강", "자기관리"],
+      "icon": "phone-portrait-outline",
+      "color": "#FF3B30",
+      "difficulty": "어려움",
+      "estimatedDuration": "3주",
+      "participants": 967,
+      "successRate": 58,
+      "quests": [
+        {
+          "type": "frequency",
+          "title": "SNS 사용 시간 제한",
+          "description": "하루 SNS 사용 시간을 1시간 이내로 제한합니다",
+          "verificationMethods": ["screentime"],
+          "frequency": {
+            "count": 6,
+            "unit": "per_week"
+          },
+          "constraints": {
+            "screentime": {
+              "category": "소셜 네트워킹",
+              "maxDuration": 60
+            }
+          }
+        },
+        {
+          "type": "schedule",
+          "title": "저녁 9시 이후 스마트폰 금지",
+          "description": "밤 9시부터는 스마트폰을 사용하지 않고 충분한 수면을 취합니다",
+          "verificationMethods": ["manual"],
+          "schedule": {
+            "weekdays": [1, 2, 3, 4, 5, 6, 7],
+            "timeWindow": ["21:00", "23:59"]
+          }
+        },
+        {
+          "type": "frequency",
+          "title": "스마트폰 없이 산책",
+          "description": "주 3회 스마트폰 없이 30분 이상 산책합니다",
+          "verificationMethods": ["time", "manual"],
+          "frequency": {
+            "count": 3,
+            "unit": "per_week"
+          }
+        },
+        {
+          "type": "milestone",
+          "title": "주간 스크린타임 감소",
+          "description": "매주 스마트폰 사용 시간을 줄여갑니다",
+          "verificationMethods": ["screentime"],
+          "milestones": [
+            { "label": "1주차: 하루 평균 5시간", "targetValue": 5 },
+            { "label": "2주차: 하루 평균 4시간", "targetValue": 4 },
+            { "label": "3주차: 하루 평균 3시간", "targetValue": 3 }
+          ]
+        }
+      ]
+    }
+  ]
+}
+

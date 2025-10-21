@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { GoalDetailScreenV2 } from '.';
 import { GoalListItem as APIGoalListItem, GoalCategory } from '../api/types';
+import GoalLibraryScreen from './GoalLibraryScreen';
 
 // Extend the API type with our additional fields
 interface GoalListItem extends Omit<APIGoalListItem, 'goalId'> {
@@ -168,6 +169,7 @@ export default function GoalsScreen() {
   const [showGoalDetail, setShowGoalDetail] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showMethodSelector, setShowMethodSelector] = useState(false);
+  const [showLibrary, setShowLibrary] = useState(false);
   const [creationMethod, setCreationMethod] = useState<'ai' | 'manual' | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -240,10 +242,15 @@ export default function GoalsScreen() {
     setShowMethodSelector(true);
   }, []);
 
-  const handleMethodSelect = useCallback((method: 'ai' | 'manual') => {
-    setCreationMethod(method);
-    setShowMethodSelector(false);
-    setShowCreateModal(true);
+  const handleMethodSelect = useCallback((method: 'ai' | 'manual' | 'library') => {
+    if (method === 'library') {
+      setShowMethodSelector(false);
+      setShowLibrary(true);
+    } else {
+      setCreationMethod(method);
+      setShowMethodSelector(false);
+      setShowCreateModal(true);
+    }
   }, []);
 
   const handleCreateGoalClose = useCallback(() => {
@@ -255,6 +262,13 @@ export default function GoalsScreen() {
     setShowCreateModal(false);
     setCreationMethod(null);
     refetch();
+  }, [refetch]);
+
+  const handleSelectTemplate = useCallback(async (template: any) => {
+    console.log('Template selected and goal created:', template);
+    setShowLibrary(false);
+    // 목표가 생성되었으므로 목록 새로고침
+    await refetch();
   }, [refetch]);
 
   // Category options - from JSON
@@ -417,7 +431,7 @@ export default function GoalsScreen() {
               목표 생성 방식 선택
             </Text>
             <Text style={{ fontSize: 15, color: '#6B7280', marginBottom: 32, textAlign: 'center', lineHeight: 22 }}>
-              AI와 대화하며 생성하거나{'\n'}직접 수동으로 만들 수 있습니다
+              AI와 대화하거나, 라이브러리에서 선택하거나,{'\n'}직접 수동으로 만들 수 있습니다
             </Text>
 
             {/* AI Method */}
@@ -444,6 +458,30 @@ export default function GoalsScreen() {
               </View>
               <Text style={{ fontSize: 14, color: '#E0E7FF', lineHeight: 20 }}>
                 AI가 질문하면서 맞춤형 목표를 생성해드려요
+              </Text>
+            </TouchableOpacity>
+
+            {/* Library Method */}
+            <TouchableOpacity
+              onPress={() => handleMethodSelect('library')}
+              activeOpacity={0.7}
+              style={{
+                backgroundColor: '#FFF',
+                borderRadius: 16,
+                padding: 20,
+                marginBottom: 16,
+                borderWidth: 2,
+                borderColor: '#10B981',
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                <Ionicons name="library-outline" size={28} color="#10B981" />
+                <Text style={{ fontSize: 20, fontWeight: '700', color: '#1F2937', marginLeft: 12 }}>
+                  라이브러리에서 선택하기
+                </Text>
+              </View>
+              <Text style={{ fontSize: 14, color: '#6B7280', lineHeight: 20 }}>
+                인기 있는 목표 템플릿을 선택해 바로 시작하세요
               </Text>
             </TouchableOpacity>
 
@@ -489,6 +527,19 @@ export default function GoalsScreen() {
         onGoalCreated={handleGoalCreated}
         creationMethod={creationMethod}
       />
+
+      {/* Library Modal */}
+      <Modal
+        visible={showLibrary}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={() => setShowLibrary(false)}
+      >
+        <GoalLibraryScreen
+          onClose={() => setShowLibrary(false)}
+          onSelectTemplate={handleSelectTemplate}
+        />
+      </Modal>
     </View>
   );
 }
