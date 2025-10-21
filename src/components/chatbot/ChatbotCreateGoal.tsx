@@ -1159,7 +1159,7 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
         const timeSlot = state.collectedSlots.time as string || '09:00';
         const verificationMethods = state.collectedSlots.verification as string[] || ['camera'];
         const primaryVerification = verificationMethods[0] === '사진' ? 'camera' 
-          : verificationMethods[0] === '위치 등록' ? 'location' 
+          : verificationMethods[0] === '스크린샷' ? 'screenshot' 
           : 'manual';
         
         const quests = (state.questPreview || []).map((quest: any) => {
@@ -1188,7 +1188,7 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
         const perWeek = Number(state.collectedSlots.perWeek) || 3;
         const verificationMethods = state.collectedSlots.verification as string[] || ['camera'];
         const primaryVerification = verificationMethods[0] === '사진' ? 'camera' 
-          : verificationMethods[0] === '위치 등록' ? 'location' 
+          : verificationMethods[0] === '스크린샷' ? 'screenshot' 
           : 'manual';
         
         const quests = (state.questPreview || []).map((quest: any, index: number) => ({
@@ -1213,7 +1213,7 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
         // Extract verification method from collectedSlots
         const verificationMethods = state.collectedSlots.verification as string[] || ['체크리스트'];
         const primaryVerification = verificationMethods[0] === '사진' ? 'camera' 
-          : verificationMethods[0] === '위치 등록' ? 'location' 
+          : verificationMethods[0] === '스크린샷' ? 'screenshot' 
           : 'manual';
         
         // Use AI-generated quests if available, otherwise use default milestones

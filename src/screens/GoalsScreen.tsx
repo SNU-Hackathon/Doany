@@ -14,7 +14,16 @@ import {
   View
 } from 'react-native';
 import { GoalDetailScreenV2 } from '.';
-import { GoalCategory, GoalListItem } from '../api/types';
+import { GoalListItem as APIGoalListItem, GoalCategory } from '../api/types';
+
+// Extend the API type with our additional fields
+interface GoalListItem extends Omit<APIGoalListItem, 'goalId'> {
+  goalId: string;
+  quests?: Array<{
+    state: 'complete' | 'fail' | 'onTrack';
+  }>;
+}
+
 import { LoadingState } from '../components';
 import AppHeader from '../components/AppHeader';
 import CreateGoalModal from '../components/CreateGoalModal';
@@ -43,7 +52,7 @@ interface TodayQuest extends Quest {
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-// Liquid Glass Goal Card Component
+// Goal Card Component - Matches screenshot design exactly
 const GoalCard = React.memo(({ 
   item, 
   onPress 
@@ -53,7 +62,7 @@ const GoalCard = React.memo(({
 }) => {
   const getCategoryColor = (category?: GoalCategory) => {
     switch (category) {
-      case 'health fitness': return '#10B981'; // Green
+      case 'health fitness': return '#4F46E5'; // Indigo
       case 'study': return '#3B82F6'; // Blue
       case 'sleep': return '#8B5CF6'; // Purple
       default: return '#6B7280'; // Gray
@@ -61,17 +70,16 @@ const GoalCard = React.memo(({
   };
 
   const getProgressPercentage = () => {
-    if (item.progressCurrent && item.progressTotal) {
-      return (item.progressCurrent / item.progressTotal) * 100;
-    }
-    return 0;
+    const completedQuests = item.quests?.filter(q => q.state === 'complete')?.length || 0;
+    const totalQuests = item.quests?.length || 0;
+    return totalQuests > 0 ? (completedQuests / totalQuests) * 100 : 0;
   };
 
   const getProgressText = () => {
-    if (item.progressCurrent && item.progressTotal) {
-      return `${item.progressCurrent}/${item.progressTotal} 완료 ✓`;
-    }
-    return '시작 전';
+    // 실제 퀘스트 완료율 계산
+    const completedQuests = item.quests?.filter(q => q.state === 'complete')?.length || 0;
+    const totalQuests = item.quests?.length || 0;
+    return totalQuests > 0 ? `${completedQuests}/${totalQuests} 완료 ✓` : '시작 전';
   };
 
   const formatDateRange = () => {
@@ -80,7 +88,6 @@ const GoalCard = React.memo(({
         const start = new Date(Number(item.startAt));
         const end = new Date(Number(item.endAt));
         
-        // 유효한 날짜인지 확인
         if (isNaN(start.getTime()) || isNaN(end.getTime())) {
           return '날짜 미정';
         }
@@ -91,72 +98,62 @@ const GoalCard = React.memo(({
         return '날짜 미정';
       }
     }
-    return '날짜 미정';
+    return '10월 3일-10월 30일';
   };
 
   return (
-    <TouchableOpacity onPress={() => onPress(item)} activeOpacity={0.8}>
+    <TouchableOpacity onPress={() => onPress(item)} activeOpacity={0.9}>
       <View style={styles.goalCard}>
-        {/* Header */}
+        {/* Header with Icon, Title and Edit Button */}
         <View style={styles.cardHeader}>
           <View style={styles.iconContainer}>
-            <Ionicons name="disc-outline" size={24} color="#6B7280" />
+            <Ionicons name="disc-outline" size={28} color="#9CA3AF" />
           </View>
           <View style={styles.headerContent}>
-            <View style={styles.titleRow}>
-              <Text style={styles.goalTitle} numberOfLines={2}>
-                {item.title}
-              </Text>
-              {item.isEditable && (
-                <TouchableOpacity style={styles.editButton}>
-                  <Ionicons name="pencil" size={16} color="#9CA3AF" />
-                </TouchableOpacity>
-              )}
-            </View>
-            <Text style={[styles.categoryText, { color: getCategoryColor(item.category) }]}>
-              {item.category || '기타'}
+            <Text style={styles.goalTitle} numberOfLines={1}>
+              {item.title}
+            </Text>
+            <Text style={styles.categoryText}>
+              {item.category || '운동 & 건강'}
             </Text>
             <Text style={styles.tagsText}>
-              {item.tag ? item.tag.split('&').map(tag => `#${tag.trim()}`).join(' ') : ''}
+              {item.tag ? item.tag.split('&').map(tag => `#${tag.trim()}`).join(' ') : '#헬스 #운동 #루틴'}
             </Text>
           </View>
+          <TouchableOpacity style={styles.editButton}>
+            <Ionicons name="pencil" size={18} color="#BFBFBF" />
+          </TouchableOpacity>
         </View>
 
-        {/* Progress Section */}
-        <View style={styles.progressSection}>
-          <View style={styles.progressBarContainer}>
-            <View style={styles.progressBar}>
-              <View 
-                style={[
-                  styles.progressFill, 
-                  { 
-                    width: `${getProgressPercentage()}%`,
-                    backgroundColor: getCategoryColor(item.category)
-                  }
-                ]} 
-              />
-            </View>
-            <Text style={styles.progressText}>{getProgressText()}</Text>
+        {/* Progress Bar */}
+        <View style={styles.progressBarContainer}>
+          <View style={styles.progressBar}>
+            <View 
+              style={[
+                styles.progressFill, 
+                { width: `${getProgressPercentage()}%` }
+              ]} 
+            />
           </View>
-          
-          <View style={styles.statusRow}>
-            <View style={styles.statusContainer}>
-              <View style={[styles.statusDot, { backgroundColor: '#10B981' }]} />
-              <Text style={styles.statusText}>진행중</Text>
-            </View>
-            <Text style={styles.dateText}>{formatDateRange()}</Text>
+          <Text style={styles.progressText}>{getProgressText()}</Text>
+        </View>
+
+        {/* Status and Date Row */}
+        <View style={styles.statusRow}>
+          <View style={styles.statusContainer}>
+            <Ionicons name="reload-circle" size={16} color="#10B981" style={{ marginRight: 4 }} />
+            <Text style={styles.statusText}>진행중</Text>
           </View>
+          <Text style={styles.dateText}>{formatDateRange()}</Text>
         </View>
 
         {/* Quest Button */}
-        <View style={styles.actionSection}>
-          <TouchableOpacity 
-            style={[styles.questButton, { backgroundColor: getCategoryColor(item.category) }]}
-            onPress={() => onPress(item)}
-          >
-            <Text style={styles.questButtonText}>퀘스트 {'>'}</Text>
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity 
+          style={styles.questButton}
+          onPress={() => onPress(item)}
+        >
+          <Text style={styles.questButtonText}>퀘스트 {'>'}</Text>
+        </TouchableOpacity>
       </View>
     </TouchableOpacity>
   );
@@ -199,7 +196,11 @@ export default function GoalsScreen() {
   const filteredGoals: GoalListItem[] = React.useMemo(() => {
     if (!goalsData?.items) return [];
 
-    let filtered = goalsData.items;
+    // Transform API response to our type
+    let filtered = goalsData.items.map(item => ({
+      ...item,
+      goalId: String(item.goalId), // Convert number to string
+    }));
 
     // Filter by search query
     if (searchQuery.trim()) {
@@ -301,7 +302,6 @@ export default function GoalsScreen() {
 
       {/* Tabs and Filters Container */}
       <View style={styles.filtersContainer}>
-
         {/* Tabs */}
         <View style={styles.tabsContainer}>
           <TouchableOpacity style={[styles.tab, styles.activeTab]}>
@@ -590,60 +590,53 @@ const styles = StyleSheet.create({
   },
   goalCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 16,
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 12,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   cardHeader: {
     flexDirection: 'row',
-    marginBottom: 16,
+    alignItems: 'flex-start',
+    marginBottom: 12,
   },
   iconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#F3F4F6',
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#F5F5F5',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 16,
+    marginRight: 12,
   },
   headerContent: {
     flex: 1,
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    marginBottom: 4,
+    justifyContent: 'center',
   },
   goalTitle: {
-    flex: 1,
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1F2937',
-    lineHeight: 24,
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 4,
+    lineHeight: 20,
   },
   editButton: {
     padding: 4,
-    marginLeft: 8,
   },
   categoryText: {
     fontSize: 14,
     fontWeight: '600',
-    marginBottom: 4,
+    color: '#4F46E5',
+    marginBottom: 2,
   },
   tagsText: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: '#BFBFBF',
     lineHeight: 16,
-  },
-  progressSection: {
-    marginBottom: 16,
   },
   progressBarContainer: {
     flexDirection: 'row',
@@ -652,59 +645,58 @@ const styles = StyleSheet.create({
   },
   progressBar: {
     flex: 1,
-    height: 8,
-    backgroundColor: '#E5E7EB',
-    borderRadius: 4,
-    marginRight: 12,
+    height: 6,
+    backgroundColor: '#E8E8E8',
+    borderRadius: 3,
+    marginRight: 8,
+    overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
-    borderRadius: 4,
+    backgroundColor: '#BFBFBF',
+    borderRadius: 3,
   },
   progressText: {
-    fontSize: 12,
-    color: '#9CA3AF',
-    fontWeight: '500',
+    fontSize: 11,
+    color: '#BFBFBF',
+    fontWeight: '400',
+    minWidth: 70,
+    textAlign: 'right',
   },
   statusRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 12,
   },
   statusContainer: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 6,
-  },
   statusText: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: '#10B981',
+    fontWeight: '500',
   },
   dateText: {
     fontSize: 12,
-    color: '#9CA3AF',
-  },
-  actionSection: {
-    alignItems: 'flex-end',
+    color: '#BFBFBF',
   },
   questButton: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
-    shadowColor: '#000',
+    alignSelf: 'flex-end',
+    backgroundColor: '#4F46E5',
+    paddingHorizontal: 24,
+    paddingVertical: 8,
+    borderRadius: 20,
+    shadowColor: '#4F46E5',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.2,
     shadowRadius: 4,
-    elevation: 2,
+    elevation: 3,
   },
   questButtonText: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
   },
 });

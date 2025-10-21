@@ -8,7 +8,7 @@
  * 4. Test harness
  */
 
-export type VerificationSignal = 'time' | 'location' | 'photo' | 'manual' | 'partner';
+export type VerificationSignal = 'time' | 'camera' | 'screenshot' | 'manual' | 'partner';
 
 export interface VerificationPolicy {
   name: string;
@@ -24,41 +24,41 @@ export interface VerificationPolicy {
 export const VERIFICATION_POLICIES: Record<string, VerificationPolicy[]> = {
   schedule: [
     {
-      name: 'time_location',
-      description: 'Schedule with specific time and location',
-      requiredSignals: ['time', 'location'],
+      name: 'time_camera',
+      description: 'Schedule with specific time and camera evidence',
+      requiredSignals: ['time', 'camera'],
       optionalSignals: ['manual'],
-      evaluationLogic: 'time AND (manual+location OR time+photo)'
+      evaluationLogic: 'time AND (manual+camera OR time+screenshot)'
     },
     {
-      name: 'time_photo',
-      description: 'Schedule with specific time and photo evidence',
-      requiredSignals: ['time', 'photo'],
+      name: 'time_screenshot',
+      description: 'Schedule with specific time and screenshot evidence',
+      requiredSignals: ['time', 'screenshot'],
       optionalSignals: ['manual'],
-      evaluationLogic: 'time AND photo_valid'
+      evaluationLogic: 'time AND screenshot_valid'
     },
     {
       name: 'time_manual',
       description: 'Schedule with specific time and manual verification',
       requiredSignals: ['time', 'manual'],
-      optionalSignals: ['location'],
+      optionalSignals: [],
       evaluationLogic: 'time AND manual'
     }
   ],
   frequency: [
     {
-      name: 'manual_photo',
-      description: 'Frequency goal with manual check and photo evidence',
-      requiredSignals: ['manual', 'photo'],
+      name: 'manual_camera',
+      description: 'Frequency goal with manual check and camera evidence',
+      requiredSignals: ['manual', 'camera'],
       optionalSignals: [],
-      evaluationLogic: 'manual AND photo_fresh'
+      evaluationLogic: 'manual AND camera_fresh'
     },
     {
-      name: 'manual_location',
-      description: 'Frequency goal with manual check and location verification',
-      requiredSignals: ['manual', 'location'],
+      name: 'manual_screenshot',
+      description: 'Frequency goal with manual check and screenshot verification',
+      requiredSignals: ['manual', 'screenshot'],
       optionalSignals: [],
-      evaluationLogic: 'manual AND location_valid'
+      evaluationLogic: 'manual AND screenshot_valid'
     }
   ],
   partner: [
@@ -66,8 +66,8 @@ export const VERIFICATION_POLICIES: Record<string, VerificationPolicy[]> = {
       name: 'partner_required',
       description: 'Goal requiring partner approval',
       requiredSignals: ['partner'],
-      optionalSignals: ['manual', 'time', 'photo'],
-      evaluationLogic: 'partner_approved AND (manual OR time+photo)'
+      optionalSignals: ['manual', 'time', 'camera'],
+      evaluationLogic: 'partner_approved AND (manual OR time+camera)'
     }
   ]
 };
@@ -77,12 +77,12 @@ export const VERIFICATION_POLICIES: Record<string, VerificationPolicy[]> = {
  * Used in ai.ts SYSTEM_PROMPT to generate verification signals
  */
 export const AI_PROMPT_POLICY_MAPPING: Record<string, VerificationSignal[]> = {
-  'schedule_time_place': ['time', 'location'],
-  'schedule_time_only': ['time', 'photo'],
+  'schedule_time_camera': ['time', 'camera'],
+  'schedule_time_screenshot': ['time', 'screenshot'],
   'schedule_time_manual': ['time', 'manual'],
-  'frequency_photo': ['manual', 'photo'],
-  'frequency_location': ['manual', 'location'],
-  'frequency_general': ['manual', 'photo'],
+  'frequency_camera': ['manual', 'camera'],
+  'frequency_screenshot': ['manual', 'screenshot'],
+  'frequency_general': ['manual', 'camera'],
   'partner_required': ['partner'],
   'partner_combined': ['partner', 'manual']
 };
@@ -99,17 +99,17 @@ export const VERIFICATION_RULES_MAPPING: Record<string, {
   schedule: {
     rule: 'evalScheduleRule',
     description: 'Schedule verification rule',
-    logic: 'timeOk && (manualLocOk || photoOk)'
+    logic: 'timeOk && (manualCameraOk || screenshotOk)'
   },
   frequency: {
     rule: 'evalFrequencyRule', 
     description: 'Frequency verification rule',
-    logic: 'manualLocOk || manualPhotoOk'
+    logic: 'manualCameraOk || manualScreenshotOk'
   },
   partner: {
     rule: 'evalPartnerRule',
     description: 'Partner verification rule (not yet implemented)',
-    logic: 'partnerApproved && (manualOk || timePhotoOk)'
+    logic: 'partnerApproved && (manualOk || timeCameraOk)'
   }
 };
 
@@ -128,8 +128,8 @@ export function checkPolicyAlignment(): {
   // Check schedule policies
   const schedulePolicies = VERIFICATION_POLICIES.schedule;
   const scheduleAIPolicies = [
-    AI_PROMPT_POLICY_MAPPING.schedule_time_place,
-    AI_PROMPT_POLICY_MAPPING.schedule_time_only,
+    AI_PROMPT_POLICY_MAPPING.schedule_time_camera,
+    AI_PROMPT_POLICY_MAPPING.schedule_time_screenshot,
     AI_PROMPT_POLICY_MAPPING.schedule_time_manual
   ];
 
@@ -144,8 +144,8 @@ export function checkPolicyAlignment(): {
   // Check frequency policies
   const frequencyPolicies = VERIFICATION_POLICIES.frequency;
   const frequencyAIPolicies = [
-    AI_PROMPT_POLICY_MAPPING.frequency_photo,
-    AI_PROMPT_POLICY_MAPPING.frequency_location
+    AI_PROMPT_POLICY_MAPPING.frequency_camera,
+    AI_PROMPT_POLICY_MAPPING.frequency_screenshot
   ];
 
   frequencyPolicies.forEach((policy, index) => {
@@ -204,7 +204,7 @@ export function getVerificationPolicy(
  */
 export function getAIPromptMapping(
   goalType: string,
-  hasLocation: boolean = false,
+  hasCamera: boolean = false,
   hasSpecificTime: boolean = false,
   isPartnerRequired: boolean = false
 ): VerificationSignal[] {
@@ -214,19 +214,19 @@ export function getAIPromptMapping(
 
   switch (goalType) {
     case 'schedule':
-      if (hasLocation && hasSpecificTime) {
-        return AI_PROMPT_POLICY_MAPPING.schedule_time_place;
+      if (hasCamera && hasSpecificTime) {
+        return AI_PROMPT_POLICY_MAPPING.schedule_time_camera;
       } else if (hasSpecificTime) {
-        return AI_PROMPT_POLICY_MAPPING.schedule_time_only;
+        return AI_PROMPT_POLICY_MAPPING.schedule_time_screenshot;
       } else {
         return AI_PROMPT_POLICY_MAPPING.schedule_time_manual;
       }
     
     case 'frequency':
-      if (hasLocation) {
-        return AI_PROMPT_POLICY_MAPPING.frequency_location;
+      if (hasCamera) {
+        return AI_PROMPT_POLICY_MAPPING.frequency_screenshot;
       } else {
-        return AI_PROMPT_POLICY_MAPPING.frequency_photo;
+        return AI_PROMPT_POLICY_MAPPING.frequency_camera;
       }
     
     default:

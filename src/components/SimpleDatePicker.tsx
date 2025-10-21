@@ -51,7 +51,7 @@ import {
 } from 'react-native';
 import { convertDurationToRange } from '../features/goals/aiDraft';
 import { CalendarEventService } from '../services/calendarEventService';
-import { CalendarEvent, GoalSpec, TargetLocation } from '../types';
+import { CalendarEvent, GoalSpec } from '../types';
 import { DateRange, minMaxFromRanges } from '../utils/dateRanges';
 import { getLocalYMD } from '../utils/dateUtils';
 const log = (...args: any[]) => console.log('[SimpleDatePicker]', ...args);
@@ -76,10 +76,6 @@ const defer = (fn: () => void) => queueMicrotask(fn);export interface DateSelect
   goalRawText?: string;
   aiSuccessCriteria?: string;
   blockingReasons?: string[];
-  // Location selection in Schedule
-  targetLocation?: TargetLocation;
-  onOpenLocationPicker?: () => void;
-  onUseCurrentLocation?: () => void;
   // Calendar events context (optional for existing goals)
   userId?: string;
   goalId?: string;
@@ -117,9 +113,6 @@ export default function SimpleDatePicker({
   goalRawText,
   aiSuccessCriteria,
   blockingReasons = [],
-  targetLocation, 
-  onOpenLocationPicker, 
-  onUseCurrentLocation,
   userId,
   goalId,
   goalSpec,
@@ -858,38 +851,20 @@ export default function SimpleDatePicker({
     const mandatory = goalSpec.verification.mandatory || [];
     const constraints = goalSpec.verification.constraints || {};
     const methods = [] as any[];
-    
-    // Determine place label (no hard-coded "gym" or venue names)
-    const placeLabel = constraints.location?.name 
-                      ?? targetLocation?.name 
-                      ?? "the selected place";
 
     const lines: string[] = [];
 
-    // 1) Location verification
-    if (mandatory.includes('location')) {
-      const radiusM = constraints.location?.radiusM || 100;
-      const minDwellMin = constraints.location?.minDwellMin || 10;
-      
-      let locationText = `During the scheduled times, you'll be verified by being at ${placeLabel}`;
-      
-      if (radiusM) {
-        locationText += ` (within ~${radiusM} m)`;
-      } else {
-        locationText += ' (within the selected area)';
-      }
-      
-      if (minDwellMin) {
-        locationText += ` for at least ${minDwellMin} minutes.`;
-      } else {
-        locationText += ' for a short period.';
-      }
-      
-      lines.push(locationText);
-    }    // 2) Photo verification  
-    if (mandatory.includes('photo') || (methods.includes('photo' as any) && constraints.photo?.required)) {
-      lines.push('During the scheduled times, upload a photo as proof to be counted.');
-    }    // 3) Screentime verification
+    // 1) Camera verification
+    if (mandatory.includes('camera')) {
+      lines.push('During the scheduled times, take a photo as proof to be counted.');
+    }    
+    
+    // 2) Screenshot verification  
+    if (mandatory.includes('screenshot')) {
+      lines.push('During the scheduled times, upload a screenshot as proof to be counted.');
+    }    
+    
+    // 3) Screentime verification
     if (mandatory.includes('screentime')) {
       if (constraints.screentime?.bundleIds?.length) {
         const apps = constraints.screentime.bundleIds.join(', ');

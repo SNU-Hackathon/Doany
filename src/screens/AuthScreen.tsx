@@ -160,7 +160,7 @@ export default function AuthScreen() {
             {/* Header */}
             <View style={{ marginBottom: 32, marginTop: 16 }}>
               <Text style={{ fontSize: 30, fontWeight: 'bold', color: '#111827', marginBottom: 8 }}>
-                Doany
+                Proovit
               </Text>
               <Text style={{ fontSize: 18, color: '#6B7280', marginBottom: 4 }}>
                 Set goals, track progress, achieve more

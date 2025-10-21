@@ -1,15 +1,15 @@
 // Home Screen - Swipe evaluation for proofs
-// No group sections - only swipe cards with gesture + button voting
+// Design: Apple-inspired clean interface with swipe gestures
 
 import { Ionicons } from '@expo/vector-icons';
 import React, { useCallback, useState } from 'react';
 import {
-    ActivityIndicator,
-    SafeAreaView,
-    StatusBar,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  SafeAreaView,
+  StatusBar,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import AppHeader from '../components/AppHeader';
@@ -36,10 +36,16 @@ interface Proof {
   createdAt: string;
 }
 
+interface VoteHistory {
+  proofId: string;
+  vote: 'yes' | 'no';
+}
+
 export default function HomeScreen() {
   const { user } = useAuth();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isVoting, setIsVoting] = useState(false);
+  const [voteHistory, setVoteHistory] = useState<VoteHistory[]>([]);
 
   const proofs = homeProofsData as Proof[];
   const currentProof = proofs[currentIndex];
@@ -52,6 +58,9 @@ export default function HomeScreen() {
 
     // Mock API call - would be: PATCH /swipe/proofs/{proofId}?vote=yes|no
     console.log(`[HomeScreen] Vote ${vote} for proof:`, currentProof.proofId);
+    
+    // Save vote history
+    setVoteHistory(prev => [...prev, { proofId: currentProof.proofId, vote }]);
     
     // Check if it's the last proof
     const isLastProof = currentIndex === proofs.length - 1;
@@ -76,14 +85,21 @@ export default function HomeScreen() {
     handleVote('no');
   }, [handleVote]);
 
-  const handleSkip = useCallback(() => {
-    console.log('[HomeScreen] Skip proof:', currentProof?.proofId);
-    setCurrentIndex((prev) => prev + 1);
-  }, [currentProof]);
+  const handleUndo = useCallback(() => {
+    if (currentIndex > 0 && voteHistory.length > 0) {
+      // Remove last vote from history
+      setVoteHistory(prev => prev.slice(0, -1));
+      // Go back to previous proof
+      setCurrentIndex(prev => prev - 1);
+      setIsVoting(false);
+      console.log('[HomeScreen] Undo to previous proof');
+    }
+  }, [currentIndex, voteHistory.length]);
 
   const handleRefresh = useCallback(() => {
     setCurrentIndex(0);
     setIsVoting(false);
+    setVoteHistory([]);
   }, []);
 
   const handleNotificationPress = useCallback(() => {
@@ -92,23 +108,23 @@ export default function HomeScreen() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaView className="flex-1 bg-gray-50">
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#F9FAFB' }}>
         <StatusBar barStyle="dark-content" />
 
         {/* Header */}
         <AppHeader
           showProfile
           profileImage={undefined}
-          userName={user?.name || 'Lee Seo June'}
+          userName={user?.name || 'Lee Seo June 님'}
           welcomeMessage="Welcome back,"
           showNotification
           onNotificationPress={handleNotificationPress}
         />
 
         {/* Main Content */}
-        <View className="flex-1">
+        <View style={{ flex: 1 }}>
           {isVoting ? (
-            <View className="flex-1 items-center justify-center">
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
               <ActivityIndicator size="large" color="#4F46E5" />
             </View>
           ) : hasMoreProofs && currentProof ? (
@@ -117,14 +133,18 @@ export default function HomeScreen() {
               proof={currentProof}
               onVoteYes={handleVoteYes}
               onVoteNo={handleVoteNo}
-              onSkip={handleSkip}
+              onUndo={currentIndex > 0 ? handleUndo : undefined}
+              canUndo={currentIndex > 0 && voteHistory.length > 0}
             />
           ) : (
             // Empty State
-            <View className="flex-1 items-center justify-center px-8">
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 }}>
               <View
-                className="bg-white rounded-3xl p-8 items-center"
                 style={{
+                  backgroundColor: '#FFFFFF',
+                  borderRadius: 24,
+                  padding: 32,
+                  alignItems: 'center',
                   shadowColor: '#000',
                   shadowOffset: { width: 0, height: 4 },
                   shadowOpacity: 0.1,
@@ -132,64 +152,114 @@ export default function HomeScreen() {
                   elevation: 4,
                 }}
               >
-                <View className="w-20 h-20 bg-blue-50 rounded-full items-center justify-center mb-4">
+                <View
+                  style={{
+                    width: 80,
+                    height: 80,
+                    backgroundColor: '#EEF2FF',
+                    borderRadius: 40,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginBottom: 16,
+                  }}
+                >
                   <Ionicons name="checkmark-done" size={40} color="#4F46E5" />
                 </View>
                 
-                <Text className="text-xl font-bold text-gray-900 mb-2 text-center">
+                <Text
+                  style={{
+                    fontSize: 20,
+                    fontWeight: '700',
+                    color: '#111827',
+                    marginBottom: 8,
+                    textAlign: 'center',
+                  }}
+                >
                   모든 인증을 평가했어요!
                 </Text>
                 
-                <Text className="text-base text-gray-500 text-center mb-6">
+                <Text
+                  style={{
+                    fontSize: 15,
+                    color: '#6B7280',
+                    textAlign: 'center',
+                    marginBottom: 24,
+                    lineHeight: 22,
+                  }}
+                >
                   더 이상 평가할 인증이 없어요.{'\n'}새로운 인증이 올라오면 알려드릴게요.
                 </Text>
 
                 <TouchableOpacity
                   onPress={handleRefresh}
-                  className="bg-blue-600 rounded-2xl px-8 py-4"
-                  activeOpacity={0.75}
                   style={{
+                    backgroundColor: '#4F46E5',
+                    borderRadius: 16,
+                    paddingHorizontal: 32,
+                    paddingVertical: 16,
+                    flexDirection: 'row',
+                    alignItems: 'center',
                     shadowColor: '#4F46E5',
                     shadowOffset: { width: 0, height: 4 },
                     shadowOpacity: 0.3,
                     shadowRadius: 8,
                     elevation: 6,
                   }}
+                  activeOpacity={0.8}
                 >
-                  <View className="flex-row items-center">
-                    <Ionicons name="refresh" size={20} color="white" />
-                    <Text className="text-white font-bold text-base ml-2">
-                      다시 보기
-                    </Text>
-                  </View>
+                  <Ionicons name="refresh" size={20} color="white" />
+                  <Text
+                    style={{
+                      color: '#FFFFFF',
+                      fontWeight: '700',
+                      fontSize: 16,
+                      marginLeft: 8,
+                    }}
+                  >
+                    다시 보기
+                  </Text>
                 </TouchableOpacity>
               </View>
 
               {/* Stats */}
-              <View className="mt-8 flex-row items-center justify-center" style={{ gap: 16 }}>
-                <View className="items-center">
-                  <Text className="text-2xl font-bold text-gray-900">
-                    {proofs.length}
+              <View
+                style={{
+                  marginTop: 32,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 16,
+                }}
+              >
+                <View style={{ alignItems: 'center' }}>
+                  <Text style={{ fontSize: 24, fontWeight: '700', color: '#111827' }}>
+                    {voteHistory.length}
                   </Text>
-                  <Text className="text-sm text-gray-500 mt-1">평가 완료</Text>
+                  <Text style={{ fontSize: 13, color: '#6B7280', marginTop: 4 }}>
+                    평가 완료
+                  </Text>
                 </View>
                 
-                <View className="w-px h-10 bg-gray-200" />
+                <View style={{ width: 1, height: 40, backgroundColor: '#E5E7EB' }} />
                 
-                <View className="items-center">
-                  <Text className="text-2xl font-bold text-green-600">
-                    {Math.floor(proofs.length * 0.7)}
+                <View style={{ alignItems: 'center' }}>
+                  <Text style={{ fontSize: 24, fontWeight: '700', color: '#10B981' }}>
+                    {voteHistory.filter(v => v.vote === 'yes').length}
                   </Text>
-                  <Text className="text-sm text-gray-500 mt-1">승인</Text>
+                  <Text style={{ fontSize: 13, color: '#6B7280', marginTop: 4 }}>
+                    승인
+                  </Text>
                 </View>
                 
-                <View className="w-px h-10 bg-gray-200" />
+                <View style={{ width: 1, height: 40, backgroundColor: '#E5E7EB' }} />
                 
-                <View className="items-center">
-                  <Text className="text-2xl font-bold text-red-600">
-                    {proofs.length - Math.floor(proofs.length * 0.7)}
+                <View style={{ alignItems: 'center' }}>
+                  <Text style={{ fontSize: 24, fontWeight: '700', color: '#EF4444' }}>
+                    {voteHistory.filter(v => v.vote === 'no').length}
                   </Text>
-                  <Text className="text-sm text-gray-500 mt-1">거절</Text>
+                  <Text style={{ fontSize: 13, color: '#6B7280', marginTop: 4 }}>
+                    거절
+                  </Text>
                 </View>
               </View>
             </View>
@@ -199,4 +269,3 @@ export default function HomeScreen() {
     </GestureHandlerRootView>
   );
 }
-

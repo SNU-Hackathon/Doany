@@ -5,7 +5,7 @@ export interface VerificationRecord {
   ts: number; // ms
   passed: boolean;
   kind: 'schedule' | 'frequency';
-  method: 'manual' | 'location' | 'photo' | 'combo';
+  method: 'manual' | 'camera' | 'screenshot' | 'combo';
 }
 
 // Slice into complete 7-day windows [Mon 00:00 .. Sun 23:59:59] (Asia/Seoul)

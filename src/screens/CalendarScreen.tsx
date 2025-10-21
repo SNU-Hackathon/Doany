@@ -33,27 +33,23 @@ export default function CalendarScreen() {
 
     try {
       // Get active goals (onTrack state)
-      const response = await getMyGoals({ 
-        state: 'onTrack', 
-        page: 1, 
-        pageSize: 100 
-      });
+      const response = await getMyGoals('1', { state: 'onTrack', page: 1, pageSize: 100 });
       
       const progressData = await Promise.all(
         response.items.map(async (apiGoal) => {
           // Get goal detail with quests for verification count
-          const goalDetail = await getGoal(apiGoal.goalId, { expand: 'quests' });
+          const goalDetail = await getGoal(String(apiGoal.goalId));
           
           const completedQuests = goalDetail.quests?.filter(q => q.state === 'complete').length || 0;
           const totalQuests = goalDetail.quests?.length || 1;
           
           // Transform to Goal type
           const goal: Goal = {
-            id: apiGoal.goalId,
+            id: String(apiGoal.goalId),
             userId: user.id,
             title: apiGoal.title,
             description: apiGoal.description || '',
-            category: apiGoal.tags?.[0] || '',
+            category: apiGoal.tag || '',
             verificationMethods: [],
             frequency: { count: 1, unit: 'per_day' },
             duration: { type: 'days', value: 30 },

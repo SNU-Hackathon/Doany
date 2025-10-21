@@ -92,7 +92,7 @@ export default function AppHeader({
             </View>
           ) : (
             <Text className="text-2xl font-bold text-gray-900 flex-1" style={{ letterSpacing: -0.5 }}>
-              {title || 'Doany'}
+              {title || 'Proovit'}
             </Text>
           )}
 

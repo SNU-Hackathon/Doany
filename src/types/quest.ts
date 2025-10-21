@@ -28,25 +28,26 @@ export type QuestType = 'schedule' | 'frequency' | 'milestone';
 export type QuestStatus = 'pending' | 'completed' | 'failed' | 'skipped';
 
 export interface VerificationRule {
-  type: 'location' | 'photo' | 'manual' | 'time' | 'partner';
+  type: 'camera' | 'screenshot' | 'manual' | 'time' | 'partner' | 'screentime';
   required: boolean;
   config?: {
-    location?: {
-      name: string;
-      coordinates?: { lat: number; lng: number };
-      radius?: number; // meters
-    };
     time?: {
       window: { start: string; end: string }; // HH:MM format
       tolerance?: number; // minutes
     };
-    photo?: {
+    camera?: {
       required: boolean;
       exifValidation?: boolean;
+    };
+    screenshot?: {
+      required: boolean;
     };
     partner?: {
       required: boolean;
       partnerId?: string;
+    };
+    screentime?: {
+      bundleIds?: string[];
     };
   };
 }
@@ -71,14 +72,9 @@ export interface QuestGenerationRequest {
   schedule?: {
     weekdays?: number[]; // 0=Sunday, 1=Monday, etc.
     time?: string; // HH:MM format
-    location?: string;
     frequency?: number; // per week
   };
   verificationMethods: string[];
-  targetLocation?: {
-    name: string;
-    coordinates?: { lat: number; lng: number };
-  };
   originalGoalData?: {
     category?: string;
     notes?: string;
