@@ -20,10 +20,13 @@ export {
  * Converts CreateGoalForm to CreateGoalRequest
  */
 export async function createGoal(
-  goalData: (CreateGoalForm & { userId: string }) | CreateGoalRequest
+  goalData: (CreateGoalForm & { userId: string; currentGoalType?: string }) | CreateGoalRequest
 ): Promise<CreateGoalResponse> {
   // Extract userId
   const userId = 'userId' in goalData ? goalData.userId : '1';
+  
+  // Extract currentGoalType if provided
+  const currentGoalType = 'currentGoalType' in goalData ? goalData.currentGoalType : undefined;
   
   // If already in API format, use directly
   if ('goalType' in goalData) {
@@ -36,19 +39,22 @@ export async function createGoal(
   }
 
   // Transform CreateGoalForm to CreateGoalRequest
-  const formData = goalData as CreateGoalForm & { userId: string };
+  const formData = goalData as CreateGoalForm & { userId: string; currentGoalType?: string };
   
-  // Determine goal type from form data
+  // Determine goal type from currentGoalType or formData.type
   const goalType: 'schedule' | 'frequency' | 'milestone' = 
+    currentGoalType === 'schedule' ? 'schedule' :
+    currentGoalType === 'frequency' ? 'frequency' :
+    currentGoalType === 'milestone' ? 'milestone' :
     formData.type === 'schedule' ? 'schedule' :
     formData.type === 'frequency' ? 'frequency' : 'milestone';
 
   // Build API request based on goal type
-  let apiRequest: CreateGoalRequest;
+  // Note: goalType should NOT be in the body, only in query params
+  let apiRequest: any;
   
   if (goalType === 'schedule') {
     apiRequest = {
-      goalType: 'schedule',
       title: formData.title,
       description: formData.description,
       tags: formData.category ? [formData.category] : [],
@@ -58,7 +64,6 @@ export async function createGoal(
     };
   } else if (goalType === 'frequency') {
     apiRequest = {
-      goalType: 'frequency',
       title: formData.title,
       description: formData.description,
       tags: formData.category ? [formData.category] : [],
@@ -70,7 +75,6 @@ export async function createGoal(
     };
   } else {
     apiRequest = {
-      goalType: 'milestone',
       title: formData.title,
       description: formData.description,
       tags: formData.category ? [formData.category] : [],

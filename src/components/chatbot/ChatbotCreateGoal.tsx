@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Keyboard, KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { formatGoalTypeConfirmation, generateNextQuestionWithAI, useChatbotState } from '../../features/createGoal/chatbotState';
+import { generateNextQuestionWithAI, useChatbotState } from '../../features/createGoal/chatbotState';
 import { useAuth } from '../../hooks/useAuth';
 import { GoalSpecV2, SlotId } from '../../schemas/goalSpecV2';
 import { AIService } from '../../services/ai';
@@ -135,9 +135,9 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
       // Small delay to ensure message is rendered
       await new Promise(resolve => setTimeout(resolve, 100));
       
-      // Create timeout promise (40 seconds for reliable generation)
+      // Create timeout promise (60 seconds for reliable generation)
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('Quest generation timeout after 40s')), 40000);
+        setTimeout(() => reject(new Error('Quest generation timeout after 60s')), 60000);
       });
       
       // === NEW: Use GoalSpecV2 if available, otherwise fallback to legacy ===
@@ -226,8 +226,15 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
         }
       }
     } catch (error) {
-      console.error('[GEN.QUESTS] ❌ AI quest generation failed:', error instanceof Error ? error.message : String(error));
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('[GEN.QUESTS] ❌ AI quest generation failed:', errorMessage);
       setIsTyping(false);
+      
+      // Show user-friendly message for timeout
+      if (errorMessage.includes('timeout')) {
+        console.log('[GEN.QUESTS] ⏱️ Timeout occurred, switching to simple quest generation');
+        actions.addMessage('AI 생성 시간이 초과되어 기본 퀘스트를 생성합니다.', 'assistant');
+      }
       
       const simpleQuests = generateSimpleQuests();
       
@@ -242,6 +249,7 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
       } else {
         console.error('[GEN.QUESTS] ❌ Even fallback generation failed!');
         setGenerationPhase('idle');
+        actions.addMessage('퀘스트 생성 중 오류가 발생했습니다. 다시 시도해주세요.', 'assistant');
       }
     } finally {
       // ALWAYS clear the generating flag after a delay
@@ -547,14 +555,16 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
     setIsTyping(true);
 
     try {
-      // If no goal type is set, classify from title using AI
+      // If no goal type is set, classify and propose a goal type
       if (!state.currentGoalType) {
-        console.log('[DEBUG.CLASSIFY] 🔍 Starting goal type classification for:', input);
-        const goalType = await actions.classifyAndSetGoalType(input);
-        console.log('[DEBUG.CLASSIFY] ✅ Classified goal type:', goalType);
+        console.log('[DEBUG.INIT] 🎯 Classifying goal type for:', input);
         
         // Store title in collected slots
         actions.updateSlot('title', input);
+        
+        // Classify goal type using AI
+        const goalType = await actions.classifyAndSetGoalType(input);
+        console.log('[DEBUG.CLASSIFY] ✅ Classified goal type:', goalType);
         
         // === NEW: Update specV2 with type and title ===
         setSpecV2(prev => ({
@@ -565,13 +575,43 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
         }));
         console.log('[SPEC.INIT] Set initial type and title:', { type: goalType, title: input });
         
-        // 즉시 확인 게이트 설정 - 레이스 컨디션 방지
-        setAwaitingConfirmation('goalType');
         setIsTyping(false);
-        const confirmationMessage = formatGoalTypeConfirmation(goalType);
-        actions.addMessage(confirmationMessage, 'assistant');
-
-        console.log('[CONFIRM.STATE] Set awaitingConfirmation=goalType immediately');
+        
+        // Show goal type confirmation widget with Yes/No buttons
+        const goalTypeDescriptions = {
+          frequency: {
+            title: '주당 특정 횟수를 달성하는 목표',
+            features: ['✓ 유연한 일정 조정 가능', '✓ 주간 목표 달성에 집중', '✓ 자기 주도적 계획 수립']
+          },
+          schedule: {
+            title: '정해진 요일과 시간에 수행하는 목표',
+            features: ['✓ 규칙적인 루틴 형성', '✓ 시간 관리 강화', '✓ 일정 기반 알림']
+          },
+          milestone: {
+            title: '단계별로 진행하는 목표',
+            features: ['✓ 체계적인 진도 관리', '✓ 명확한 성취감', '✓ 단계적 성장']
+          }
+        };
+        
+        const description = goalTypeDescriptions[goalType];
+        const confirmMessage = `${description.title}\n\n${description.features.join('\n')}\n\n이 방식으로 진행하시겠어요?`;
+        
+        const confirmWidget: EmbeddedWidget = {
+          id: `widget-confirm-goaltype-${Date.now()}`,
+          type: 'chips',
+          slotId: 'confirmGoalType',
+          label: description.title,
+          onSelect: (value: SlotValue) => {
+            // Will be handled by renderWidget
+          },
+          props: {
+            options: ['네', '아니요']
+          }
+        };
+        
+        setAwaitingConfirmation('goalType');
+        actions.addMessage(confirmMessage, 'assistant', [confirmWidget]);
+        console.log('[GOALTYPE.CONFIRM] Showing goal type confirmation widget');
         return;
       }
 
@@ -673,6 +713,33 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
   // === NEW: Unified slot confirmation handler with GoalSpecV2 integration ===
   const handleSlotConfirm = useCallback(async (slotId: string, rawValue: SlotValue) => {
     console.log('[ANSWER]', { slotId, raw: rawValue, currentType: state.currentGoalType });
+
+    // Handle goal type confirmation
+    if (slotId === 'confirmGoalType') {
+      const userChoice = String(rawValue);
+      console.log('[CONFIRM.GOALTYPE] User choice:', userChoice);
+      
+      if (userChoice === '네') {
+        // User confirmed the goal type - proceed to next questions
+        setAwaitingConfirmation(null);
+        actions.addMessage('네', 'user');
+        
+        // Trigger next question generation
+        setUserJustConfirmedWidget(true);
+        setIsTyping(true);
+        
+        setTimeout(async () => {
+          await generateNextQuestionSafely(true);
+          setIsTyping(false);
+        }, 500);
+      } else {
+        // User declined - could implement alternative goal type selection here
+        setAwaitingConfirmation(null);
+        actions.addMessage('아니요', 'user');
+        actions.addMessage('다른 방식을 원하신다면 목표를 다시 설명해주세요.', 'assistant');
+      }
+      return;
+    }
 
     // Auto-clear confirmation state if widget interaction occurs
     if (awaitingConfirmation === 'goalType') {
@@ -1059,18 +1126,34 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
     // Next question will be auto-generated by useEffect
   };
 
+  // Track current active slot
+  const [activeSlotId, setActiveSlotId] = useState<string | null>(null);
+  
+  // Update active slot when pending slots change
+  useEffect(() => {
+    if (state.pendingSlots.length > 0) {
+      setActiveSlotId(state.pendingSlots[0]);
+    } else {
+      setActiveSlotId(null);
+    }
+  }, [state.pendingSlots]);
+
   // Render embedded widgets
   const renderWidget = (widget: EmbeddedWidget, messageId: string) => {
     console.log('[ChatbotCreateGoal] Rendering widget:', {
       type: widget.type,
       slotId: widget.slotId,
       label: widget.label,
-      messageId
+      messageId,
+      isActive: activeSlotId === widget.slotId
     });
+    
+    const isActive = activeSlotId === widget.slotId;
     
     const commonProps = {
       label: widget.label,
       value: state.collectedSlots[widget.slotId],
+      isActive,
       onSelect: (value: SlotValue) => {
         if (widget.slotId === 'goalType') {
           handleGoalTypeSelection(String(value));
@@ -1160,13 +1243,15 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
         const verificationMethods = state.collectedSlots.verification as string[] || ['camera'];
         const primaryVerification = verificationMethods[0] === '사진' ? 'camera' 
           : verificationMethods[0] === '스크린샷' ? 'screenshot' 
+          : verificationMethods[0] === '영상' ? 'camera'
+          : verificationMethods[0] === '파일 업로드' ? 'camera'
           : 'manual';
         
         const quests = (state.questPreview || []).map((quest: any) => {
-          const date = quest.date || quest.scheduledDate || startAt?.split('T')[0];
+          const date = quest.date || quest.scheduledDate || quest.targetDate || startAt?.split('T')[0];
           const time = quest.time || timeSlot;
           return {
-            date: `${date}T${time}`, // "2025-10-12T09:00"
+            date: `${date}T${time}`, // "2025-10-12T09:00" (백엔드가 파싱)
             description: quest.description || quest.title || '퀘스트 완료',
             verificationMethod: quest.verificationMethod || primaryVerification
           };
@@ -1175,7 +1260,6 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
         console.log('[SAVE.SCHEDULE] Generated schedule quests:', quests);
         
         goalData = {
-          goalType: 'schedule' as const,
           title,
           description,
           tags,
@@ -1188,7 +1272,10 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
         const perWeek = Number(state.collectedSlots.perWeek) || 3;
         const verificationMethods = state.collectedSlots.verification as string[] || ['camera'];
         const primaryVerification = verificationMethods[0] === '사진' ? 'camera' 
-          : verificationMethods[0] === '스크린샷' ? 'screenshot' 
+          : verificationMethods[0] === '스크린샷' ? 'camera'
+          : verificationMethods[0] === '영상' ? 'camera'
+          : verificationMethods[0] === '파일 업로드' ? 'camera'
+          : verificationMethods[0] === '체크리스트' ? 'manual'
           : 'manual';
         
         const quests = (state.questPreview || []).map((quest: any, index: number) => ({
@@ -1198,7 +1285,6 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
         }));
         
         goalData = {
-          goalType: 'frequency' as const,
           title,
           description,
           tags,
@@ -1213,7 +1299,10 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
         // Extract verification method from collectedSlots
         const verificationMethods = state.collectedSlots.verification as string[] || ['체크리스트'];
         const primaryVerification = verificationMethods[0] === '사진' ? 'camera' 
-          : verificationMethods[0] === '스크린샷' ? 'screenshot' 
+          : verificationMethods[0] === '스크린샷' ? 'camera'
+          : verificationMethods[0] === '영상' ? 'camera'
+          : verificationMethods[0] === '파일 업로드' ? 'camera'
+          : verificationMethods[0] === '체크리스트' ? 'manual'
           : 'manual';
         
         // Use AI-generated quests if available, otherwise use default milestones
@@ -1247,7 +1336,6 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
         const overallTargetValue = lastQuest?.targetValue || 0;
         
         goalData = {
-          goalType: 'milestone' as const,
           title,
           description,
           tags,
@@ -1269,8 +1357,12 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
 
       console.log('[SAVE.SUCCESS] Goal data prepared:', JSON.stringify(goalData, null, 2));
 
-      // Save to database - pass goalData with userId separately
-      const result = await createGoal({ ...goalData, userId });
+      // Save to database - pass goalData with userId and currentGoalType for proper routing
+      const result = await createGoal({ 
+        ...goalData, 
+        userId,
+        currentGoalType: state.currentGoalType 
+      });
       const goalId = result.goalId;
       
       console.log('[SAVE.SUCCESS] Goal saved successfully with ID:', goalId);
@@ -1331,72 +1423,51 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
         showsVerticalScrollIndicator={false}
       >
         {state.messages.map((message) => {
-          // Check if this message has any unconfirmed widgets
-          const hasUnconfirmedWidgets = message.widgets?.some(widget => {
-            const isSlotConfirmed = state.collectedSlots[widget.slotId] !== undefined && 
-                                   state.collectedSlots[widget.slotId] !== null;
-            return !isSlotConfirmed;
-          });
-          
-          // Only render messages that are user messages, text-only assistant messages, or have unconfirmed widgets
-          const shouldRenderMessage = message.role === 'user' || 
-                                     !message.widgets || 
-                                     message.widgets.length === 0 || 
-                                     hasUnconfirmedWidgets;
-          
-          if (!shouldRenderMessage) {
-            return null; // Skip messages with only confirmed widgets
-          }
-          
+          // Always render all messages (no filtering)
           return (
             <View
               key={`msg-${message.id}`}
               className={`mb-3 ${message.role === 'user' ? 'items-end' : 'items-start'}`}
             >
-              <View
-                style={{
-                  maxWidth: '75%',
-                  paddingHorizontal: 16,
-                  paddingVertical: 12,
-                  borderRadius: 20,
-                  backgroundColor: message.role === 'user' ? '#007AFF' : '#FFFFFF',
-                  ...message.role === 'assistant' && {
-                    shadowColor: '#000',
-                    shadowOffset: { width: 0, height: 1 },
-                    shadowOpacity: 0.08,
-                    shadowRadius: 4,
-                    elevation: 2,
-                    borderWidth: 1,
-                    borderColor: '#F0F0F0',
-                  }
-                }}
-              >
-                <Text
+              {/* Only render message bubble if there's text content or no widgets */}
+              {(message.content || !message.widgets || message.widgets.length === 0) && (
+                <View
                   style={{
-                    fontSize: 15,
-                    lineHeight: 22,
-                    color: message.role === 'user' ? '#FFFFFF' : '#1C1C1E',
-                    fontWeight: message.role === 'assistant' ? '400' : '500',
+                    maxWidth: '75%',
+                    paddingHorizontal: 16,
+                    paddingVertical: 12,
+                    borderRadius: 20,
+                    backgroundColor: message.role === 'user' ? '#007AFF' : '#FFFFFF',
+                    ...message.role === 'assistant' && {
+                      shadowColor: '#000',
+                      shadowOffset: { width: 0, height: 1 },
+                      shadowOpacity: 0.08,
+                      shadowRadius: 4,
+                      elevation: 2,
+                      borderWidth: 1,
+                      borderColor: '#F0F0F0',
+                    }
                   }}
                 >
-                  {message.content}
-                </Text>
-              </View>
+                  <Text
+                    style={{
+                      fontSize: 15,
+                      lineHeight: 22,
+                      color: message.role === 'user' ? '#FFFFFF' : '#1C1C1E',
+                      fontWeight: message.role === 'assistant' ? '400' : '500',
+                    }}
+                  >
+                    {message.content}
+                  </Text>
+                </View>
+              )}
 
-              {/* Render embedded widgets - only show if slot not yet collected */}
+              {/* Render embedded widgets - ALWAYS show all widgets */}
               {message.widgets && message.widgets.length > 0 && (
                 <View className="w-full mt-2">
                   {message.widgets.map((widget, widgetIndex) => {
-                    // Hide widget if slot is already confirmed (to prevent key errors)
-                    const isSlotConfirmed = state.collectedSlots[widget.slotId] !== undefined && 
-                                           state.collectedSlots[widget.slotId] !== null;
-                    
-                    if (isSlotConfirmed) {
-                      return null; // Don't render confirmed widgets
-                    }
-                    
                     return (
-                      <View key={`${message.id}-widget-${widget.slotId}-${widgetIndex}-${Date.now()}`}>
+                      <View key={`${message.id}-widget-${widget.slotId}-${widgetIndex}`}>
                         {renderWidget(widget, message.id)}
                       </View>
                     );
@@ -1500,7 +1571,7 @@ export default function ChatbotCreateGoal({ onGoalCreated, onClose }: ChatbotCre
             
             {/* Show first 3 or all quests based on state */}
             {(showAllQuests ? (isEditingQuests ? editedQuests : state.questPreview) : (isEditingQuests ? editedQuests : state.questPreview).slice(0, 3)).map((quest, index) => (
-              <View key={`quest-${quest.id}-${index}-${Date.now()}`} className="bg-white border border-gray-200 rounded-lg p-4 mb-3 shadow-sm">
+              <View key={`quest-${quest.id}-${index}`} className="bg-white border border-gray-200 rounded-lg p-4 mb-3 shadow-sm">
                 <View className="flex-row items-start justify-between mb-2">
                   <View className="bg-blue-100 w-8 h-8 rounded-full items-center justify-center">
                     <Text className="text-blue-600 font-bold text-sm">{index + 1}</Text>

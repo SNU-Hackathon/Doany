@@ -91,17 +91,14 @@ export function AdvancedCalendarWidget({
               onPress={handleConfirm}
               className="mt-4 bg-blue-500 py-3 px-4 rounded-lg"
             >
-              <Text className="text-white text-center font-medium">선택 완료</Text>
+              <Text className="text-white text-center font-medium">네</Text>
             </TouchableOpacity>
           )}
         </>
       ) : (
-        <View className="p-4 bg-blue-50 rounded-lg">
-          <Text className="text-blue-700 text-center">
+        <View className="p-4 bg-green-50 rounded-lg border border-green-200">
+          <Text className="text-green-700 text-center font-medium">
             📅 {selectedRanges[0]?.start.toLocaleDateString('ko-KR')} ~ {selectedRanges[0]?.end.toLocaleDateString('ko-KR')}
-          </Text>
-          <Text className="text-blue-600 text-xs text-center mt-1">
-            기간이 선택되었습니다
           </Text>
         </View>
       )}
@@ -110,7 +107,7 @@ export function AdvancedCalendarWidget({
 }
 
 // Calendar Widget for date/dateRange selection
-export function CalendarWidget({ label, value, onSelect, onConfirm, mode = 'range' }: BaseWidgetProps & { mode?: 'single' | 'range' }) {
+export function CalendarWidget({ label, value, onSelect, onConfirm, mode = 'range', isActive = true }: BaseWidgetProps & { mode?: 'single' | 'range'; isActive?: boolean }) {
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<{startDate: string; endDate: string} | null>(null);
@@ -215,6 +212,10 @@ export function CalendarWidget({ label, value, onSelect, onConfirm, mode = 'rang
       }
     }
   };
+  
+  const handleEdit = () => {
+    setIsConfirmed(false);
+  };
 
   const isDateInRange = (date: Date) => {
     if (!startDate) return false;
@@ -227,101 +228,114 @@ export function CalendarWidget({ label, value, onSelect, onConfirm, mode = 'rang
   const isDateEnd = (date: Date) => endDate && date.toDateString() === endDate.toDateString();
 
   return (
-    <View className="bg-white border border-gray-200 rounded-lg p-4 mt-2">
+    <View className={`bg-white rounded-lg p-4 mt-2 ${isActive && !isConfirmed ? 'border-4 border-blue-500' : 'border border-gray-200'}`}>
       <Text className="text-sm font-medium text-gray-700 mb-3">{label}</Text>
       
-      {/* Calendar Header with navigation */}
-      <View className="flex-row justify-between items-center mb-2">
-        <TouchableOpacity onPress={goToPreviousMonth} className="p-2" disabled={isConfirmed}>
-          <Text className="text-blue-600 text-lg font-bold">◀</Text>
-        </TouchableOpacity>
-        <Text className="text-lg font-semibold text-gray-800">
-          {currentMonth.getFullYear()}년 {currentMonth.getMonth() + 1}월
-        </Text>
-        <TouchableOpacity onPress={goToNextMonth} className="p-2" disabled={isConfirmed}>
-          <Text className="text-blue-600 text-lg font-bold">▶</Text>
-        </TouchableOpacity>
-      </View>
-      
-      <Text className="text-xs text-gray-500 text-center mb-2">
-        {mode === 'range' ? '시작일과 종료일을 선택' : '날짜를 선택'}
-      </Text>
-
-      {/* Weekday headers */}
-      <View className="flex-row mb-2">
-        {['일', '월', '화', '수', '목', '금', '토'].map((day) => (
-          <View key={`weekday-header-${day}`} className="flex-1 items-center">
-            <Text className="text-xs font-medium text-gray-500">{day}</Text>
-          </View>
-        ))}
-      </View>
-
-      {/* Calendar Grid - 7 columns (Sun-Sat) */}
-      <View className="flex-row flex-wrap">
-        {calendarDays.map((dayData) => {
-          const { date, isCurrentMonth } = dayData;
-          const isPast = date < today && date.toDateString() !== today.toDateString();
-          const isSelected = isDateInRange(date);
-          const isStart = isDateStart(date);
-          const isEnd = isDateEnd(date);
-          
-          // Globally unique key using full ISO date
-          const dateKey = `cal-${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}-${date.getTime()}`;
-          
-          return (
-            <TouchableOpacity
-              key={dateKey}
-              onPress={() => handleDatePress(date)}
-              disabled={isPast || !isCurrentMonth || isConfirmed}
-              style={{ width: '14.28%' }}
-              className={`aspect-square items-center justify-center rounded ${
-                isPast || !isCurrentMonth
-                  ? 'bg-gray-100'
-                  : isSelected
-                  ? isStart || isEnd
-                    ? 'bg-blue-600'
-                    : 'bg-blue-200'
-                  : 'bg-gray-50'
-              } ${isConfirmed ? 'opacity-60' : ''}`}
-            >
-              <Text
-                className={`text-sm ${
-                  isPast || !isCurrentMonth
-                    ? 'text-gray-400'
-                    : isSelected
-                    ? isStart || isEnd
-                      ? 'text-white font-bold'
-                      : 'text-blue-800'
-                    : 'text-gray-700'
-                }`}
-              >
-                {date.getDate()}
-              </Text>
+      {!isConfirmed ? (
+        <>
+          {/* Calendar Header with navigation */}
+          <View className="flex-row justify-between items-center mb-2">
+            <TouchableOpacity onPress={goToPreviousMonth} className="p-2">
+              <Text className="text-blue-600 text-lg font-bold">◀</Text>
             </TouchableOpacity>
-          );
-        })}
-      </View>
+            <Text className="text-lg font-semibold text-gray-800">
+              {currentMonth.getFullYear()}년 {currentMonth.getMonth() + 1}월
+            </Text>
+            <TouchableOpacity onPress={goToNextMonth} className="p-2">
+              <Text className="text-blue-600 text-lg font-bold">▶</Text>
+            </TouchableOpacity>
+          </View>
+          
+          <Text className="text-xs text-gray-500 text-center mb-2">
+            {mode === 'range' ? '시작일과 종료일을 선택' : '날짜를 선택'}
+          </Text>
 
-      {/* Selection Info & Confirm Button - Compact spacing */}
-      {selectedPeriod && (
-        <View className="mt-2 p-2 bg-blue-50 rounded">
-          <Text className="text-xs text-blue-700 text-center">
-            {selectedPeriod.startDate}
-            {mode === 'range' && selectedPeriod.endDate !== selectedPeriod.startDate && 
-              ` ~ ${selectedPeriod.endDate}`
+          {/* Weekday headers */}
+          <View className="flex-row mb-2">
+            {['일', '월', '화', '수', '목', '금', '토'].map((day) => (
+              <View key={`weekday-header-${day}`} className="flex-1 items-center">
+                <Text className="text-xs font-medium text-gray-500">{day}</Text>
+              </View>
+            ))}
+          </View>
+
+          {/* Calendar Grid - 7 columns (Sun-Sat) */}
+          <View className="flex-row flex-wrap">
+            {calendarDays.map((dayData) => {
+              const { date, isCurrentMonth } = dayData;
+              const isPast = date < today && date.toDateString() !== today.toDateString();
+              const isSelected = isDateInRange(date);
+              const isStart = isDateStart(date);
+              const isEnd = isDateEnd(date);
+              
+              // Globally unique key using full ISO date
+              const dateKey = `cal-${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}-${date.getTime()}`;
+              
+              return (
+                <TouchableOpacity
+                  key={dateKey}
+                  onPress={() => handleDatePress(date)}
+                  disabled={isPast || !isCurrentMonth}
+                  style={{ width: '14.28%' }}
+                  className={`aspect-square items-center justify-center rounded ${
+                    isPast || !isCurrentMonth
+                      ? 'bg-gray-100'
+                      : isSelected
+                      ? isStart || isEnd
+                        ? 'bg-blue-600'
+                        : 'bg-blue-200'
+                      : 'bg-gray-50'
+                  }`}
+                >
+                  <Text
+                    className={`text-sm ${
+                      isPast || !isCurrentMonth
+                        ? 'text-gray-400'
+                        : isSelected
+                        ? isStart || isEnd
+                          ? 'text-white font-bold'
+                          : 'text-blue-800'
+                        : 'text-gray-700'
+                    }`}
+                  >
+                    {date.getDate()}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* Selection Info - Compact spacing */}
+          {selectedPeriod && (
+            <View className="mt-2 p-2 bg-blue-50 rounded">
+              <Text className="text-xs text-blue-700 text-center">
+                {selectedPeriod.startDate}
+                {mode === 'range' && selectedPeriod.endDate !== selectedPeriod.startDate && 
+                  ` ~ ${selectedPeriod.endDate}`
+                }
+              </Text>
+            </View>
+          )}
+
+          {/* Confirm Button */}
+          {selectedPeriod && (
+            <TouchableOpacity
+              onPress={handleConfirm}
+              className="mt-2 bg-blue-500 py-2.5 px-4 rounded-lg"
+            >
+              <Text className="text-white text-center font-medium text-sm">네</Text>
+            </TouchableOpacity>
+          )}
+        </>
+      ) : (
+        <View className="p-4 bg-green-50 rounded-lg border border-green-200">
+          <Text className="text-green-700 text-center font-medium">
+            📅 {selectedPeriod?.startDate}
+            {mode === 'range' && selectedPeriod?.endDate !== selectedPeriod?.startDate && 
+              ` ~ ${selectedPeriod?.endDate}`
             }
           </Text>
         </View>
-      )}
-
-      {/* Confirm Button */}
-      {selectedPeriod && !isConfirmed && (
-        <TouchableOpacity
-          onPress={handleConfirm}
-          className="mt-2 bg-blue-500 py-2.5 px-4 rounded-lg"
-        >
-          <Text className="text-white text-center font-medium text-sm">선택 완료</Text>
-        </TouchableOpacity>
       )}
     </View>
   );
@@ -334,10 +348,12 @@ export function ChipsWidget({
   onSelect,
   onConfirm,
   options = [], 
-  defaultValue = [] 
+  defaultValue = [],
+  isActive = true
 }: BaseWidgetProps & { 
   options?: string[]; 
   defaultValue?: string[];
+  isActive?: boolean;
 }) {
   const [localSelection, setLocalSelection] = useState<string[]>(() => {
     // Use existing value or default value
@@ -367,54 +383,54 @@ export function ChipsWidget({
   };
 
   return (
-    <View className="bg-white border border-gray-200 rounded-lg p-4 mt-2">
+    <View className={`bg-white rounded-lg p-4 mt-2 ${isActive && !isConfirmed ? 'border-4 border-blue-500' : 'border border-gray-200'}`}>
       <Text className="text-sm font-medium text-gray-700 mb-3">{label}</Text>
-      <View className="flex-row flex-wrap">
-        {options.map((option, optIndex) => {
-          const isSelected = localSelection.includes(option);
-          return (
+      {!isConfirmed ? (
+        <>
+          <View className="flex-row flex-wrap">
+            {options.map((option, optIndex) => {
+              const isSelected = localSelection.includes(option);
+              return (
+                <TouchableOpacity
+                  key={`chip-${label}-${option}-${optIndex}`}
+                  onPress={() => toggleOption(option)}
+                  className={`mr-2 mb-2 px-4 py-2.5 rounded-full border-2 ${
+                    isSelected 
+                      ? 'bg-blue-500 border-blue-500' 
+                      : 'bg-white border-gray-300'
+                  }`}
+                >
+                  <Text className={`text-sm font-medium ${isSelected ? 'text-white' : 'text-gray-700'}`}>
+                    {option}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* Confirm Button */}
+          {localSelection.length > 0 && (
             <TouchableOpacity
-              key={`chip-${label}-${option}-${optIndex}`}
-              onPress={() => toggleOption(option)}
-              disabled={isConfirmed}
-              className={`mr-2 mb-2 px-3 py-2 rounded-full border ${
-                isSelected 
-                  ? 'bg-blue-500 border-blue-500' 
-                  : 'bg-white border-gray-300'
-              } ${isConfirmed ? 'opacity-60' : ''}`}
+              onPress={handleConfirm}
+              className="mt-3 bg-blue-500 py-3 px-4 rounded-lg"
             >
-              <Text className={`text-sm ${isSelected ? 'text-white' : 'text-gray-700'}`}>
-                {option}
-              </Text>
+              <Text className="text-white text-center font-medium">네</Text>
             </TouchableOpacity>
-          );
-        })}
-      </View>
-      
-      {/* Selection Summary */}
-      {localSelection.length > 0 && (
-        <View className="mt-3 p-3 bg-blue-50 rounded">
-          <Text className="text-sm text-blue-700">
-            선택: {localSelection.join(', ')}
+          )}
+        </>
+      ) : (
+        <View className="p-3 bg-green-50 rounded-lg border border-green-200">
+          <Text className="text-green-700 text-center font-medium">
+            ✓ {localSelection.join(', ')}
           </Text>
         </View>
-      )}
-
-      {/* Confirm Button */}
-      {localSelection.length > 0 && !isConfirmed && (
-        <TouchableOpacity
-          onPress={handleConfirm}
-          className="mt-3 bg-blue-500 py-3 px-4 rounded-lg"
-        >
-          <Text className="text-white text-center font-medium">선택 완료</Text>
-        </TouchableOpacity>
       )}
     </View>
   );
 }
 
 // Toggle Widget for boolean values
-export function ToggleWidget({ label, value, onSelect, onConfirm }: BaseWidgetProps) {
+export function ToggleWidget({ label, value, onSelect, onConfirm, isActive = true }: BaseWidgetProps & { isActive?: boolean }) {
   const [localValue, setLocalValue] = useState(Boolean(value));
   const [isConfirmed, setIsConfirmed] = useState(false);
 
@@ -434,39 +450,39 @@ export function ToggleWidget({ label, value, onSelect, onConfirm }: BaseWidgetPr
   };
 
   return (
-    <View className="bg-white border border-gray-200 rounded-lg p-4 mt-2">
-      <View className="flex-row items-center justify-between">
-        <Text className="text-sm font-medium text-gray-700">{label}</Text>
-        <TouchableOpacity
-          onPress={handleToggle}
-          disabled={isConfirmed}
-          className={`w-12 h-6 rounded-full flex-row items-center px-1 ${
-            localValue ? 'bg-blue-500' : 'bg-gray-300'
-          } ${isConfirmed ? 'opacity-60' : ''}`}
-        >
-          <View
-            className={`w-4 h-4 rounded-full bg-white transition-transform ${
-              localValue ? 'translate-x-6' : 'translate-x-0'
-            }`}
-          />
-        </TouchableOpacity>
-      </View>
+    <View className={`bg-white rounded-lg p-4 mt-2 ${isActive && !isConfirmed ? 'border-4 border-blue-500' : 'border border-gray-200'}`}>
+      {!isConfirmed ? (
+        <>
+          <View className="flex-row items-center justify-between">
+            <Text className="text-sm font-medium text-gray-700">{label}</Text>
+            <TouchableOpacity
+              onPress={handleToggle}
+              className={`w-12 h-6 rounded-full flex-row items-center px-1 ${
+                localValue ? 'bg-blue-500' : 'bg-gray-300'
+              }`}
+            >
+              <View
+                className={`w-4 h-4 rounded-full bg-white transition-transform ${
+                  localValue ? 'translate-x-6' : 'translate-x-0'
+                }`}
+              />
+            </TouchableOpacity>
+          </View>
 
-      {/* Current Selection */}
-      <View className="mt-3 p-3 bg-blue-50 rounded">
-        <Text className="text-sm text-blue-700 text-center">
-          선택: {localValue ? '활성화' : '비활성화'}
-        </Text>
-      </View>
-
-      {/* Confirm Button */}
-      {!isConfirmed && (
-        <TouchableOpacity
-          onPress={handleConfirm}
-          className="mt-3 bg-blue-500 py-3 px-4 rounded-lg"
-        >
-          <Text className="text-white text-center font-medium">선택 완료</Text>
-        </TouchableOpacity>
+          {/* Confirm Button */}
+          <TouchableOpacity
+            onPress={handleConfirm}
+            className="mt-4 bg-blue-500 py-3 px-4 rounded-lg"
+          >
+            <Text className="text-white text-center font-medium">네</Text>
+          </TouchableOpacity>
+        </>
+      ) : (
+        <View className="p-3 bg-green-50 rounded-lg border border-green-200">
+          <Text className="text-green-700 text-center font-medium">
+            {localValue ? '✓ 활성화' : '○ 비활성화'}
+          </Text>
+        </View>
       )}
     </View>
   );
@@ -480,11 +496,13 @@ export function CounterWidget({
   onConfirm,
   min = 1, 
   max = 10, 
-  defaultValue = min 
+  defaultValue = min,
+  isActive = true
 }: BaseWidgetProps & { 
   min?: number; 
   max?: number; 
   defaultValue?: number;
+  isActive?: boolean;
 }) {
   const [localValue, setLocalValue] = useState(() => {
     // Use existing value or default value
@@ -530,71 +548,66 @@ export function CounterWidget({
   };
 
   return (
-    <View className="bg-white border border-gray-200 rounded-lg p-4 mt-2">
+    <View className={`bg-white rounded-lg p-4 mt-2 ${isActive && !isConfirmed ? 'border-4 border-blue-500' : 'border border-gray-200'}`}>
       <Text className="text-sm font-medium text-gray-700 mb-3">{label}</Text>
-      <View className="flex-row items-center justify-center">
-        <TouchableOpacity
-          onPress={decrement}
-          disabled={localValue <= min || isConfirmed}
-          className={`w-10 h-10 rounded-full items-center justify-center ${
-            localValue <= min || isConfirmed ? 'bg-gray-200' : 'bg-blue-100'
-          }`}
-        >
-          <Text className={`text-xl font-bold ${localValue <= min || isConfirmed ? 'text-gray-400' : 'text-blue-600'}`}>
-            −
-          </Text>
-        </TouchableOpacity>
-        
-        {/* Direct input field */}
-        <TextInput
-          value={inputValue}
-          onChangeText={handleInputChange}
-          keyboardType="number-pad"
-          editable={!isConfirmed}
-          className={`mx-4 text-2xl font-bold text-blue-800 text-center border-b-2 ${
-            isConfirmed ? 'border-gray-300' : 'border-blue-300'
-          } w-16`}
-          maxLength={3}
-        />
-        
-        <TouchableOpacity
-          onPress={increment}
-          disabled={localValue >= max || isConfirmed}
-          className={`w-10 h-10 rounded-full items-center justify-center ${
-            localValue >= max || isConfirmed ? 'bg-gray-200' : 'bg-blue-100'
-          }`}
-        >
-          <Text className={`text-xl font-bold ${localValue >= max || isConfirmed ? 'text-gray-400' : 'text-blue-600'}`}>
-            +
-          </Text>
-        </TouchableOpacity>
-      </View>
+      {!isConfirmed ? (
+        <>
+          <View className="flex-row items-center justify-center">
+            <TouchableOpacity
+              onPress={decrement}
+              disabled={localValue <= min}
+              className={`w-10 h-10 rounded-full items-center justify-center ${
+                localValue <= min ? 'bg-gray-200' : 'bg-blue-100'
+              }`}
+            >
+              <Text className={`text-xl font-bold ${localValue <= min ? 'text-gray-400' : 'text-blue-600'}`}>
+                −
+              </Text>
+            </TouchableOpacity>
+            
+            {/* Direct input field */}
+            <TextInput
+              value={inputValue}
+              onChangeText={handleInputChange}
+              keyboardType="number-pad"
+              className="mx-4 text-2xl font-bold text-blue-800 text-center border-b-2 border-blue-300 w-16"
+              maxLength={3}
+            />
+            
+            <TouchableOpacity
+              onPress={increment}
+              disabled={localValue >= max}
+              className={`w-10 h-10 rounded-full items-center justify-center ${
+                localValue >= max ? 'bg-gray-200' : 'bg-blue-100'
+              }`}
+            >
+              <Text className={`text-xl font-bold ${localValue >= max ? 'text-gray-400' : 'text-blue-600'}`}>
+                +
+              </Text>
+            </TouchableOpacity>
+          </View>
 
-      {/* Current Selection */}
-      <View className="mt-3 p-2 bg-blue-50 rounded">
-        <Text className="text-xs text-blue-700 text-center">
-          {label.includes('달성률') ? `목표 달성률: ${localValue}%` : `선택된 값: ${localValue}`}
-        </Text>
-        <Text className="text-xs text-gray-500 text-center mt-1">
-          직접 입력 또는 +/- 버튼 사용
-        </Text>
-      </View>
-
-      {/* Confirm Button */}
-      {!isConfirmed && (
-        <TouchableOpacity
-          onPress={handleConfirm}
-          className="mt-2 bg-blue-500 py-2.5 px-4 rounded-lg"
-        >
-          <Text className="text-white text-center font-medium text-sm">선택 완료</Text>
-        </TouchableOpacity>
+          {/* Confirm Button */}
+          <TouchableOpacity
+            onPress={handleConfirm}
+            className="mt-4 bg-blue-500 py-3 px-4 rounded-lg"
+          >
+            <Text className="text-white text-center font-medium">네</Text>
+          </TouchableOpacity>
+        </>
+      ) : (
+        <View className="p-3 bg-green-50 rounded-lg border border-green-200">
+          <Text className="text-green-700 text-center font-medium">
+            {label.includes('달성률') ? `📊 ${localValue}%` : `🎯 주 ${localValue}회`}
+          </Text>
+        </View>
       )}
     </View>
   );
 }
 
 // Time Picker Widget with pre-population support
-export function TimePickerWidget({ label, value, onSelect, onConfirm, defaultValue }: BaseWidgetProps & { defaultValue?: string }) {
+export function TimePickerWidget({ label, value, onSelect, onConfirm, defaultValue, isActive = true }: BaseWidgetProps & { defaultValue?: string; isActive?: boolean }) {
   // Parse default value if provided (HH:MM format)
   const parseTime = (timeStr?: string) => {
     if (timeStr && typeof timeStr === 'string') {
@@ -636,84 +649,73 @@ export function TimePickerWidget({ label, value, onSelect, onConfirm, defaultVal
   };
 
   return (
-    <View className="bg-white border border-gray-200 rounded-lg p-4 mt-2">
+    <View className={`bg-white rounded-lg p-4 mt-2 ${isActive && !isConfirmed ? 'border-4 border-blue-500' : 'border border-gray-200'}`}>
       <Text className="text-sm font-medium text-gray-700 mb-3">{label}</Text>
-      <View className="flex-row items-center justify-center">
-        {/* Hour selector */}
-        <View className="items-center">
+      {!isConfirmed ? (
+        <>
+          <View className="flex-row items-center justify-center">
+            {/* Hour selector */}
+            <View className="items-center">
+              <TouchableOpacity
+                onPress={() => handleTimeChange((hour + 1) % 24, minute)}
+                className="w-8 h-8 rounded items-center justify-center bg-blue-100"
+              >
+                <Text className="text-blue-600">▲</Text>
+              </TouchableOpacity>
+              <Text className="text-2xl font-bold text-blue-800 my-2">
+                {hour.toString().padStart(2, '0')}
+              </Text>
+              <TouchableOpacity
+                onPress={() => handleTimeChange(hour === 0 ? 23 : hour - 1, minute)}
+                className="w-8 h-8 rounded items-center justify-center bg-blue-100"
+              >
+                <Text className="text-blue-600">▼</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text className="text-2xl font-bold text-blue-800 mx-3">:</Text>
+
+            {/* Minute selector */}
+            <View className="items-center">
+              <TouchableOpacity
+                onPress={() => handleTimeChange(hour, (minute + 15) % 60)}
+                className="w-8 h-8 rounded items-center justify-center bg-blue-100"
+              >
+                <Text className="text-blue-600">▲</Text>
+              </TouchableOpacity>
+              <Text className="text-2xl font-bold text-blue-800 my-2">
+                {minute.toString().padStart(2, '0')}
+              </Text>
+              <TouchableOpacity
+                onPress={() => handleTimeChange(hour, minute === 0 ? 45 : minute - 15)}
+                className="w-8 h-8 rounded items-center justify-center bg-blue-100"
+              >
+                <Text className="text-blue-600">▼</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Confirm Button */}
           <TouchableOpacity
-            onPress={() => handleTimeChange((hour + 1) % 24, minute)}
-            disabled={isConfirmed}
-            className={`w-8 h-8 rounded items-center justify-center ${
-              isConfirmed ? 'bg-gray-200' : 'bg-blue-100'
-            }`}
+            onPress={handleConfirm}
+            className="mt-4 bg-blue-500 py-3 px-4 rounded-lg"
           >
-            <Text className={isConfirmed ? 'text-gray-400' : 'text-blue-600'}>▲</Text>
+            <Text className="text-white text-center font-medium">네</Text>
           </TouchableOpacity>
-          <Text className="text-2xl font-bold text-blue-800 my-2">
-            {hour.toString().padStart(2, '0')}
+        </>
+      ) : (
+        <View className="p-3 bg-green-50 rounded-lg border border-green-200">
+          <Text className="text-green-700 text-center font-medium">
+            🕐 {formatTime(hour, minute)}
           </Text>
-          <TouchableOpacity
-            onPress={() => handleTimeChange(hour === 0 ? 23 : hour - 1, minute)}
-            disabled={isConfirmed}
-            className={`w-8 h-8 rounded items-center justify-center ${
-              isConfirmed ? 'bg-gray-200' : 'bg-blue-100'
-            }`}
-          >
-            <Text className={isConfirmed ? 'text-gray-400' : 'text-blue-600'}>▼</Text>
-          </TouchableOpacity>
         </View>
-
-        <Text className="text-2xl font-bold text-blue-800 mx-3">:</Text>
-
-        {/* Minute selector */}
-        <View className="items-center">
-          <TouchableOpacity
-            onPress={() => handleTimeChange(hour, (minute + 15) % 60)}
-            disabled={isConfirmed}
-            className={`w-8 h-8 rounded items-center justify-center ${
-              isConfirmed ? 'bg-gray-200' : 'bg-blue-100'
-            }`}
-          >
-            <Text className={isConfirmed ? 'text-gray-400' : 'text-blue-600'}>▲</Text>
-          </TouchableOpacity>
-          <Text className="text-2xl font-bold text-blue-800 my-2">
-            {minute.toString().padStart(2, '0')}
-          </Text>
-          <TouchableOpacity
-            onPress={() => handleTimeChange(hour, minute === 0 ? 45 : minute - 15)}
-            disabled={isConfirmed}
-            className={`w-8 h-8 rounded items-center justify-center ${
-              isConfirmed ? 'bg-gray-200' : 'bg-blue-100'
-            }`}
-          >
-            <Text className={isConfirmed ? 'text-gray-400' : 'text-blue-600'}>▼</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Current Selection */}
-      <View className="mt-3 p-3 bg-blue-50 rounded">
-        <Text className="text-sm text-blue-700 text-center">
-          선택된 시간: {formatTime(hour, minute)}
-        </Text>
-      </View>
-
-      {/* Confirm Button */}
-      {!isConfirmed && (
-        <TouchableOpacity
-          onPress={handleConfirm}
-          className="mt-3 bg-blue-500 py-3 px-4 rounded-lg"
-        >
-          <Text className="text-white text-center font-medium">선택 완료</Text>
-        </TouchableOpacity>
       )}
     </View>
   );
 }
 
 // Weekdays Widget for selecting days of week with pre-population
-export function WeekdaysWidget({ label, value, onSelect, onConfirm, defaultValue }: BaseWidgetProps & { defaultValue?: number[] }) {
+export function WeekdaysWidget({ label, value, onSelect, onConfirm, defaultValue, isActive = true }: BaseWidgetProps & { defaultValue?: number[]; isActive?: boolean }) {
   const [localSelection, setLocalSelection] = useState<number[]>(() => {
     // Use defaultValue if provided, otherwise use value, otherwise empty
     if (Array.isArray(defaultValue) && defaultValue.length > 0) {
@@ -762,47 +764,47 @@ export function WeekdaysWidget({ label, value, onSelect, onConfirm, defaultValue
   };
 
   return (
-    <View className="bg-white border border-gray-200 rounded-lg p-4 mt-2">
+    <View className={`bg-white rounded-lg p-4 mt-2 ${isActive && !isConfirmed ? 'border-4 border-blue-500' : 'border border-gray-200'}`}>
       <Text className="text-sm font-medium text-gray-700 mb-3">{label}</Text>
-      <View className="flex-row justify-between">
-        {weekdays.map(day => {
-          const isSelected = localSelection.includes(day.id);
-          return (
-            <TouchableOpacity
-              key={day.id}
-              onPress={() => toggleDay(day.id)}
-              disabled={isConfirmed}
-              className={`w-10 h-10 rounded-full items-center justify-center border ${
-                isSelected 
-                  ? 'bg-blue-500 border-blue-500' 
-                  : 'bg-white border-gray-300'
-              } ${isConfirmed ? 'opacity-60' : ''}`}
-            >
-              <Text className={`text-sm font-medium ${isSelected ? 'text-white' : 'text-gray-700'}`}>
-                {day.name}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
+      {!isConfirmed ? (
+        <>
+          <View className="flex-row justify-between">
+            {weekdays.map(day => {
+              const isSelected = localSelection.includes(day.id);
+              return (
+                <TouchableOpacity
+                  key={day.id}
+                  onPress={() => toggleDay(day.id)}
+                  className={`w-10 h-10 rounded-full items-center justify-center border-2 ${
+                    isSelected 
+                      ? 'bg-blue-500 border-blue-500' 
+                      : 'bg-white border-gray-300'
+                  }`}
+                >
+                  <Text className={`text-sm font-medium ${isSelected ? 'text-white' : 'text-gray-700'}`}>
+                    {day.name}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
 
-      {/* Selection Summary */}
-      {localSelection.length > 0 && (
-        <View className="mt-3 p-3 bg-blue-50 rounded">
-          <Text className="text-sm text-blue-700">
-            선택된 요일: {getSelectedDayNames()}
+          {/* Confirm Button */}
+          {localSelection.length > 0 && (
+            <TouchableOpacity
+              onPress={handleConfirm}
+              className="mt-4 bg-blue-500 py-3 px-4 rounded-lg"
+            >
+              <Text className="text-white text-center font-medium">네</Text>
+            </TouchableOpacity>
+          )}
+        </>
+      ) : (
+        <View className="p-3 bg-green-50 rounded-lg border border-green-200">
+          <Text className="text-green-700 text-center font-medium">
+            📆 {getSelectedDayNames()}
           </Text>
         </View>
-      )}
-
-      {/* Confirm Button */}
-      {localSelection.length > 0 && !isConfirmed && (
-        <TouchableOpacity
-          onPress={handleConfirm}
-          className="mt-3 bg-blue-500 py-3 px-4 rounded-lg"
-        >
-          <Text className="text-white text-center font-medium">선택 완료</Text>
-        </TouchableOpacity>
       )}
     </View>
   );
